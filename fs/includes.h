@@ -21,12 +21,6 @@
 #include "fs.h"
 #include "inode.h"
 
-#if 0
-#define dfs_printf  printf
-#else
-#define dfs_printf(a...)
-#endif
-
 void *dfs_readBlock(int fd, off_t block);
 int dfs_writeBlock(int fd, void *buf, off_t block);
 
@@ -51,9 +45,6 @@ void dfs_updateInodeTimes(struct inode *inode, bool atime,
                           bool mtime, bool ctime);
 void dfs_inodeLock(struct inode *inode, bool exclusive);
 void dfs_inodeUnlock(struct inode *inode);
-uint64_t dfs_setHandle(struct fs *fs, ino_t ino);
-ino_t dfs_getFsHandle(uint64_t fh);
-ino_t dfs_getInodeHandle(uint64_t fh);
 
 ino_t dfs_dirLookup(struct fs *fs, ino_t ino, const char *name);
 ino_t dfs_lookup(const char *path, struct gfs *gfs, struct fs **fsp,

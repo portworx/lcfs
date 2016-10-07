@@ -199,22 +199,3 @@ dfs_inodeInit(struct fs *fs, mode_t mode, uid_t uid, gid_t gid,
     fs->fs_inode[ino] = inode;
     return ino;
 }
-
-/* Set up inode handle using inode number and file system id */
-uint64_t
-dfs_setHandle(struct fs *fs, ino_t ino) {
-    return (fs->fs_root << 32) | ino;
-}
-
-/* Get the file system id from the file handle */
-ino_t
-dfs_getFsHandle(uint64_t fh) {
-    return fh >> 32;
-}
-
-/* Get inode number corresponding to the file handle */
-ino_t
-dfs_getInodeHandle(uint64_t fh) {
-    return fh & 0xFFFFFFFF;
-}
-

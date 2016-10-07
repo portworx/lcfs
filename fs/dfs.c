@@ -19,11 +19,13 @@ create(const char *path, mode_t mode, dev_t rdev, const char *target) {
     dfs_lookup(path, gfs, &fs, &parent, name);
     if (parent == DFS_INVALID_INODE) {
         dfs_unlock(gfs);
+        dfs_reportError(__func__, path, 0, ENOENT);
         return -ENOENT;
     }
     dir = dfs_getInode(fs, parent, true, true);
     if (dir == NULL) {
         dfs_unlock(gfs);
+        dfs_reportError(__func__, path, parent, ENOENT);
         return -ENOENT;
     }
     assert((dir->i_stat.st_mode & S_IFMT) == S_IFDIR);
@@ -44,7 +46,8 @@ dremove(struct fs *fs, struct inode *dir, char *name, ino_t ino, bool rmdir) {
     struct inode * inode = dfs_getInode(fs, ino, true, true);
 
     if (inode == NULL) {
-        return ESTALE;
+        dfs_reportError(__func__, NULL, ino, ESTALE);
+        return -ESTALE;
     }
     assert(inode->i_stat.st_nlink);
     if (rmdir) {
@@ -54,6 +57,7 @@ dremove(struct fs *fs, struct inode *dir, char *name, ino_t ino, bool rmdir) {
             (inode->i_dirent != NULL)) {
         */
             dfs_inodeUnlock(inode);
+            dfs_reportError(__func__, NULL, ino, EEXIST);
             return -EEXIST;
         }
         dir->i_stat.st_nlink--;
@@ -87,11 +91,13 @@ dfs_remove(const char *path, bool rmdir) {
     if ((ino == DFS_INVALID_INODE) ||
         (parent == DFS_INVALID_INODE)) {
         dfs_unlock(gfs);
+        dfs_reportError(__func__, path, 0, ESTALE);
         return -ESTALE;
     }
     dir = dfs_getInode(fs, parent, true, true);
     if (dir == NULL) {
         dfs_unlock(gfs);
+        dfs_reportError(__func__, path, parent, ENOENT);
         return -ENOENT;
     }
     assert((dir->i_stat.st_mode & S_IFMT) == S_IFDIR);
@@ -112,6 +118,7 @@ dfs_getattr(const char *path, struct stat *stat) {
     inode = dfs_getPathInode(path, gfs, false, false);
     if (inode == NULL) {
         dfs_unlock(gfs);
+        //dfs_reportError(__func__, path, 0, ENOENT);
         return -ENOENT;
     }
     memcpy(stat, &inode->i_stat, sizeof(struct stat));
@@ -132,6 +139,7 @@ dfs_readlink(const char *path, char *buf, size_t len) {
     inode = dfs_getPathInode(path, gfs, false, false);
     if (inode == NULL) {
         dfs_unlock(gfs);
+        dfs_reportError(__func__, path, 0, ENOENT);
         return -ENOENT;
     }
     assert((inode->i_stat.st_mode & S_IFMT) == S_IFLNK);
@@ -212,6 +220,7 @@ dfs_rename(const char *oldpath, const char *newpath) {
         tdir = dfs_getInode(fs, dest, true, true);
         if (tdir == NULL) {
             dfs_unlock(gfs);
+            dfs_reportError(__func__, newpath, dest, ENOENT);
             return -ENOENT;
         }
     }
@@ -221,6 +230,7 @@ dfs_rename(const char *oldpath, const char *newpath) {
             dfs_inodeUnlock(tdir);
         }
         dfs_unlock(gfs);
+        dfs_reportError(__func__, oldpath, source, ENOENT);
         return -ENOENT;
     }
     assert((sdir->i_stat.st_mode & S_IFMT) == S_IFDIR);
@@ -229,6 +239,7 @@ dfs_rename(const char *oldpath, const char *newpath) {
         if (tdir == NULL) {
             dfs_inodeUnlock(sdir);
             dfs_unlock(gfs);
+            dfs_reportError(__func__, newpath, dest, ENOENT);
             return -ENOENT;
         }
         assert((tdir->i_stat.st_mode & S_IFMT) == S_IFDIR);
@@ -244,6 +255,7 @@ dfs_rename(const char *oldpath, const char *newpath) {
             dfs_inodeUnlock(sdir);
             dfs_inodeUnlock(tdir);
             dfs_unlock(gfs);
+            dfs_reportError(__func__, oldpath, ino, ENOENT);
             return -ENOENT;
         }
         dfs_dirAdd(tdir, ino, inode->i_stat.st_mode, name);
@@ -278,26 +290,29 @@ static int
 dfs_link(const char *oldpath, const char *newpath) {
     char name[DFS_FILENAME_MAX];
     struct gfs *gfs = getfs();
-    ino_t ino, parent, source;
     struct inode *inode, *dir;
     struct fs *fs, *nfs;
+    ino_t ino, parent;
 
     dfs_displayEntry(__func__, oldpath, 0);
     dfs_lock(gfs, false);
-    ino = dfs_lookup(oldpath, gfs, &fs, &source, NULL);
-    if (source == DFS_INVALID_INODE) {
+    ino = dfs_lookup(oldpath, gfs, &fs, NULL, NULL);
+    if (ino == DFS_INVALID_INODE) {
         dfs_unlock(gfs);
+        dfs_reportError(__func__, oldpath, 0, ENOENT);
         return -ENOENT;
     }
     dfs_lookup(newpath, gfs, &nfs, &parent, name);
     assert(fs == nfs);
     if (parent == DFS_INVALID_INODE) {
         dfs_unlock(gfs);
+        dfs_reportError(__func__, newpath, 0, ENOENT);
         return -ENOENT;
     }
     dir = dfs_getInode(fs, parent, true, true);
     if (dir == NULL) {
         dfs_unlock(gfs);
+        dfs_reportError(__func__, newpath, parent, ENOENT);
         return -ENOENT;
     }
     assert((dir->i_stat.st_mode & S_IFMT) == S_IFDIR);
@@ -305,6 +320,7 @@ dfs_link(const char *oldpath, const char *newpath) {
     if (inode == NULL) {
         dfs_inodeUnlock(dir);
         dfs_unlock(gfs);
+        dfs_reportError(__func__, oldpath, ino, ENOENT);
         return -ENOENT;
     }
     assert((inode->i_stat.st_mode & S_IFMT) == S_IFREG);
@@ -330,6 +346,7 @@ dfs_chmod(const char *path, mode_t mode) {
 
     if (inode == NULL) {
         dfs_unlock(gfs);
+        dfs_reportError(__func__, path, 0, ENOENT);
         return -ENOENT;
     }
     assert((inode->i_stat.st_mode & S_IFMT) == (mode & S_IFMT));
@@ -352,6 +369,7 @@ dfs_chown(const char *path, uid_t uid, gid_t gid) {
 
     if (inode == NULL) {
         dfs_unlock(gfs);
+        dfs_reportError(__func__, path, 0, ENOENT);
         return -ENOENT;
     }
     if (uid != -1) {
@@ -394,6 +412,7 @@ dfs_truncate(const char *path, off_t size) {
     inode = dfs_getPathInode(path, gfs, true, true);
     if (inode == NULL) {
         dfs_unlock(gfs);
+        dfs_reportError(__func__, path, 0, ENOENT);
         return -ENOENT;
     }
     dtruncate(inode, size);
@@ -421,6 +440,7 @@ dfs_open(const char *path, struct fuse_file_info *fi) {
     ino = dfs_lookup(path, gfs, &fs, NULL, NULL);
     if (ino == DFS_INVALID_INODE) {
         dfs_unlock(gfs);
+        dfs_reportError(__func__, path, 0, ENOENT);
         return -ENOENT;
     }
     fi->fh = dfs_setHandle(fs, ino);
@@ -446,7 +466,8 @@ dfs_read(const char *path, char *buf, size_t size, off_t off,
                          dfs_getInodeHandle(fi->fh), false, false);
     if (inode == NULL) {
         dfs_unlock(gfs);
-        return 0;
+        dfs_reportError(__func__, path, fi->fh, ENOENT);
+        return -ENOENT;
     }
     assert((inode->i_stat.st_mode & S_IFMT) == S_IFREG);
 
@@ -487,7 +508,8 @@ dfs_write(const char *path, const char *buf, size_t size, off_t off,
                          dfs_getInodeHandle(fi->fh), true, true);
     if (inode == NULL) {
         dfs_unlock(gfs);
-        return 0;
+        dfs_reportError(__func__, path, fi->fh, ENOENT);
+        return -ENOENT;
     }
     assert((inode->i_stat.st_mode & S_IFMT) == S_IFREG);
 
@@ -504,6 +526,7 @@ dfs_write(const char *path, const char *buf, size_t size, off_t off,
             psize = wsize;
         }
         dfs_addPage(inode, page, poffset, psize, &buf[woff]);
+        page++;
         woff += psize;
         wsize -= psize;
     }
@@ -572,13 +595,15 @@ dfs_setxattr(const char *path, const char *name, const char *value,
 
     dfs_displayEntry(__func__, path, 0);
     if (strstr(path, "/dfs/") != path) {
-        return -EINVAL;
+        dfs_reportError(__func__, path, 0, EPERM);
+        return -EPERM;
     }
     dfs_lock(gfs, false);
     ino = dfs_lookup(path, gfs, NULL, &pino, NULL);
     dfs_unlock(gfs);
     if ((ino == DFS_INVALID_INODE) ||
         (pino == DFS_INVALID_INODE)) {
+        dfs_reportError(__func__, path, 0, ENOENT);
         return -ENOENT;
     }
     dfs_printf("Creating a clone %s, parent %s\n", path, name);
@@ -598,7 +623,8 @@ static int
 dfs_listxattr(const char *path, char *list, size_t size) {
     dfs_displayEntry(__func__, path, 0);
     if (strstr(path, "/dfs/") != path) {
-        return -EINVAL;
+        dfs_reportError(__func__, path, 0, EPERM);
+        return -EPERM;
     }
     return 0;
 }
@@ -608,7 +634,8 @@ static int
 dfs_removexattr(const char *path, const char *name) {
     dfs_displayEntry(__func__, path, 0);
     if (strstr(path, "/dfs/") != path) {
-        return -EINVAL;
+        dfs_reportError(__func__, path, 0, EPERM);
+        return -EPERM;
     }
     dfs_printf("Removing a clone %s\n", path);
     return dfs_removeClone(path);
@@ -626,6 +653,7 @@ dfs_opendir(const char *path, struct fuse_file_info *fi) {
     ino = dfs_lookup(path, gfs, &fs, NULL, NULL);
     if (ino == DFS_INVALID_INODE) {
         dfs_unlock(gfs);
+        dfs_reportError(__func__, path, 0, ENOENT);
         return -ENOENT;
     }
     fi->fh = dfs_setHandle(fs, ino);
@@ -637,9 +665,9 @@ dfs_opendir(const char *path, struct fuse_file_info *fi) {
 static int
 dfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t off,
             struct fuse_file_info *fi) {
-    struct inode *inode, *dir;
     struct gfs *gfs = getfs();
     struct dirent *dirent;
+    struct inode *dir;
     struct stat st;
     int count = 0;
     struct fs *fs;
@@ -650,7 +678,8 @@ dfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t off,
     dir = dfs_getInode(fs, dfs_getInodeHandle(fi->fh), false, false);
     if (dir == NULL) {
         dfs_unlock(gfs);
-        return 0;
+        dfs_reportError(__func__, path, fi->fh, ENOENT);
+        return -ENOENT;
     }
     assert((dir->i_stat.st_mode & S_IFMT) == S_IFDIR);
     dirent = dir->i_dirent;
@@ -658,15 +687,12 @@ dfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t off,
         dirent = dirent->di_next;
         count++;
     }
+    memset(&st, 0, sizeof(struct stat));
     while (dirent != NULL) {
-        /* XXX Do we need complete state or just the file mode? */
-        inode = dfs_getInode(fs, dirent->di_ino, false, false);
-        if (inode) {
-            memcpy(&st, &inode->i_stat, sizeof(struct stat));
-            dfs_inodeUnlock(inode);
-        }
         count++;
-        if (filler(buf, dirent->di_name, inode ? &st : NULL, count)) {
+        st.st_ino = dirent->di_ino;
+        st.st_mode = dirent->di_mode;
+        if (filler(buf, dirent->di_name, &st, count)) {
             break;
         }
         dirent = dirent->di_next;
@@ -717,6 +743,7 @@ dfs_ftruncate(const char *path, off_t off, struct fuse_file_info *fi) {
                          dfs_getInodeHandle(fi->fh), true, true);
     if (inode == NULL) {
         dfs_unlock(gfs);
+        dfs_reportError(__func__, path, fi->fh, ENOENT);
         return -ENOENT;
     }
     dtruncate(inode, off);
@@ -736,6 +763,7 @@ dfs_fgetattr(const char *path, struct stat *buf, struct fuse_file_info *fi) {
                          dfs_getInodeHandle(fi->fh), false, false);
     if (inode == NULL) {
         dfs_unlock(gfs);
+        dfs_reportError(__func__, path, fi->fh, ENOENT);
         return -ENOENT;
     }
     memcpy(buf, &inode->i_stat, sizeof(struct stat));
@@ -764,6 +792,7 @@ dfs_utimens(const char *path, const struct timespec tv[2]) {
     inode = dfs_getPathInode(path, gfs, true, true);
     if (inode == NULL) {
         dfs_unlock(gfs);
+        dfs_reportError(__func__, path, 0, ENOENT);
         return -ENOENT;
     }
     inode->i_stat.st_atime = tv[0].tv_sec;
@@ -819,6 +848,7 @@ dfs_read_buf(const char *path, struct fuse_bufvec **bufp,
     struct inode *inode = dfs_getInode(getfs(), fi->fh, false, false);
     if (inode == NULL) {
         dfs_unlock(gfs);
+        dfs_reportError(__func__, path, fi->fh, ENOENT);
         return -ENOENT;
     }
     size_t fsize = inode->i_stat.st_size;
@@ -826,6 +856,7 @@ dfs_read_buf(const char *path, struct fuse_bufvec **bufp,
 
     dfs_inodeUnlock(inode);
     if (src == NULL) {
+        dfs_reportError(__func__, path, fi->fh, ENOMEM);
         return -ENOMEM;
     }
     endoffset = off + size;
@@ -986,10 +1017,11 @@ main(int argc, char *argv[]) {
     arg[2] = "-o";
     arg[3] = malloc(1024);
     sprintf(arg[3],
-            "allow_other,auto_unmount,default_permissions,"
-            "subtype=dfs,dev,fsname=%s,"
-            //"direct_io,big_writes"
-            "use_ino,nopath,atomic_o_trunc,suid",
+            "allow_other,auto_unmount,"
+            "subtype=dfs,fsname=%s,big_writes,"
+            //"direct_io"  // direct_io breaks mmap.
+            "splice_move,splice_read,splice_write,"
+            "use_ino,nopath,atomic_o_trunc",
             argv[1]);
     if (ARGC >= 5) {
         arg[4] = "-f";
