@@ -388,13 +388,8 @@ dfs_chown(const char *path, uid_t uid, gid_t gid) {
 static void
 dtruncate(struct inode *inode, off_t size) {
     assert((inode->i_stat.st_mode & S_IFMT) == S_IFREG);
-    if (size == 0) {
-
-        /* XXX Free memory */
-        inode->i_page = NULL;
-        inode->i_shared = false;
-    } else if (size < inode->i_stat.st_size) {
-        /* XXX truncate pages beyond the new size */
+    if (size < inode->i_stat.st_size) {
+        dfs_truncPages(inode, size);
     }
     inode->i_stat.st_size = size;
     dfs_updateInodeTimes(inode, false, false, true);
@@ -554,8 +549,8 @@ dfs_statfs(const char *path, struct statvfs *buf) {
     buf->f_blocks = gfs->gfs_super->sb_tblocks;
     buf->f_bfree = buf->f_blocks - gfs->gfs_super->sb_nblock;
     buf->f_bavail = buf->f_bfree;
-    buf->f_files = gfs->gfs_super->sb_ninode;
-    buf->f_ffree = -1;
+    buf->f_files = UINT32_MAX;
+    buf->f_ffree = buf->f_files - gfs->gfs_super->sb_ninode;
     buf->f_favail = buf->f_ffree;
     buf->f_fsid = 0;
     buf->f_flag = 0;
@@ -1019,7 +1014,6 @@ main(int argc, char *argv[]) {
     sprintf(arg[3],
             "allow_other,auto_unmount,"
             "subtype=dfs,fsname=%s,big_writes,"
-            //"direct_io"  // direct_io breaks mmap.
             "splice_move,splice_read,splice_write,"
             "use_ino,nopath,atomic_o_trunc",
             argv[1]);

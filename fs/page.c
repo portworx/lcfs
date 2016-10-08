@@ -136,3 +136,56 @@ dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset, char *buf) {
         rsize -= psize;
     }
 }
+
+/* Truncate pages beyond the new size of the file */
+void
+dfs_truncPages(struct inode *inode, off_t size) {
+    uint64_t pg = size / DFS_BLOCK_SIZE;
+    struct page *page, *opage = NULL;
+    char *data;
+
+    /* Copy page list before changing it */
+    if (inode->i_shared) {
+        if (size == 0) {
+            inode->i_page = NULL;
+            inode->i_shared = false;
+            return;
+        }
+        dfs_copyPages(inode);
+    }
+    assert(!inode->i_shared);
+
+    /* Remove pages past the new size */
+    page = inode->i_page;
+    while (page) {
+        if ((pg == page->p_page) && ((size % DFS_BLOCK_SIZE) != 0)) {
+
+            /* If a page is partially truncated, keep it */
+            if (page->p_shared) {
+                data = page->p_data;
+                page->p_data = malloc(DFS_BLOCK_SIZE);
+                memcpy(page->p_data, data, DFS_BLOCK_SIZE);
+                page->p_shared = false;
+            }
+            opage = page;
+            page = page->p_next;
+        } else if (pg <= page->p_page) {
+
+            /* Take out this page */
+            if (opage) {
+                opage->p_next = page->p_next;
+            } else {
+                inode->i_page = page->p_next;
+            }
+            if (!page->p_shared) {
+                free(page->p_data);
+            }
+            free(page);
+            page = opage ? opage->p_next : inode->i_page;
+        } else {
+            opage = page;
+            page = page->p_next;
+        }
+    }
+    assert((inode->i_page == NULL) || (size != 0));
+}

@@ -58,6 +58,7 @@ void dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
                  const char *buf);
 void dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,
                    char *buf);
+void dfs_truncPages(struct inode *inode, off_t size);
 
 int dfs_newClone(ino_t ino, ino_t pino, const char *name);
 int dfs_removeClone(const char *path);
