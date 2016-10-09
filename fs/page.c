@@ -56,7 +56,7 @@ dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
     struct page *page;
     char *data;
 
-    assert((inode->i_stat.st_mode & S_IFMT) == S_IFREG);
+    assert(S_ISREG(inode->i_stat.st_mode));
 
     /* Copy page headers if page chain is shared */
     if (inode->i_shared) {
@@ -111,7 +111,7 @@ dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset, char *buf) {
     size_t psize, rsize = endoffset - off;
     struct page *page;
 
-    assert((inode->i_stat.st_mode & S_IFMT) == S_IFREG);
+    assert(S_ISREG(inode->i_stat.st_mode));
     while (rsize) {
         if (off == soffset) {
             poffset = soffset % DFS_BLOCK_SIZE;

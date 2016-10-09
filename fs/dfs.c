@@ -28,10 +28,10 @@ create(const char *path, mode_t mode, dev_t rdev, const char *target) {
         dfs_reportError(__func__, path, parent, ENOENT);
         return -ENOENT;
     }
-    assert((dir->i_stat.st_mode & S_IFMT) == S_IFDIR);
-    ino = dfs_inodeInit(fs, mode, fc->uid, fc->gid, rdev, target);
+    assert(S_ISDIR(dir->i_stat.st_mode));
+    ino = dfs_inodeInit(fs, mode & ~fc->umask, fc->uid, fc->gid, rdev, target);
     dfs_dirAdd(dir, ino, mode, name);
-    if ((mode & S_IFMT) == S_IFDIR) {
+    if (S_ISDIR(mode)) {
         dir->i_stat.st_nlink++;
     }
     dfs_updateInodeTimes(dir, false, true, true);
@@ -100,7 +100,7 @@ dfs_remove(const char *path, bool rmdir) {
         dfs_reportError(__func__, path, parent, ENOENT);
         return -ENOENT;
     }
-    assert((dir->i_stat.st_mode & S_IFMT) == S_IFDIR);
+    assert(S_ISDIR(dir->i_stat.st_mode));
     err = dremove(fs, dir, name, ino, rmdir);
     dfs_inodeUnlock(dir);
     dfs_unlock(gfs);
@@ -142,7 +142,7 @@ dfs_readlink(const char *path, char *buf, size_t len) {
         dfs_reportError(__func__, path, 0, ENOENT);
         return -ENOENT;
     }
-    assert((inode->i_stat.st_mode & S_IFMT) == S_IFLNK);
+    assert(S_ISLNK(inode->i_stat.st_mode));
     size = strlen(inode->i_target);
     if (size > len) {
         size = len;
@@ -233,7 +233,7 @@ dfs_rename(const char *oldpath, const char *newpath) {
         dfs_reportError(__func__, oldpath, source, ENOENT);
         return -ENOENT;
     }
-    assert((sdir->i_stat.st_mode & S_IFMT) == S_IFDIR);
+    assert(S_ISDIR(sdir->i_stat.st_mode));
     if (source < dest) {
         tdir = dfs_getInode(fs, dest, true, true);
         if (tdir == NULL) {
@@ -242,7 +242,7 @@ dfs_rename(const char *oldpath, const char *newpath) {
             dfs_reportError(__func__, newpath, dest, ENOENT);
             return -ENOENT;
         }
-        assert((tdir->i_stat.st_mode & S_IFMT) == S_IFDIR);
+        assert(S_ISDIR(tdir->i_stat.st_mode));
     }
 
     /* Renaming to another directory */
@@ -260,7 +260,7 @@ dfs_rename(const char *oldpath, const char *newpath) {
         }
         dfs_dirAdd(tdir, ino, inode->i_stat.st_mode, name);
         dfs_dirRemove(sdir, oldname);
-        if ((inode->i_stat.st_mode & S_IFMT) == S_IFDIR) {
+        if (S_ISDIR(inode->i_stat.st_mode)) {
             assert(sdir->i_stat.st_nlink);
             sdir->i_stat.st_nlink--;
             tdir->i_stat.st_nlink++;
@@ -315,7 +315,7 @@ dfs_link(const char *oldpath, const char *newpath) {
         dfs_reportError(__func__, newpath, parent, ENOENT);
         return -ENOENT;
     }
-    assert((dir->i_stat.st_mode & S_IFMT) == S_IFDIR);
+    assert(S_ISDIR(dir->i_stat.st_mode));
     inode = dfs_getInode(fs, ino, true, true);
     if (inode == NULL) {
         dfs_inodeUnlock(dir);
@@ -323,7 +323,7 @@ dfs_link(const char *oldpath, const char *newpath) {
         dfs_reportError(__func__, oldpath, ino, ENOENT);
         return -ENOENT;
     }
-    assert((inode->i_stat.st_mode & S_IFMT) == S_IFREG);
+    assert(S_ISREG(inode->i_stat.st_mode));
     dfs_dirAdd(dir, ino, inode->i_stat.st_mode, name);
     dfs_updateInodeTimes(dir, false, true, true);
     inode->i_stat.st_nlink++;
@@ -387,7 +387,7 @@ dfs_chown(const char *path, uid_t uid, gid_t gid) {
 /* Truncate a file */
 static void
 dtruncate(struct inode *inode, off_t size) {
-    assert((inode->i_stat.st_mode & S_IFMT) == S_IFREG);
+    assert(S_ISREG(inode->i_stat.st_mode));
     if (size < inode->i_stat.st_size) {
         dfs_truncPages(inode, size);
     }
@@ -464,7 +464,7 @@ dfs_read(const char *path, char *buf, size_t size, off_t off,
         dfs_reportError(__func__, path, fi->fh, ENOENT);
         return -ENOENT;
     }
-    assert((inode->i_stat.st_mode & S_IFMT) == S_IFREG);
+    assert(S_ISREG(inode->i_stat.st_mode));
 
     /* Reading beyond file size is not allowed */
     fsize = inode->i_stat.st_size;
@@ -506,7 +506,7 @@ dfs_write(const char *path, const char *buf, size_t size, off_t off,
         dfs_reportError(__func__, path, fi->fh, ENOENT);
         return -ENOENT;
     }
-    assert((inode->i_stat.st_mode & S_IFMT) == S_IFREG);
+    assert(S_ISREG(inode->i_stat.st_mode));
 
     /* Break the down the write into pages and link those to the file */
     while (wsize) {
@@ -676,7 +676,7 @@ dfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t off,
         dfs_reportError(__func__, path, fi->fh, ENOENT);
         return -ENOENT;
     }
-    assert((dir->i_stat.st_mode & S_IFMT) == S_IFDIR);
+    assert(S_ISDIR(dir->i_stat.st_mode));
     dirent = dir->i_dirent;
     while ((count < off) && dirent) {
         dirent = dirent->di_next;

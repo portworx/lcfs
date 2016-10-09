@@ -1,7 +1,7 @@
 #ifndef _INLINES_H
 #define _INLINES_H
 
-#if 1
+#if 0
 #define dfs_printf  printf
 #else
 #define dfs_printf(a...)

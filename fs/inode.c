@@ -19,28 +19,17 @@ dfs_inodeUnlock(struct inode *inode) {
 /* Update inode times */
 void
 dfs_updateInodeTimes(struct inode *inode, bool atime, bool mtime, bool ctime) {
-    time_t sec = time(NULL);
+    struct timespec tv;
 
+    clock_gettime(CLOCK_REALTIME, &tv);
     if (atime) {
-        if (inode->i_stat.st_atime == sec) {
-            inode->i_stat.st_atime++;
-        } else {
-            inode->i_stat.st_atime = sec;
-        }
+        inode->i_stat.st_atim = tv;
     }
     if (mtime) {
-        if (inode->i_stat.st_mtime == sec) {
-            inode->i_stat.st_mtime++;
-        } else {
-            inode->i_stat.st_mtime = sec;
-        }
+        inode->i_stat.st_mtim = tv;
     }
     if (ctime) {
-        if (inode->i_stat.st_ctime == sec) {
-            inode->i_stat.st_ctime++;
-        } else {
-            inode->i_stat.st_ctime = sec;
-        }
+        inode->i_stat.st_ctim = tv;
     }
 }
 
@@ -80,18 +69,18 @@ dfs_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
     pthread_rwlock_init(&inode->i_rwlock, NULL);
     memcpy(&inode->i_stat, &parent->i_stat, sizeof(struct stat));
 
-    if ((inode->i_stat.st_mode & S_IFMT) == S_IFREG) {
+    if (S_ISREG(inode->i_stat.st_mode)) {
 
         /* Share pages initially */
         if (parent->i_page) {
             inode->i_page = parent->i_page;
             inode->i_shared = true;
         }
-    } else if ((inode->i_stat.st_mode & S_IFMT) == S_IFDIR) {
+    } else if (S_ISDIR(inode->i_stat.st_mode)) {
 
         /* Copy directory entries */
         dfs_dirCopy(inode, parent);
-    } else if ((inode->i_stat.st_mode & S_IFMT) == S_IFLNK) {
+    } else if (S_ISLNK(inode->i_stat.st_mode)) {
 
         /* XXX New inode may share target */
         target = parent->i_target;

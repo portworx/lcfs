@@ -19,8 +19,7 @@ dfs_newClone(ino_t ino, ino_t pino, const char *name) {
     /* Do not allow creating file systems on non-directories or non-empty
      * directories.
      */
-    if (((inode->i_stat.st_mode & S_IFMT) != S_IFDIR) ||
-        (inode->i_dirent != NULL)) {
+    if (!S_ISDIR(inode->i_stat.st_mode) || (inode->i_dirent != NULL)) {
         err = -EINVAL;
         goto out;
     }

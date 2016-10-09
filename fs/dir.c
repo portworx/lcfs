@@ -14,7 +14,7 @@ dfs_dirLookup(struct fs *fs, ino_t ino, const char *name) {
     if (dir == NULL) {
         return DFS_INVALID_INODE;
     }
-    assert((dir->i_stat.st_mode & S_IFMT) == S_IFDIR);
+    assert(S_ISDIR(dir->i_stat.st_mode));
     dirent = dir->i_dirent;
     while (dirent != NULL) {
         if ((len == dirent->di_size) &&
@@ -107,7 +107,7 @@ dfs_dirAdd(struct inode *dir, ino_t ino, mode_t mode, char *name) {
     struct dirent *dirent = malloc(sizeof(struct dirent));
     int nsize = strlen(name);
 
-    assert((dir->i_stat.st_mode & S_IFMT) == S_IFDIR);
+    assert(S_ISDIR(dir->i_stat.st_mode));
     dirent->di_ino = ino;
     dirent->di_name = malloc(nsize + 1);
     memcpy(dirent->di_name, name, nsize);
@@ -123,8 +123,8 @@ void
 dfs_dirCopy(struct inode *inode, struct inode *dir) {
     struct dirent *dirent = dir->i_dirent;
 
-    assert((inode->i_stat.st_mode & S_IFMT) == S_IFDIR);
-    assert((dir->i_stat.st_mode & S_IFMT) == S_IFDIR);
+    assert(S_ISDIR(inode->i_stat.st_mode));
+    assert(S_ISDIR(dir->i_stat.st_mode));
     while (dirent) {
         dfs_dirAdd(inode, dirent->di_ino, dirent->di_mode, dirent->di_name);
         dirent = dirent->di_next;
@@ -139,7 +139,7 @@ dfs_dirRemove(struct inode *dir, char *name) {
     struct dirent *pdirent = NULL;
     int len = strlen(name);
 
-    assert((dir->i_stat.st_mode & S_IFMT) == S_IFDIR);
+    assert(S_ISDIR(dir->i_stat.st_mode));
     while (dirent != NULL) {
         if ((len == dirent->di_size) &&
             (strcmp(name, dirent->di_name) == 0)) {
@@ -163,7 +163,7 @@ dfs_dirRename(struct inode *dir, ino_t ino, char *name) {
     struct dirent *dirent = dir->i_dirent;
     int len = strlen(name);
 
-    assert((dir->i_stat.st_mode & S_IFMT) == S_IFDIR);
+    assert(S_ISDIR(dir->i_stat.st_mode));
     while (dirent != NULL) {
         if (dirent->di_ino == ino) {
 

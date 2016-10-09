@@ -12,7 +12,7 @@
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <time.h>
+#include <sys/time.h>
 #include <pthread.h>
 #include <assert.h>
 
