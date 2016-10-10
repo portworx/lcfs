@@ -9,6 +9,9 @@ struct page {
     /* Next page in the page chain of the inode */
     struct page *p_next;
 
+    /* Previous page in the page chain of the inode */
+    struct page *p_prev;
+
     /* Data associated with page of the file */
     char *p_data;
 
@@ -33,7 +36,7 @@ dfs_findPage(struct inode *inode, uint64_t pg) {
 /* Create a new page chain for the inode, copying existing page structures */
 static void
 dfs_copyPages(struct inode *inode) {
-    struct page *page,*opage;
+    struct page *page, *opage;
 
     opage = inode->i_page;
     inode->i_page = NULL;
@@ -43,6 +46,10 @@ dfs_copyPages(struct inode *inode) {
         page->p_data = opage->p_data;
         page->p_shared = true;
         page->p_next = inode->i_page;
+        page->p_prev = NULL;
+        if (inode->i_page) {
+            inode->i_page->p_prev = page;
+        }
         inode->i_page = page;
         opage = opage->p_next;
     }
@@ -65,7 +72,11 @@ dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
     assert(!inode->i_shared);
 
     /* Check if a page already exists */
-    page = dfs_findPage(inode, pg);
+    if ((pg * DFS_BLOCK_SIZE) < inode->i_stat.st_size) {
+        page = dfs_findPage(inode, pg);
+    } else {
+        page = NULL;
+    }
     if (page) {
 
         /* Allocate a new page if current page is shared */
@@ -100,6 +111,10 @@ dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
     }
     memcpy(&page->p_data[poffset], buf, psize);
     page->p_next = inode->i_page;
+    page->p_prev = NULL;
+    if (inode->i_page) {
+        inode->i_page->p_prev = page;
+    }
     inode->i_page = page;
 }
 
@@ -109,7 +124,7 @@ dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset, char *buf) {
     uint64_t pg = soffset / DFS_BLOCK_SIZE;
     off_t poffset, off = soffset, roff = 0;
     size_t psize, rsize = endoffset - off;
-    struct page *page;
+    struct page *page = NULL;
 
     assert(S_ISREG(inode->i_stat.st_mode));
     while (rsize) {
@@ -125,7 +140,13 @@ dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset, char *buf) {
         }
 
         /* Check if a page exists for the file or not */
-        page = dfs_findPage(inode, pg);
+        if (page && page->p_prev && (page->p_prev->p_page == pg)) {
+            page = page->p_prev;
+        } else if (page && page->p_next && (page->p_next->p_page == pg)) {
+            page = page->p_next;
+        } else {
+            page = dfs_findPage(inode, pg);
+        }
         if (page) {
             memcpy(&buf[roff], &page->p_data[poffset], psize);
         } else {
@@ -172,6 +193,9 @@ dfs_truncPages(struct inode *inode, off_t size) {
         } else if (pg <= page->p_page) {
 
             /* Take out this page */
+            if (page->p_next) {
+                page->p_next->p_prev = opage;
+            }
             if (opage) {
                 opage->p_next = page->p_next;
             } else {
