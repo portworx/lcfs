@@ -1,5 +1,8 @@
 #include "includes.h"
 
+/* XXX Check return values from fuse_reply_*, for example on interrupt */
+/* XXX Do we need to track lookup counts and forget? */
+
 /* Initialize default values in fuse_entry_param structure */
 static void
 dfs_epInit(struct fuse_entry_param *ep) {
@@ -571,17 +574,22 @@ dfs_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
 static void
 dfs_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
          struct fuse_file_info *fi) {
-    struct gfs *gfs = getfs();
     struct inode *inode, *handle;
+    struct gfs *gfs = getfs();
+    struct fuse_bufvec *bufv;
     off_t endoffset;
-    char buf[size];
     struct fs *fs;
     size_t fsize;
 
     dfs_displayEntry(__func__, ino, 0, NULL);
     if (size == 0) {
         fuse_reply_buf(req, NULL, 0);
+        return;
     }
+    fsize = sizeof(struct fuse_bufvec) +
+            (sizeof(struct fuse_buf) * ((size / DFS_BLOCK_SIZE) + 2));
+    bufv = malloc(fsize);
+    memset(bufv, 0, fsize);
     dfs_lock(gfs, false);
     fs = dfs_getfs(gfs, ino);
     handle = fi ? (struct inode *)fi->fh : NULL;
@@ -590,6 +598,7 @@ dfs_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
         dfs_unlock(gfs);
         dfs_reportError(__func__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
+        free(bufv);
         return;
     }
     assert(S_ISREG(inode->i_stat.st_mode));
@@ -600,74 +609,29 @@ dfs_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
         dfs_inodeUnlock(inode);
         dfs_unlock(gfs);
         fuse_reply_buf(req, NULL, 0);
+        free(bufv);
         return;
     }
     endoffset = off + size;
     if (endoffset > fsize) {
         endoffset = fsize;
     }
-    dfs_readPages(inode, off, endoffset, buf);
+    dfs_readPages(inode, off, endoffset, bufv);
+    fuse_reply_data(req, bufv, FUSE_BUF_SPLICE_MOVE);
     dfs_inodeUnlock(inode);
     dfs_unlock(gfs);
-    fuse_reply_buf(req, buf, endoffset - off);
+    free(bufv);
 }
 
+#if 0
 /* Write to a file */
 static void
 dfs_write(fuse_req_t req, fuse_ino_t ino, const char *buf,
           size_t size, off_t off, struct fuse_file_info *fi) {
-    off_t endoffset, poffset, woff = 0;
-    struct gfs *gfs = getfs();
-    uint64_t page, spage;
-    struct inode *inode;
-    size_t wsize, psize;
-    struct fs *fs;
-
     dfs_displayEntry(__func__, ino, 0, NULL);
-    spage = off / DFS_BLOCK_SIZE;
-    endoffset = off + size;
-    page = spage;
-    wsize = size;
-    dfs_lock(gfs, false);
-    fs = dfs_getfs(gfs, ino);
-    inode = dfs_getInode(fs, ino, NULL, true, true);
-    if (inode == NULL) {
-        dfs_unlock(gfs);
-        dfs_reportError(__func__, ino, ENOENT);
-        fuse_reply_err(req, ENOENT);
-        return;
-    }
-    assert(S_ISREG(inode->i_stat.st_mode));
-
-    /* Break the down the write into pages and link those to the file */
-    while (wsize) {
-        if (page == spage) {
-            poffset = off % DFS_BLOCK_SIZE;
-            psize = DFS_BLOCK_SIZE - poffset;
-        } else {
-            poffset = 0;
-            psize = DFS_BLOCK_SIZE;
-        }
-        if (psize > wsize) {
-            psize = wsize;
-        }
-        dfs_addPage(inode, page, poffset, psize, &buf[woff]);
-        page++;
-        woff += psize;
-        wsize -= psize;
-    }
-
-    /* Update inode size if needed */
-    if (endoffset > inode->i_stat.st_size) {
-        inode->i_stat.st_size = endoffset;
-    }
-    dfs_updateInodeTimes(inode, false, true, true);
-
-    /* Update block count */
-    dfs_inodeUnlock(inode);
-    dfs_unlock(gfs);
     fuse_reply_write(req, size);
 }
+#endif
 
 /* Flush a file */
 static void
@@ -838,6 +802,8 @@ dfs_statfs(fuse_req_t req, fuse_ino_t ino) {
     fuse_reply_statfs(req, &buf);
 }
 
+/* XXX Use ioctl instead of setxattr/removexattr for clone operations */
+
 /* Set extended attributes on a file, currently used for creating a new file
  * system
  */
@@ -937,13 +903,67 @@ dfs_poll(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi,
          struct fuse_pollhandle *ph) {
     dfs_displayEntry(__func__, ino);
 }
+#endif
 
+/* Write provided data to file at the specified offset */
 static void
 dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
               struct fuse_bufvec *bufv, off_t off, struct fuse_file_info *fi) {
-    dfs_displayEntry(__func__, ino);
+    struct gfs *gfs = getfs();
+    off_t endoffset, poffset;
+    uint64_t page, spage;
+    struct inode *inode;
+    size_t wsize, psize;
+    struct fs *fs;
+    size_t size;
+
+    dfs_displayEntry(__func__, ino, 0, NULL);
+    size = bufv->buf[bufv->idx].size;
+    spage = off / DFS_BLOCK_SIZE;
+    endoffset = off + size;
+    page = spage;
+    wsize = size;
+    dfs_lock(gfs, false);
+    fs = dfs_getfs(gfs, ino);
+    inode = dfs_getInode(fs, ino, NULL, true, true);
+    if (inode == NULL) {
+        dfs_unlock(gfs);
+        dfs_reportError(__func__, ino, ENOENT);
+        fuse_reply_err(req, ENOENT);
+        return;
+    }
+    assert(S_ISREG(inode->i_stat.st_mode));
+
+    /* Break the down the write into pages and link those to the file */
+    while (wsize) {
+        if (page == spage) {
+            poffset = off % DFS_BLOCK_SIZE;
+            psize = DFS_BLOCK_SIZE - poffset;
+        } else {
+            poffset = 0;
+            psize = DFS_BLOCK_SIZE;
+        }
+        if (psize > wsize) {
+            psize = wsize;
+        }
+        dfs_addPage(inode, page, poffset, psize, bufv);
+        page++;
+        wsize -= psize;
+    }
+
+    /* Update inode size if needed */
+    if (endoffset > inode->i_stat.st_size) {
+        inode->i_stat.st_size = endoffset;
+    }
+    dfs_updateInodeTimes(inode, false, true, true);
+
+    /* XXX Update block count */
+    dfs_inodeUnlock(inode);
+    dfs_unlock(gfs);
+    fuse_reply_write(req, size);
 }
 
+#if 0
 static void
 dfs_retrieve_reply(fuse_req_t req, void *cookie, fuse_ino_t ino, off_t offset,
                    struct fuse_bufvec *bufv) {
@@ -1008,7 +1028,7 @@ struct fuse_lowlevel_ops dfs_ll_oper = {
     .link       = dfs_link,
     .open       = dfs_open,
     .read       = dfs_read,
-    .write      = dfs_write,
+    //.write      = dfs_write,
     .flush      = dfs_flush,
     .release    = dfs_release,
     .fsync      = dfs_fsync,
@@ -1031,7 +1051,9 @@ struct fuse_lowlevel_ops dfs_ll_oper = {
     .bmap       = dfs_bmap,
     .ioctl      = dfs_ioctl,
     .poll       = dfs_poll,
+#endif
     .write_buf  = dfs_write_buf,
+#if 0
     .retrieve_reply = dfs_retrieve_reply,
     .forget_multi = dfs_forget_multi,
     .flock      = dfs_flock,

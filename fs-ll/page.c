@@ -1,5 +1,7 @@
 #include "includes.h"
 
+static char dfs_zPage[DFS_BLOCK_SIZE];
+
 /* Page structure used for caching a file system block */
 struct page {
 
@@ -56,10 +58,22 @@ dfs_copyPages(struct inode *inode) {
     inode->i_shared = false;
 }
 
+/* Update page with provided data */
+static void
+dfs_updatePage(struct page *page, struct fuse_bufvec *bufv,
+               off_t poffset, size_t psize) {
+    struct fuse_bufvec dst = FUSE_BUFVEC_INIT(psize);
+    size_t size;
+
+    dst.buf[0].mem = &page->p_data[poffset];
+    size = fuse_buf_copy(&dst, bufv, FUSE_BUF_SPLICE_NONBLOCK);
+    assert(size == psize);
+}
+
 /* Add or update existing page of the inode with new data provided */
 void
 dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
-            const char *buf) {
+            struct fuse_bufvec *bufv) {
     struct page *page;
     char *data;
 
@@ -93,7 +107,7 @@ dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
             page->p_shared = false;
         }
         assert(!page->p_shared);
-        memcpy(&page->p_data[poffset], buf, psize);
+        dfs_updatePage(page, bufv, poffset, psize);
         return;
     }
 
@@ -109,7 +123,7 @@ dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
         memset(&page->p_data[(poffset + psize)], 0,
                DFS_BLOCK_SIZE - (poffset + psize));
     }
-    memcpy(&page->p_data[poffset], buf, psize);
+    dfs_updatePage(page, bufv, poffset, psize);
     page->p_next = inode->i_page;
     page->p_prev = NULL;
     if (inode->i_page) {
@@ -120,11 +134,13 @@ dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
 
 /* Read specified pages of a file */
 void
-dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset, char *buf) {
+dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,
+              struct fuse_bufvec *bufv) {
     uint64_t pg = soffset / DFS_BLOCK_SIZE;
     off_t poffset, off = soffset, roff = 0;
     size_t psize, rsize = endoffset - off;
     struct page *page = NULL;
+    int i = 0;
 
     assert(S_ISREG(inode->i_stat.st_mode));
     while (rsize) {
@@ -148,14 +164,17 @@ dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset, char *buf) {
             page = dfs_findPage(inode, pg);
         }
         if (page) {
-            memcpy(&buf[roff], &page->p_data[poffset], psize);
+            bufv->buf[i].mem = &page->p_data[poffset];
         } else {
-            memset(&buf[roff], 0, psize);
+            bufv->buf[i].mem = dfs_zPage;
         }
+        bufv->buf[i].size = psize;
+        i++;
         pg++;
         roff += psize;
         rsize -= psize;
     }
+    bufv->count = i;
 }
 
 /* Truncate pages beyond the new size of the file */

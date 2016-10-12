@@ -56,9 +56,9 @@ void dfs_dirRename(struct inode *dir, ino_t ino, const char *name);
 void dfs_dirCopy(struct inode *inode, struct inode *dir);
 
 void dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
-                 const char *buf);
+                 struct fuse_bufvec *bufv);
 void dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,
-                   char *buf);
+                   struct fuse_bufvec *bufv);
 void dfs_truncPages(struct inode *inode, off_t size);
 
 int dfs_newClone(struct gfs *gfs, ino_t ino, const char *name);
