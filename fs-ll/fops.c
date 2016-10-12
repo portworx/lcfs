@@ -55,17 +55,7 @@ dremove(struct fs *fs, struct inode *dir, const char *name,
     }
     assert(inode->i_stat.st_nlink);
     if (rmdir) {
-        if (inode->i_stat.st_nlink > 2) {
-        /*
-           // Docker deletes some directories while not empty XXX
-        if ((inode->i_stat.st_nlink > 2) ||
-            (inode->i_dirent != NULL)) {
-        */
-            dfs_inodeUnlock(inode);
-            dfs_reportError(__func__, ino, EEXIST);
-            return EEXIST;
-        }
-        dir->i_stat.st_nlink--;
+        /* XXX Take care of directories not empty */
         inode->i_removed = true;
     } else {
         inode->i_stat.st_nlink--;
@@ -441,7 +431,7 @@ dfs_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
             fuse_reply_err(req, ENOENT);
             return;
         }
-        dfs_dirAdd(tdir, ino, inode->i_stat.st_mode, name);
+        dfs_dirAdd(tdir, ino, inode->i_stat.st_mode, newname);
         dfs_dirRemove(sdir, name);
         if (S_ISDIR(inode->i_stat.st_mode)) {
             assert(sdir->i_stat.st_nlink);

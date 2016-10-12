@@ -32,8 +32,7 @@ dfs_displayEntry(const char *func, ino_t dir, ino_t ino, const char *name) {
 /* Report errors reported from file system operations */
 static inline void
 dfs_reportError(const char *func, ino_t ino, int err) {
-    dfs_printf("%s: reporting error %d for inode %ld\n",
-               func, err, ino);
+    printf("%s: reporting error %d for inode %ld\n", func, err, ino);
 }
 
 #endif
