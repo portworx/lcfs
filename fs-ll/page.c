@@ -24,13 +24,16 @@ struct page {
 /* Find the requested page in the inode chain */
 static struct page *
 dfs_findPage(struct inode *inode, uint64_t pg) {
-    struct page *page = inode->i_page;
+    uint64_t mid = (inode->i_stat.st_size / DFS_BLOCK_SIZE) / 2;
+    bool reverse = (pg < mid);
+    struct page *page;
 
+    page = reverse ? inode->i_lpage : inode->i_page;
     while (page) {
         if (pg == page->p_page) {
             return page;
         }
-        page = page->p_next;
+        page = reverse ? page->p_prev : page->p_next;
     }
     return NULL;
 }
@@ -39,9 +42,11 @@ dfs_findPage(struct inode *inode, uint64_t pg) {
 static void
 dfs_copyPages(struct inode *inode) {
     struct page *page, *opage;
+    uint64_t count = 0;
 
-    opage = inode->i_page;
+    opage = inode->i_lpage;
     inode->i_page = NULL;
+    inode->i_lpage = NULL;
     while (opage) {
         page = malloc(sizeof(struct page));
         page->p_page = opage->p_page;
@@ -53,38 +58,32 @@ dfs_copyPages(struct inode *inode) {
             inode->i_page->p_prev = page;
         }
         inode->i_page = page;
-        opage = opage->p_next;
+        if (inode->i_lpage == NULL) {
+            inode->i_lpage = page;
+        }
+        opage = opage->p_prev;
+        count++;
     }
+    assert(inode->i_stat.st_blocks == count);
     inode->i_shared = false;
 }
 
-/* Update page with provided data */
-static void
-dfs_updatePage(struct page *page, struct fuse_bufvec *bufv,
+/* Add the page to bufvec */
+static inline void
+dfs_updateVec(struct page *page, struct fuse_bufvec *bufv,
                off_t poffset, size_t psize) {
-    struct fuse_bufvec dst = FUSE_BUFVEC_INIT(psize);
-    size_t size;
-
-    dst.buf[0].mem = &page->p_data[poffset];
-    size = fuse_buf_copy(&dst, bufv, FUSE_BUF_SPLICE_NONBLOCK);
-    assert(size == psize);
+    bufv->buf[bufv->count].mem = &page->p_data[poffset];
+    bufv->buf[bufv->count].size = psize;
+    bufv->count++;
 }
 
 /* Add or update existing page of the inode with new data provided */
-int
+static int
 dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
             struct fuse_bufvec *bufv) {
     struct page *page;
     bool newblock;
     char *data;
-
-    assert(S_ISREG(inode->i_stat.st_mode));
-
-    /* Copy page headers if page chain is shared */
-    if (inode->i_shared) {
-        dfs_copyPages(inode);
-    }
-    assert(!inode->i_shared);
 
     /* Check if a page already exists */
     if ((pg * DFS_BLOCK_SIZE) < inode->i_stat.st_size) {
@@ -109,7 +108,7 @@ dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
             page->p_shared = false;
         }
         assert(!page->p_shared);
-        dfs_updatePage(page, bufv, poffset, psize);
+        dfs_updateVec(page, bufv, poffset, psize);
         return newblock ? 1 : 0;
     }
 
@@ -125,15 +124,58 @@ dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
         memset(&page->p_data[(poffset + psize)], 0,
                DFS_BLOCK_SIZE - (poffset + psize));
     }
-    dfs_updatePage(page, bufv, poffset, psize);
+    dfs_updateVec(page, bufv, poffset, psize);
     page->p_next = inode->i_page;
     page->p_prev = NULL;
     if (inode->i_page) {
         inode->i_page->p_prev = page;
     }
     inode->i_page = page;
+    if (inode->i_lpage == NULL) {
+        inode->i_lpage = page;
+    }
     inode->i_stat.st_blocks++;
     return 1;
+}
+
+/* Update pages of a file with provided data */
+int
+dfs_addPages(struct inode *inode, off_t off, size_t size,
+             struct fuse_bufvec *bufv, struct fuse_bufvec *dst) {
+    size_t wsize = size, psize;
+    uint64_t page, spage;
+    off_t poffset;
+    int count = 0;
+
+    assert(S_ISREG(inode->i_stat.st_mode));
+
+    /* Copy page headers if page chain is shared */
+    if (inode->i_shared) {
+        dfs_copyPages(inode);
+    }
+    assert(!inode->i_shared);
+    spage = off / DFS_BLOCK_SIZE;
+    page = spage;
+
+    /* Break the down the write into pages and link those to the file */
+    while (wsize) {
+        if (page == spage) {
+            poffset = off % DFS_BLOCK_SIZE;
+            psize = DFS_BLOCK_SIZE - poffset;
+        } else {
+            poffset = 0;
+            psize = DFS_BLOCK_SIZE;
+        }
+        if (psize > wsize) {
+            psize = wsize;
+        }
+        count += dfs_addPage(inode, page, poffset, psize, dst);
+        page++;
+        wsize -= psize;
+    }
+    wsize = fuse_buf_copy(dst, bufv, FUSE_BUF_SPLICE_NONBLOCK);
+    assert(wsize == size);
+    return count;
 }
 
 /* Read specified pages of a file */
@@ -194,9 +236,8 @@ dfs_truncPages(struct inode *inode, off_t size) {
         if (size == 0) {
             inode->i_stat.st_blocks = 0;
             inode->i_page = NULL;
+            inode->i_lpage = NULL;
             inode->i_shared = false;
-
-            /* XXX Find out how many blocks freed */
             return 0;
         }
         dfs_copyPages(inode);
@@ -240,6 +281,8 @@ dfs_truncPages(struct inode *inode, off_t size) {
             page = page->p_next;
         }
     }
+    inode->i_lpage = opage;
+    assert(inode->i_lpage || (size == 0));
     assert((inode->i_page == NULL) || (size != 0));
     assert(inode->i_stat.st_blocks >= bcount);
     inode->i_stat.st_blocks -= bcount;

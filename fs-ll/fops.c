@@ -866,16 +866,24 @@ dfs_listxattr(fuse_req_t req, fuse_ino_t ino, size_t size) {
 static void
 dfs_removexattr(fuse_req_t req, fuse_ino_t ino, const char *name) {
     struct gfs *gfs = getfs();
+    struct fs *fs = NULL;
+    uint64_t count;
     int err;
 
     dfs_displayEntry(__func__, ino, 0, name);
     if (strncmp(name, "/", 1) == 0) {
-        err = dfs_removeClone(gfs, ino);
+        err = dfs_removeClone(gfs, ino, &fs);
     } else {
         err = EPERM;
         dfs_reportError(__func__, ino, err);
     }
     fuse_reply_err(req, err);
+    if (fs) {
+        count = dfs_removeFs(fs);
+        if (count) {
+            dfs_blockFree(gfs, count);
+        }
+    }
 }
 
 #if 0
@@ -943,20 +951,20 @@ static void
 dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
               struct fuse_bufvec *bufv, off_t off, struct fuse_file_info *fi) {
     struct gfs *gfs = getfs();
-    off_t endoffset, poffset;
-    uint64_t page, spage;
+    struct fuse_bufvec *dst;
     struct inode *inode;
-    size_t wsize, psize;
-    int count = 0;
+    size_t size, wsize;
+    off_t endoffset;
     struct fs *fs;
-    size_t size;
+    int count;
 
     dfs_displayEntry(__func__, ino, 0, NULL);
     size = bufv->buf[bufv->idx].size;
-    spage = off / DFS_BLOCK_SIZE;
+    wsize = sizeof(struct fuse_bufvec) +
+           (sizeof(struct fuse_buf) * ((size / DFS_BLOCK_SIZE) + 2));
+    dst = malloc(wsize);
+    memset(dst, 0, wsize);
     endoffset = off + size;
-    page = spage;
-    wsize = size;
     dfs_lock(gfs, false);
     fs = dfs_getfs(gfs, ino);
     inode = dfs_getInode(fs, ino, NULL, true, true);
@@ -964,26 +972,11 @@ dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
         dfs_unlock(gfs);
         dfs_reportError(__func__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
+        free(dst);
         return;
     }
     assert(S_ISREG(inode->i_stat.st_mode));
-
-    /* Break the down the write into pages and link those to the file */
-    while (wsize) {
-        if (page == spage) {
-            poffset = off % DFS_BLOCK_SIZE;
-            psize = DFS_BLOCK_SIZE - poffset;
-        } else {
-            poffset = 0;
-            psize = DFS_BLOCK_SIZE;
-        }
-        if (psize > wsize) {
-            psize = wsize;
-        }
-        count += dfs_addPage(inode, page, poffset, psize, bufv);
-        page++;
-        wsize -= psize;
-    }
+    count = dfs_addPages(inode, off, size, bufv, dst);
 
     /* Update inode size if needed */
     if (endoffset > inode->i_stat.st_size) {
@@ -996,6 +989,7 @@ dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
     }
     dfs_unlock(gfs);
     fuse_reply_write(req, size);
+    free(dst);
 }
 
 #if 0

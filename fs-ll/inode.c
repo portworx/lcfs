@@ -57,6 +57,39 @@ dfs_readInodes(struct fs *fs) {
     return 0;
 }
 
+/* Free an inode and associated resources */
+static uint64_t
+dfs_freeInode(struct inode *inode) {
+    uint64_t count = 0;
+
+    if (S_ISREG(inode->i_stat.st_mode)) {
+        count = dfs_truncPages(inode, 0);
+    } else if (S_ISDIR(inode->i_stat.st_mode)) {
+        dfs_dirFree(inode);
+    } else if (S_ISLNK(inode->i_stat.st_mode)) {
+        free(inode->i_target);
+    }
+    free(inode);
+    return count;
+}
+
+/* Destroy inodes belong to a file system */
+uint64_t
+dfs_destroyInodes(struct fs *fs) {
+    struct inode *inode;
+    uint64_t count = 0;
+    int i;
+
+    for (i = 0; i < DFS_ICACHE_SIZE; i++) {
+        inode = fs->fs_inode[i];
+        if (inode) {
+            count += dfs_freeInode(inode);
+        }
+    }
+    free(fs->fs_inode);
+    return count;
+}
+
 /* Clone an inode from a parent layer */
 struct inode *
 dfs_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
@@ -74,6 +107,7 @@ dfs_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
         /* Share pages initially */
         if (parent->i_page) {
             inode->i_page = parent->i_page;
+            inode->i_lpage = parent->i_lpage;
             inode->i_shared = true;
         }
     } else if (S_ISDIR(inode->i_stat.st_mode)) {

@@ -139,3 +139,13 @@ dfs_mount(char *device, struct gfs **gfsp) {
     return err;
 }
 
+/* Delete a file system */
+uint64_t
+dfs_removeFs(struct fs *fs) {
+    uint64_t count;
+
+    count = dfs_destroyInodes(fs);
+    free(fs);
+    return count;
+}
+

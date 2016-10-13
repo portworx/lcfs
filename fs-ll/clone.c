@@ -136,7 +136,7 @@ out:
 
 /* Remove a file system */
 int
-dfs_removeClone(struct gfs *gfs, ino_t ino) {
+dfs_removeClone(struct gfs *gfs, ino_t ino, struct fs **fsp) {
     struct fs *fs, *pfs, *nfs;
     ino_t root;
 
@@ -190,6 +190,7 @@ dfs_removeClone(struct gfs *gfs, ino_t ino) {
         }
     }
     dfs_unlock(gfs);
+    *fsp = fs;
     return 0;
 }
 

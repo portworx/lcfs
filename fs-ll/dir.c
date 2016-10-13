@@ -103,6 +103,18 @@ dfs_dirRename(struct inode *dir, ino_t ino, const char *name) {
     }
 }
 
+/* Free directory entries */
+void
+dfs_dirFree(struct inode *dir) {
+    struct dirent *dirent = dir->i_dirent, *tmp;
+
+    while (dirent != NULL) {
+        tmp = dirent;
+        dirent = dirent->di_next;
+        free(tmp);
+    }
+}
+
 /* Remove a directory tree */
 void
 dfs_removeTree(struct fs *fs, struct inode *dir) {

@@ -56,6 +56,9 @@ struct inode {
         char *i_target;
     };
 
+    /* last page */
+    struct page *i_lpage;
+
     /* Set if file is marked for removal */
     bool i_removed;
 
