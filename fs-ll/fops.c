@@ -76,6 +76,7 @@ dfs_truncate(struct inode *inode, off_t size) {
         }
     }
     inode->i_stat.st_size = size;
+    dfs_inodeAllocPages(inode);
 }
 
 /* Remove a directory entry */
@@ -976,12 +977,12 @@ dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
         return;
     }
     assert(S_ISREG(inode->i_stat.st_mode));
-    count = dfs_addPages(inode, off, size, bufv, dst);
 
     /* Update inode size if needed */
     if (endoffset > inode->i_stat.st_size) {
         inode->i_stat.st_size = endoffset;
     }
+    count = dfs_addPages(inode, off, size, bufv, dst);
     dfs_updateInodeTimes(inode, false, true, true);
     dfs_inodeUnlock(inode);
     if (count) {

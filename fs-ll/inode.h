@@ -56,8 +56,8 @@ struct inode {
         char *i_target;
     };
 
-    /* last page */
-    struct page *i_lpage;
+    /* Size of page array */
+    uint64_t i_pcount;
 
     /* Set if file is marked for removal */
     bool i_removed;

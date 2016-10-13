@@ -107,7 +107,7 @@ dfs_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
         /* Share pages initially */
         if (parent->i_page) {
             inode->i_page = parent->i_page;
-            inode->i_lpage = parent->i_lpage;
+            inode->i_pcount = parent->i_pcount;
             inode->i_shared = true;
         }
     } else if (S_ISDIR(inode->i_stat.st_mode)) {

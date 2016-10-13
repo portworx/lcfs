@@ -64,6 +64,7 @@ int dfs_addPages(struct inode *inode, off_t off, size_t size,
 void dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,
                    struct fuse_bufvec *bufv);
 uint64_t dfs_truncPages(struct inode *inode, off_t size);
+void dfs_inodeAllocPages(struct inode *inode);
 
 int dremove(struct fs *fs, struct inode *dir, const char *name,
             ino_t ino, bool rmdir);
