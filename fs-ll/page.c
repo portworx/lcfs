@@ -71,10 +71,11 @@ dfs_updatePage(struct page *page, struct fuse_bufvec *bufv,
 }
 
 /* Add or update existing page of the inode with new data provided */
-void
+int
 dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
             struct fuse_bufvec *bufv) {
     struct page *page;
+    bool newblock;
     char *data;
 
     assert(S_ISREG(inode->i_stat.st_mode));
@@ -94,6 +95,7 @@ dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
     if (page) {
 
         /* Allocate a new page if current page is shared */
+        newblock = page->p_shared;
         if (page->p_shared) {
             data = page->p_data;
             page->p_data = malloc(DFS_BLOCK_SIZE);
@@ -108,7 +110,7 @@ dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
         }
         assert(!page->p_shared);
         dfs_updatePage(page, bufv, poffset, psize);
-        return;
+        return newblock ? 1 : 0;
     }
 
     /* Allocate a new page */
@@ -130,6 +132,8 @@ dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
         inode->i_page->p_prev = page;
     }
     inode->i_page = page;
+    inode->i_stat.st_blocks++;
+    return 1;
 }
 
 /* Read specified pages of a file */
@@ -178,18 +182,22 @@ dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,
 }
 
 /* Truncate pages beyond the new size of the file */
-void
+uint64_t
 dfs_truncPages(struct inode *inode, off_t size) {
     uint64_t pg = size / DFS_BLOCK_SIZE;
     struct page *page, *opage = NULL;
+    int bcount = 0, tcount = 0;
     char *data;
 
     /* Copy page list before changing it */
     if (inode->i_shared) {
         if (size == 0) {
+            inode->i_stat.st_blocks = 0;
             inode->i_page = NULL;
             inode->i_shared = false;
-            return;
+
+            /* XXX Find out how many blocks freed */
+            return 0;
         }
         dfs_copyPages(inode);
     }
@@ -222,8 +230,10 @@ dfs_truncPages(struct inode *inode, off_t size) {
             }
             if (!page->p_shared) {
                 free(page->p_data);
+                tcount++;
             }
             free(page);
+            bcount++;
             page = opage ? opage->p_next : inode->i_page;
         } else {
             opage = page;
@@ -231,4 +241,8 @@ dfs_truncPages(struct inode *inode, off_t size) {
         }
     }
     assert((inode->i_page == NULL) || (size != 0));
+    assert(inode->i_stat.st_blocks >= bcount);
+    inode->i_stat.st_blocks -= bcount;
+    assert((inode->i_stat.st_blocks == 0) || (size != 0));
+    return tcount;
 }

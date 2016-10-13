@@ -51,12 +51,29 @@ create(ino_t parent, const char *name, mode_t mode, uid_t uid, gid_t gid,
     return 0;
 }
 
+/* Advance block allocator with number of blocks allocated */
+static void
+dfs_blockAlloc(struct fs *fs, int count) {
+    __sync_add_and_fetch(&fs->fs_gfs->gfs_super->sb_nblock, count);
+}
+
+/* Free file system blocks */
+static void
+dfs_blockFree(struct gfs *gfs, uint64_t count) {
+    __sync_sub_and_fetch(&gfs->gfs_super->sb_nblock, count);
+}
+
 /* Truncate a file */
 static void
 dfs_truncate(struct inode *inode, off_t size) {
+    int count;
+
     assert(S_ISREG(inode->i_stat.st_mode));
     if (size < inode->i_stat.st_size) {
-        dfs_truncPages(inode, size);
+        count = dfs_truncPages(inode, size);
+        if (count) {
+            dfs_blockFree(getfs(), count);
+        }
     }
     inode->i_stat.st_size = size;
 }
@@ -930,6 +947,7 @@ dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
     uint64_t page, spage;
     struct inode *inode;
     size_t wsize, psize;
+    int count = 0;
     struct fs *fs;
     size_t size;
 
@@ -962,7 +980,7 @@ dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
         if (psize > wsize) {
             psize = wsize;
         }
-        dfs_addPage(inode, page, poffset, psize, bufv);
+        count += dfs_addPage(inode, page, poffset, psize, bufv);
         page++;
         wsize -= psize;
     }
@@ -972,9 +990,10 @@ dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
         inode->i_stat.st_size = endoffset;
     }
     dfs_updateInodeTimes(inode, false, true, true);
-
-    /* XXX Update block count */
     dfs_inodeUnlock(inode);
+    if (count) {
+        dfs_blockAlloc(fs, count);
+    }
     dfs_unlock(gfs);
     fuse_reply_write(req, size);
 }
