@@ -160,7 +160,7 @@ dfs_inodeAlloc(struct fs *fs) {
 /* Initialize a newly allocated inode */
 struct inode *
 dfs_inodeInit(struct fs *fs, mode_t mode, uid_t uid, gid_t gid,
-              dev_t rdev, const char *target) {
+              dev_t rdev, ino_t parent, const char *target) {
     struct inode *inode;
     ino_t ino;
     int len;
@@ -177,6 +177,7 @@ dfs_inodeInit(struct fs *fs, mode_t mode, uid_t uid, gid_t gid,
     inode->i_stat.st_gid = gid;
     inode->i_stat.st_rdev = rdev;
     inode->i_stat.st_blksize = DFS_BLOCK_SIZE;
+    inode->i_parent = dfs_getInodeHandle(parent);
     dfs_updateInodeTimes(inode, true, true, true);
     if (target != NULL) {
         len = strlen(target);

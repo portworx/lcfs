@@ -29,6 +29,7 @@ dfs_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name) {
     int nsize = strlen(name);
 
     assert(S_ISDIR(dir->i_stat.st_mode));
+    assert(ino > DFS_ROOT_INODE);
     dirent->di_ino = ino;
     dirent->di_name = malloc(nsize + 1);
     memcpy(dirent->di_name, name, nsize);
@@ -102,3 +103,15 @@ dfs_dirRename(struct inode *dir, ino_t ino, const char *name) {
     }
 }
 
+/* Remove a directory tree */
+void
+dfs_removeTree(struct fs *fs, struct inode *dir) {
+    struct dirent *dirent = dir->i_dirent;
+
+    while (dirent != NULL) {
+        dfs_printf("dfs_removeTree: dir %ld nlink %ld removing %s inode %ld dir %d\n", dir->i_stat.st_ino, dir->i_stat.st_nlink, dirent->di_name, dirent->di_ino, S_ISDIR(dirent->di_mode));
+        dremove(fs, dir, dirent->di_name, dirent->di_ino,
+                S_ISDIR(dirent->di_mode));
+        dirent = dir->i_dirent;
+    }
+}

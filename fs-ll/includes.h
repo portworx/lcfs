@@ -42,7 +42,7 @@ int dfs_readInodes(struct fs *fs);
 struct inode *dfs_getInode(struct fs *fs, ino_t ino, struct inode *handle,
                            bool copy, bool exclusive);
 struct inode *dfs_inodeInit(struct fs *fs, mode_t mode,
-                            uid_t uid, gid_t gid, dev_t rdev,
+                            uid_t uid, gid_t gid, dev_t rdev, ino_t parent,
                             const char *target);
 void dfs_updateInodeTimes(struct inode *inode, bool atime,
                           bool mtime, bool ctime);
@@ -54,12 +54,16 @@ void dfs_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name);
 void dfs_dirRemove(struct inode *dir, const char *name);
 void dfs_dirRename(struct inode *dir, ino_t ino, const char *name);
 void dfs_dirCopy(struct inode *inode, struct inode *dir);
+void dfs_removeTree(struct fs *fs, struct inode *dir);
 
 void dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
                  struct fuse_bufvec *bufv);
 void dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,
                    struct fuse_bufvec *bufv);
 void dfs_truncPages(struct inode *inode, off_t size);
+
+int dremove(struct fs *fs, struct inode *dir, const char *name,
+            ino_t ino, bool rmdir);
 
 int dfs_newClone(struct gfs *gfs, ino_t ino, const char *name);
 int dfs_removeClone(struct gfs *gfs, ino_t ino);

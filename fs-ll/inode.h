@@ -40,6 +40,10 @@ struct inode {
 
     /* Open count */
     uint64_t i_ocount;
+
+    /* Parent inode number for singly linked inodes */
+    uint64_t i_parent;
+
     union {
 
         /* Page list of regular file */

@@ -34,9 +34,10 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
     }
 
     /* Do not allow creating file systems on non-directories or non-empty
-     * directories.
+     * directories.  Also snapshots can be created in /dfs directory only.
      */
-    if (!S_ISDIR(inode->i_stat.st_mode) || (inode->i_dirent != NULL)) {
+    if (!S_ISDIR(inode->i_stat.st_mode) || (inode->i_dirent != NULL) ||
+        (inode->i_parent != gfs->gfs_snap_root)) {
         err = EINVAL;
         dfs_reportError(__func__, ino, err);
         goto out;
