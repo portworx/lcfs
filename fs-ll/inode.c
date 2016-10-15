@@ -44,6 +44,7 @@ dfs_rootInit(struct fs *fs, ino_t root) {
     inode->i_stat.st_mode = S_IFDIR | 0777;
     inode->i_stat.st_nlink = 2;
     inode->i_stat.st_blksize = DFS_BLOCK_SIZE;
+    inode->i_parent = root;
     dfs_updateInodeTimes(inode, true, true, true);
     fs->fs_inode[root] = inode;
 }
@@ -69,6 +70,7 @@ dfs_freeInode(struct inode *inode) {
     } else if (S_ISLNK(inode->i_stat.st_mode)) {
         free(inode->i_target);
     }
+    dfs_xattrFree(inode);
     free(inode);
     return count;
 }
@@ -123,6 +125,7 @@ dfs_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
         memcpy(inode->i_target, target, len);
         inode->i_target[len] = 0;
     }
+    dfs_xattrCopy(inode, parent);
     fs->fs_inode[ino] = inode;
     return inode;
 }

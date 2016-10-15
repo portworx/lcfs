@@ -51,18 +51,6 @@ create(ino_t parent, const char *name, mode_t mode, uid_t uid, gid_t gid,
     return 0;
 }
 
-/* Advance block allocator with number of blocks allocated */
-static void
-dfs_blockAlloc(struct fs *fs, int count) {
-    __sync_add_and_fetch(&fs->fs_gfs->gfs_super->sb_nblock, count);
-}
-
-/* Free file system blocks */
-static void
-dfs_blockFree(struct gfs *gfs, uint64_t count) {
-    __sync_sub_and_fetch(&gfs->gfs_super->sb_nblock, count);
-}
-
 /* Truncate a file */
 static void
 dfs_truncate(struct inode *inode, off_t size) {
@@ -839,52 +827,29 @@ dfs_statfs(fuse_req_t req, fuse_ino_t ino) {
 static void
 dfs_setxattr(fuse_req_t req, fuse_ino_t ino, const char *name,
              const char *value, size_t size, int flags) {
-    struct gfs *gfs = getfs();
-    int err;
-
     dfs_displayEntry(__func__, ino, 0, name);
-    err = dfs_newClone(gfs, ino, name);
-    fuse_reply_err(req, err);
+    dfs_xattrAdd(req, ino, name, value, size, flags);
 }
 
-#if 0
 /* Get extended attributes of the specified inode */
 static void
 dfs_getxattr(fuse_req_t req, fuse_ino_t ino, const char *name, size_t size) {
     dfs_displayEntry(__func__, ino, 0, name);
-    fuse_reply_buf(req, NULL, 0);
+    dfs_xattrGet(req, ino, name, size);
 }
 
 /* List extended attributes on a file */
 static void
 dfs_listxattr(fuse_req_t req, fuse_ino_t ino, size_t size) {
     dfs_displayEntry(__func__, ino, 0, NULL);
-    fuse_reply_buf(req, NULL, 0);
+    dfs_xattrList(req, ino, size);
 }
-#endif
 
 /* Remove extended attributes */
 static void
 dfs_removexattr(fuse_req_t req, fuse_ino_t ino, const char *name) {
-    struct gfs *gfs = getfs();
-    struct fs *fs = NULL;
-    uint64_t count;
-    int err;
-
     dfs_displayEntry(__func__, ino, 0, name);
-    if (strncmp(name, "/", 1) == 0) {
-        err = dfs_removeClone(gfs, ino, &fs);
-    } else {
-        err = EPERM;
-        dfs_reportError(__func__, ino, err);
-    }
-    fuse_reply_err(req, err);
-    if (fs) {
-        count = dfs_removeFs(fs);
-        if (count) {
-            dfs_blockFree(gfs, count);
-        }
-    }
+    dfs_xattrRemove(req, ino, name);
 }
 
 #if 0
@@ -1068,10 +1033,8 @@ struct fuse_lowlevel_ops dfs_ll_oper = {
     .fsyncdir   = dfs_fsyncdir,
     .statfs     = dfs_statfs,
     .setxattr   = dfs_setxattr,
-#if 0
     .getxattr   = dfs_getxattr,
     .listxattr  = dfs_listxattr,
-#endif
     .removexattr  = dfs_removexattr,
     //.access     = dfs_access,
     .create     = dfs_create,

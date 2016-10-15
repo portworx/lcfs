@@ -5,7 +5,7 @@
 
 /* Initial size of the inode table */
 /* XXX Do this dynamically */
-#define DFS_ICACHE_SIZE 20000
+#define DFS_ICACHE_SIZE 100000
 
 /* Current file name size limit */
 #define DFS_FILENAME_MAX 255
@@ -27,7 +27,22 @@ struct dirent {
 
     /* File mode */
     mode_t di_mode;
-};
+}  __attribute__((packed));
+
+/* Extended attributes of an inode */
+struct xattr {
+    /* Name of the attribute */
+    char *x_name;
+
+    /* Value associated with the attribute */
+    char *x_value;
+
+    /* Size of the attribute */
+    size_t x_size;
+
+    /* Next xattr in the list */
+    struct xattr *x_next;
+} __attribute__((packed));
 
 /* Inode structure */
 struct inode {
@@ -59,12 +74,18 @@ struct inode {
     /* Size of page array */
     uint64_t i_pcount;
 
+    /* Extended attributes */
+    struct xattr *i_xattr;
+
+    /* Size of extended attributes */
+    size_t i_xsize;
+
     /* Set if file is marked for removal */
     bool i_removed;
 
     /* Set if page list if shared between inodes in a snapshot chain */
     bool i_shared;
-};
+}  __attribute__((packed));
 
 /* XXX Replace ino_t with fuse_ino_t */
 /* XXX Make inode numbers 32 bit */

@@ -12,7 +12,7 @@ static inline void
 dfs_displayEntry(const char *func, ino_t dir, ino_t ino, const char *name) {
 #if 0
     /*
-    if (strstr(func, "read") == NULL) {
+    if (strstr(func, "xattr") == NULL) {
         return;
     }
     if (strstr(func, "flush") != NULL) {

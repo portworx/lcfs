@@ -11,7 +11,7 @@ struct page {
 
     /* Page is shared with other inodes in the snapshot chain */
     bool p_shared;
-};
+} __attribute__((packed));
 
 /* Return the requested page if allocated already */
 static struct page *

@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/time.h>
+#include <sys/xattr.h>
 #include <pthread.h>
 #include <assert.h>
 
@@ -28,6 +29,9 @@ struct gfs *getfs();
 void *dfs_readBlock(int fd, off_t block);
 int dfs_writeBlock(int fd, void *buf, off_t block);
 
+void dfs_blockAlloc(struct fs *fs, int count);
+void dfs_blockFree(struct gfs *gfs, uint64_t count);
+
 int dfs_superRead(struct gfs *gfs);
 int dfs_superWrite(struct gfs *gfs);
 
@@ -37,7 +41,7 @@ void dfs_format(struct gfs *gfs, size_t size);
 void dfs_lock(struct gfs *gfs, bool exclusive);
 void dfs_unlock(struct gfs *gfs);
 int dfs_mount(char *device, struct gfs **gfsp);
-uint64_t dfs_removeFs(struct fs *fs);
+void dfs_removeFs(struct fs *fs);
 
 int dfs_readInodes(struct fs *fs);
 uint64_t dfs_destroyInodes(struct fs *fs);
@@ -69,7 +73,15 @@ void dfs_inodeAllocPages(struct inode *inode);
 int dremove(struct fs *fs, struct inode *dir, const char *name,
             ino_t ino, bool rmdir);
 
+void dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
+                  const char *value, size_t size, int flags);
+void dfs_xattrGet(fuse_req_t req, ino_t ino, const char *name, size_t size);
+void dfs_xattrList(fuse_req_t req, ino_t ino, size_t size);
+void dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name);
+void dfs_xattrCopy(struct inode *inode, struct inode *parent);
+void dfs_xattrFree(struct inode *inode);
+
 int dfs_newClone(struct gfs *gfs, ino_t ino, const char *name);
-int dfs_removeClone(struct gfs *gfs, ino_t ino, struct fs **fsp);
+int dfs_removeClone(struct gfs *gfs, ino_t ino);
 
 #endif

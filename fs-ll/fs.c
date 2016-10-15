@@ -140,12 +140,15 @@ dfs_mount(char *device, struct gfs **gfsp) {
 }
 
 /* Delete a file system */
-uint64_t
+void
 dfs_removeFs(struct fs *fs) {
+    struct gfs *gfs = getfs();
     uint64_t count;
 
     count = dfs_destroyInodes(fs);
+    if (count) {
+        dfs_blockFree(gfs, count);
+    }
     free(fs);
-    return count;
 }
 
