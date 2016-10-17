@@ -221,6 +221,7 @@ dfs_inodeInit(struct fs *fs, mode_t mode, uid_t uid, gid_t gid,
         inode->i_target = malloc(len + 1);
         memcpy(inode->i_target, target, len);
         inode->i_target[len] = 0;
+        inode->i_stat.st_size = len;
     }
     dfs_inodeLock(inode, true);
     fs->fs_inode[ino] = inode;

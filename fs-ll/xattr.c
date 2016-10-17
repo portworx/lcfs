@@ -16,7 +16,7 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
     inode = dfs_getInode(fs, ino, NULL, true, true);
     if (inode == NULL) {
         dfs_unlock(gfs);
-        dfs_reportError(__func__, ino, ENOENT);
+        dfs_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         return;
     }
@@ -40,7 +40,7 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
             if (flags == XATTR_CREATE) {
                 dfs_inodeUnlock(inode);
                 dfs_unlock(gfs);
-                dfs_reportError(__func__, ino, EEXIST);
+                dfs_reportError(__func__, __LINE__, ino, EEXIST);
                 fuse_reply_err(req, EEXIST);
                 return;
             } else {
@@ -72,7 +72,7 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
     if (flags == XATTR_REPLACE) {
         dfs_inodeUnlock(inode);
         dfs_unlock(gfs);
-        dfs_reportError(__func__, ino, ENODATA);
+        dfs_reportError(__func__, __LINE__, ino, ENODATA);
         fuse_reply_err(req, ENODATA);
         return;
     }
@@ -108,7 +108,7 @@ dfs_xattrGet(fuse_req_t req, ino_t ino, const char *name,
     inode = dfs_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
         dfs_unlock(gfs);
-        dfs_reportError(__func__, ino, ENOENT);
+        dfs_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         return;
     }
@@ -148,7 +148,7 @@ dfs_xattrList(fuse_req_t req, ino_t ino, size_t size) {
     inode = dfs_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
         dfs_unlock(gfs);
-        dfs_reportError(__func__, ino, ENOENT);
+        dfs_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         return;
     }
@@ -160,7 +160,7 @@ dfs_xattrList(fuse_req_t req, ino_t ino, size_t size) {
     } else if (size < inode->i_xsize) {
         dfs_unlock(gfs);
         dfs_inodeUnlock(inode);
-        dfs_reportError(__func__, ino, ERANGE);
+        dfs_reportError(__func__, __LINE__, ino, ERANGE);
         fuse_reply_err(req, ERANGE);
         return;
     }
@@ -191,7 +191,7 @@ dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
     inode = dfs_getInode(fs, ino, NULL, true, true);
     if (inode == NULL) {
         dfs_unlock(gfs);
-        dfs_reportError(__func__, ino, ENOENT);
+        dfs_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         return;
     }
@@ -227,7 +227,7 @@ dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
     }
     dfs_inodeUnlock(inode);
     dfs_unlock(gfs);
-    dfs_reportError(__func__, ino, ENODATA);
+    dfs_reportError(__func__, __LINE__, ino, ENODATA);
     fuse_reply_err(req, ENODATA);
 }
 

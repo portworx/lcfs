@@ -12,7 +12,7 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
 
     /* Do not allow new file systems to be created on global root */
     if (root <= DFS_ROOT_INODE) {
-        dfs_reportError(__func__, ino, EPERM);
+        dfs_reportError(__func__, __LINE__, ino, EPERM);
         return EPERM;
     }
     dfs_lock(gfs, true);
@@ -20,7 +20,7 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
     /* Do not allow nested file systems */
     if (dfs_getFsHandle(ino) != DFS_ROOT_INODE) {
         err = EPERM;
-        dfs_reportError(__func__, ino, err);
+        dfs_reportError(__func__, __LINE__, ino, err);
         goto out;
     }
 
@@ -29,7 +29,7 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
     inode = dfs_getInode(rfs, ino, NULL, false, true);
     if (inode == NULL) {
         err = ENOENT;
-        dfs_reportError(__func__, ino, err);
+        dfs_reportError(__func__, __LINE__, ino, err);
         goto out;
     }
 
@@ -39,7 +39,7 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
     if (!S_ISDIR(inode->i_stat.st_mode) || (inode->i_dirent != NULL) ||
         (inode->i_parent != gfs->gfs_snap_root)) {
         err = EINVAL;
-        dfs_reportError(__func__, ino, err);
+        dfs_reportError(__func__, __LINE__, ino, err);
         goto out;
     }
     dfs_inodeUnlock(inode);
@@ -49,7 +49,7 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
     fs->fs_gfs = gfs;
     err = dfs_readInodes(fs);
     if (err != 0) {
-        dfs_reportError(__func__, ino, err);
+        dfs_reportError(__func__, __LINE__, ino, err);
         goto out;
     }
 
@@ -64,7 +64,7 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
         pdir = dfs_getInode(rfs, gfs->gfs_snap_root, NULL, true, true);
         if (pdir == NULL) {
             err = ENOENT;
-            dfs_reportError(__func__, gfs->gfs_snap_root, err);
+            dfs_reportError(__func__, __LINE__, gfs->gfs_snap_root, err);
             goto out;
         }
 
@@ -73,7 +73,7 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
         dfs_inodeUnlock(pdir);
         if (pinum == DFS_INVALID_INODE) {
             err = ENOENT;
-            dfs_reportError(__func__, ino, err);
+            dfs_reportError(__func__, __LINE__, ino, err);
             goto out;
         }
 
@@ -84,7 +84,7 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
         pdir = dfs_getInode(pfs, pinum, NULL, false, false);
         if (pdir == NULL) {
             err = ENOENT;
-            dfs_reportError(__func__, pinum, err);
+            dfs_reportError(__func__, __LINE__, pinum, err);
             goto out;
         }
 
@@ -93,7 +93,7 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
         if (inode == NULL) {
             dfs_inodeUnlock(pdir);
             err = ENOENT;
-            dfs_reportError(__func__, ino, err);
+            dfs_reportError(__func__, __LINE__, ino, err);
             goto out;
         }
 
@@ -142,7 +142,7 @@ dfs_removeClone(struct gfs *gfs, ino_t ino) {
 
     root = dfs_getInodeHandle(ino);
     if (root <= DFS_ROOT_INODE) {
-        dfs_reportError(__func__, ino, EPERM);
+        dfs_reportError(__func__, __LINE__, ino, EPERM);
         return EPERM;
     }
     dfs_lock(gfs, true);
@@ -151,7 +151,7 @@ dfs_removeClone(struct gfs *gfs, ino_t ino) {
     fs = dfs_getfs(gfs, ino);
     if ((fs == NULL) || (fs->fs_root != root)) {
         dfs_unlock(gfs);
-        dfs_reportError(__func__, ino, ENOENT);
+        dfs_reportError(__func__, __LINE__, ino, ENOENT);
         return ENOENT;
     }
     dfs_printf("Removing file system with root inode %ld, fs %p\n", root, fs);

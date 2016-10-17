@@ -59,7 +59,10 @@ dfs_inodeAllocPages(struct inode *inode) {
     assert(!inode->i_shared);
     lpage = (inode->i_stat.st_size + DFS_BLOCK_SIZE - 1) / DFS_BLOCK_SIZE;
     if (inode->i_pcount < lpage) {
-        count = inode->i_pcount ? (inode->i_pcount * 2) : DFS_PAGECACHE_SIZE;
+        count = inode->i_pcount ?  (inode->i_pcount * 2) : DFS_PAGECACHE_SIZE;
+        while (count < lpage) {
+            count *= 2;
+        }
         tsize = count * sizeof(struct page);
         page = malloc(tsize);
         if (inode->i_pcount) {
@@ -73,6 +76,7 @@ dfs_inodeAllocPages(struct inode *inode) {
         inode->i_pcount = count;
         inode->i_page = page;
     }
+    assert(lpage <= inode->i_pcount);
 }
 
 /* Add or update existing page of the inode with new data provided */

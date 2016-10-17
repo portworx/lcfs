@@ -58,7 +58,8 @@ void dfs_inodeUnlock(struct inode *inode);
 ino_t dfs_dirLookup(struct fs *fs, struct inode *dir, const char *name);
 void dfs_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name);
 void dfs_dirRemove(struct inode *dir, const char *name);
-void dfs_dirRename(struct inode *dir, ino_t ino, const char *name);
+void dfs_dirRename(struct inode *dir, ino_t ino,
+                   const char *name, const char *newname);
 void dfs_dirCopy(struct inode *inode, struct inode *dir);
 void dfs_removeTree(struct fs *fs, struct inode *dir);
 void dfs_dirFree(struct inode *dir);

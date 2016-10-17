@@ -5,7 +5,7 @@
 
 /* Initial size of the inode table */
 /* XXX Do this dynamically */
-#define DFS_ICACHE_SIZE 100000
+#define DFS_ICACHE_SIZE 200000
 
 /* Current file name size limit */
 #define DFS_FILENAME_MAX 255
@@ -106,6 +106,9 @@ dfs_getFsHandle(uint64_t fh) {
 
     if (fh == 1) {
         return DFS_ROOT_INODE;
+    }
+    if (fh == 0) {
+        return 0;
     }
     root = fh >> 32;
     return root ? root : DFS_ROOT_INODE;

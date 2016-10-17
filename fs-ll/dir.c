@@ -47,10 +47,12 @@ dfs_dirCopy(struct inode *inode, struct inode *dir) {
 
     assert(S_ISDIR(inode->i_stat.st_mode));
     assert(S_ISDIR(dir->i_stat.st_mode));
+    assert(dir->i_stat.st_nlink >= 2);
     while (dirent) {
         dfs_dirAdd(inode, dirent->di_ino, dirent->di_mode, dirent->di_name);
         dirent = dirent->di_next;
     }
+    inode->i_stat.st_nlink = dir->i_stat.st_nlink;
 }
 
 
@@ -81,26 +83,30 @@ dfs_dirRemove(struct inode *dir, const char *name) {
 
 /* Rename a directory entry with a new name */
 void
-dfs_dirRename(struct inode *dir, ino_t ino, const char *name) {
+dfs_dirRename(struct inode *dir, ino_t ino,
+              const char *name, const char *newname) {
     struct dirent *dirent = dir->i_dirent;
     int len = strlen(name);
 
     assert(S_ISDIR(dir->i_stat.st_mode));
     while (dirent != NULL) {
-        if (dirent->di_ino == ino) {
+        if ((dirent->di_ino == ino) &&(len == dirent->di_size) &&
+            (strcmp(name, dirent->di_name) == 0)) {
+            len = strlen(newname);
 
             /* Existing name can be used if size is not growing */
             if (len > dirent->di_size) {
                 free(dirent->di_name);
                 dirent->di_name = malloc(len + 1);
             }
-            memcpy(dirent->di_name, name, len);
+            memcpy(dirent->di_name, newname, len);
             dirent->di_name[len] = 0;
             dirent->di_size = len;
-            break;
+            return;
         }
         dirent = dirent->di_next;
     }
+    assert(false);
 }
 
 /* Free directory entries */
