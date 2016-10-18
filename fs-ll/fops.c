@@ -828,17 +828,16 @@ dfs_statfs(fuse_req_t req, fuse_ino_t ino) {
     struct statvfs buf;
 
     dfs_displayEntry(__func__, ino, 0, NULL);
+    memset(&buf, 0, sizeof(struct statvfs));
     buf.f_bsize = DFS_BLOCK_SIZE;
     buf.f_frsize = DFS_BLOCK_SIZE;
     buf.f_blocks = gfs->gfs_super->sb_tblocks;
     buf.f_bfree = buf.f_blocks - gfs->gfs_super->sb_nblock;
     buf.f_bavail = buf.f_bfree;
     buf.f_files = UINT32_MAX;
-    buf.f_ffree = buf.f_files - gfs->gfs_super->sb_ninode;
-    buf.f_favail = buf.f_ffree;
-    buf.f_flag = 0;
+    buf.f_ffree = buf.f_files - gfs->gfs_ninode;
+    buf.f_favail = buf.f_files - gfs->gfs_ninode;
     buf.f_namemax = DFS_FILENAME_MAX;
-    buf.f_fsid = 0;
     fuse_reply_statfs(req, &buf);
 }
 

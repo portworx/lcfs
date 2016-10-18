@@ -1,5 +1,16 @@
 #include "includes.h"
 
+/* Allocate a new inode */
+static struct inode *
+dfs_newInode(struct fs *fs) {
+    struct inode *inode = malloc(sizeof(struct inode));
+
+    memset(inode, 0, sizeof(struct inode));
+    pthread_rwlock_init(&inode->i_rwlock, NULL);
+    __sync_add_and_fetch(&fs->fs_gfs->gfs_ninode, 1);
+    return inode;
+}
+
 /* Take the lock on inode in the specified mode */
 void
 dfs_inodeLock(struct inode *inode, bool exclusive) {
@@ -36,10 +47,8 @@ dfs_updateInodeTimes(struct inode *inode, bool atime, bool mtime, bool ctime) {
 /* Initialize root inode of a file system */
 static void
 dfs_rootInit(struct fs *fs, ino_t root) {
-    struct inode *inode = malloc(sizeof(struct inode));
+    struct inode *inode = dfs_newInode(fs);
 
-    memset(inode, 0, sizeof(struct inode));
-    pthread_rwlock_init(&inode->i_rwlock, NULL);
     inode->i_stat.st_ino = root;
     inode->i_stat.st_mode = S_IFDIR | 0777;
     inode->i_stat.st_nlink = 2;
@@ -78,16 +87,18 @@ dfs_freeInode(struct inode *inode) {
 /* Destroy inodes belong to a file system */
 uint64_t
 dfs_destroyInodes(struct fs *fs) {
+    uint64_t count = 0, icount = 0;
     struct inode *inode;
-    uint64_t count = 0;
     int i;
 
     for (i = 0; i < DFS_ICACHE_SIZE; i++) {
         inode = fs->fs_inode[i];
         if (inode) {
             count += dfs_freeInode(inode);
+            icount++;
         }
     }
+    __sync_sub_and_fetch(&fs->fs_gfs->gfs_ninode, icount);
     free(fs->fs_inode);
     return count;
 }
@@ -99,9 +110,7 @@ dfs_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
     char *target;
     int len;
 
-    inode = malloc(sizeof(struct inode));
-    memset(inode, 0, sizeof(struct inode));
-    pthread_rwlock_init(&inode->i_rwlock, NULL);
+    inode = dfs_newInode(fs);
     memcpy(&inode->i_stat, &parent->i_stat, sizeof(struct stat));
 
     if (S_ISREG(inode->i_stat.st_mode)) {
@@ -204,9 +213,7 @@ dfs_inodeInit(struct fs *fs, mode_t mode, uid_t uid, gid_t gid,
 
     ino = dfs_inodeAlloc(fs);
     assert(ino < DFS_ICACHE_SIZE);
-    inode = malloc(sizeof(struct inode));
-    memset(inode, 0, sizeof(struct inode));
-    pthread_rwlock_init(&inode->i_rwlock, NULL);
+    inode = dfs_newInode(fs);
     inode->i_stat.st_ino = ino;
     inode->i_stat.st_mode = mode;
     inode->i_stat.st_nlink = (mode & S_IFDIR) ? 2 : 1;

@@ -1,6 +1,31 @@
 #ifndef _FS_H_
 #define _FS_H_
 
+/* Global file system */
+struct gfs {
+
+    /* File descriptor of the underlying device */
+    int gfs_fd;
+
+    /* File system super block */
+    struct super *gfs_super;
+
+    /* Directory inode on which snapshot roots are placed */
+    ino_t gfs_snap_root;
+
+    /* Count of inodes in use */
+    ino_t gfs_ninode;
+
+    /* List of layer file systems starting with global root fs */
+    struct fs *gfs_fs;
+
+    /* Lock protecting global list of file system chain */
+    pthread_mutex_t gfs_lock;
+
+    /* fuse channel */
+    struct fuse_chan *gfs_ch;
+};
+
 /* A file system structure created for each layer */
 struct fs {
 
@@ -33,28 +58,6 @@ struct fs {
      * This lock is taken in exclusive mode when snapshots are created/deleted.
      */
     pthread_rwlock_t *fs_rwlock;
-};
-
-/* Global file system */
-struct gfs {
-
-    /* File descriptor of the underlying device */
-    int gfs_fd;
-
-    /* File system super block */
-    struct super *gfs_super;
-
-    /* Directory inode on which snapshot roots are placed */
-    ino_t gfs_snap_root;
-
-    /* List of layer file systems */
-    struct fs *gfs_fs;
-
-    /* Lock protecting global list of file system chain */
-    pthread_mutex_t gfs_lock;
-
-    /* fuse channel */
-    struct fuse_chan *gfs_ch;
 };
 
 #endif
