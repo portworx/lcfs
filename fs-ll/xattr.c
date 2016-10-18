@@ -11,11 +11,10 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
     struct fs *fs;
     int err;
 
-    dfs_lock(gfs, false);
-    fs = dfs_getfs(gfs, ino);
+    fs = dfs_getfs(gfs, ino, false);
     inode = dfs_getInode(fs, ino, NULL, true, true);
     if (inode == NULL) {
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         return;
@@ -24,7 +23,7 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
     /* XXX Special case of creating a clone */
     if (inode->i_parent == gfs->gfs_snap_root) {
         dfs_inodeUnlock(inode);
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         err = dfs_newClone(gfs, ino, name);
         fuse_reply_err(req, err);
         return;
@@ -39,7 +38,7 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
              */
             if (flags == XATTR_CREATE) {
                 dfs_inodeUnlock(inode);
-                dfs_unlock(gfs);
+                dfs_unlock(fs);
                 dfs_reportError(__func__, __LINE__, ino, EEXIST);
                 fuse_reply_err(req, EEXIST);
                 return;
@@ -58,7 +57,7 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
                 }
                 xattr->x_size = size;
                 dfs_inodeUnlock(inode);
-                dfs_unlock(gfs);
+                dfs_unlock(fs);
                 fuse_reply_err(req, 0);
                 return;
             }
@@ -71,7 +70,7 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
      */
     if (flags == XATTR_REPLACE) {
         dfs_inodeUnlock(inode);
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENODATA);
         fuse_reply_err(req, ENODATA);
         return;
@@ -90,7 +89,7 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
     xattr->x_next = inode->i_xattr;
     inode->i_xattr = xattr;
     dfs_inodeUnlock(inode);
-    dfs_unlock(gfs);
+    dfs_unlock(fs);
     fuse_reply_err(req, 0);
 }
 
@@ -103,11 +102,10 @@ dfs_xattrGet(fuse_req_t req, ino_t ino, const char *name,
     struct inode *inode;
     struct fs *fs;
 
-    dfs_lock(gfs, false);
-    fs = dfs_getfs(gfs, ino);
+    fs = dfs_getfs(gfs, ino, false);
     inode = dfs_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         return;
@@ -123,13 +121,13 @@ dfs_xattrGet(fuse_req_t req, ino_t ino, const char *name,
                 fuse_reply_err(req, ERANGE);
             }
             dfs_inodeUnlock(inode);
-            dfs_unlock(gfs);
+            dfs_unlock(fs);
             return;
         }
         xattr = xattr->x_next;
     }
     dfs_inodeUnlock(inode);
-    dfs_unlock(gfs);
+    dfs_unlock(fs);
     fuse_reply_err(req, ENODATA);
 }
 
@@ -143,11 +141,10 @@ dfs_xattrList(fuse_req_t req, ino_t ino, size_t size) {
     char *buf;
     int i = 0;
 
-    dfs_lock(gfs, false);
-    fs = dfs_getfs(gfs, ino);
+    fs = dfs_getfs(gfs, ino, false);
     inode = dfs_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         return;
@@ -155,10 +152,10 @@ dfs_xattrList(fuse_req_t req, ino_t ino, size_t size) {
     if (size == 0) {
         fuse_reply_xattr(req, inode->i_xsize);
         dfs_inodeUnlock(inode);
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         return;
     } else if (size < inode->i_xsize) {
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         dfs_inodeUnlock(inode);
         dfs_reportError(__func__, __LINE__, ino, ERANGE);
         fuse_reply_err(req, ERANGE);
@@ -173,7 +170,7 @@ dfs_xattrList(fuse_req_t req, ino_t ino, size_t size) {
     }
     assert(i == inode->i_xsize);
     dfs_inodeUnlock(inode);
-    dfs_unlock(gfs);
+    dfs_unlock(fs);
     fuse_reply_buf(req, buf, inode->i_xsize);
 }
 
@@ -186,11 +183,10 @@ dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
     struct fs *fs;
     int err;
 
-    dfs_lock(gfs, false);
-    fs = dfs_getfs(gfs, ino);
+    fs = dfs_getfs(gfs, ino, false);
     inode = dfs_getInode(fs, ino, NULL, true, true);
     if (inode == NULL) {
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         return;
@@ -199,7 +195,7 @@ dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
     /* XXX Special case of removing a clone */
     if (dfs_getInodeHandle(ino) == inode->i_parent) {
         dfs_inodeUnlock(inode);
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         err = dfs_removeClone(gfs, ino);
         fuse_reply_err(req, err);
         return;
@@ -218,7 +214,7 @@ dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
             }
             free(xattr);
             dfs_inodeUnlock(inode);
-            dfs_unlock(gfs);
+            dfs_unlock(fs);
             fuse_reply_err(req, 0);
             return;
         }
@@ -226,7 +222,7 @@ dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
         xattr = xattr->x_next;
     }
     dfs_inodeUnlock(inode);
-    dfs_unlock(gfs);
+    dfs_unlock(fs);
     dfs_reportError(__func__, __LINE__, ino, ENODATA);
     fuse_reply_err(req, ENODATA);
 }

@@ -23,11 +23,10 @@ create(ino_t parent, const char *name, mode_t mode, uid_t uid, gid_t gid,
     struct fs *fs;
     ino_t ino;
 
-    dfs_lock(gfs, false);
-    fs = dfs_getfs(gfs, parent);
+    fs = dfs_getfs(gfs, parent, false);
     dir = dfs_getInode(fs, parent, NULL, true, true);
     if (dir == NULL) {
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, parent, ENOENT);
         return ENOENT;
     }
@@ -47,8 +46,8 @@ create(ino_t parent, const char *name, mode_t mode, uid_t uid, gid_t gid,
     }
     dfs_inodeUnlock(inode);
     dfs_inodeUnlock(dir);
-    ep->ino = dfs_setHandle(fs, ino);
-    dfs_unlock(gfs);
+    ep->ino = dfs_setHandle(fs->fs_root, ino);
+    dfs_unlock(fs);
     dfs_epInit(ep);
     return 0;
 }
@@ -129,11 +128,10 @@ dfs_remove(ino_t parent, const char *name, bool rmdir) {
     ino_t ino;
     int err;
 
-    dfs_lock(gfs, false);
-    fs = dfs_getfs(gfs, parent);
+    fs = dfs_getfs(gfs, parent, false);
     dir = dfs_getInode(fs, parent, NULL, true, true);
     if (dir == NULL) {
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, parent, ENOENT);
         return ENOENT;
     }
@@ -147,7 +145,7 @@ dfs_remove(ino_t parent, const char *name, bool rmdir) {
         err = dremove(fs, dir, name, ino, rmdir);
     }
     dfs_inodeUnlock(dir);
-    dfs_unlock(gfs);
+    dfs_unlock(fs);
     return err;
 }
 
@@ -161,18 +159,17 @@ dfs_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
     ino_t ino;
 
     dfs_displayEntry(__func__, parent, 0, name);
-    dfs_lock(gfs, false);
-    fs = dfs_getfs(gfs, parent);
+    fs = dfs_getfs(gfs, parent, false);
     dir = dfs_getInode(fs, parent, NULL, false, false);
     if (dir == NULL) {
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, parent, ENOENT);
         fuse_reply_err(req, ENOENT);
         return;
     }
     ino = dfs_dirLookup(fs, dir, name);
     if (ino == DFS_INVALID_INODE) {
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         dfs_inodeUnlock(dir);
 
         /* Let kernel remember lookup failure as a negative entry */
@@ -185,12 +182,12 @@ dfs_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
     dfs_inodeUnlock(dir);
     if (inode == NULL) {
         fuse_reply_err(req, ENOENT);
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
     } else {
         memcpy(&ep.attr, &inode->i_stat, sizeof(struct stat));
         dfs_inodeUnlock(inode);
-        ep.ino = dfs_setHandle(dfs_checkfs(fs, ino), ino);
-        dfs_unlock(gfs);
+        ep.ino = dfs_setHandle(dfs_getRoot(fs, parent, ino), ino);
+        dfs_unlock(fs);
         dfs_epInit(&ep);
         fuse_reply_entry(req, &ep);
     }
@@ -214,18 +211,18 @@ dfs_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     struct fs *fs;
 
     dfs_displayEntry(__func__, 0, ino, NULL);
-    dfs_lock(gfs, false);
-    fs = dfs_getfs(gfs, ino);
+    fs = dfs_getfs(gfs, ino, false);
     inode = dfs_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         //dfs_reportError(__func__, __LINE__, 0, ENOENT);
         fuse_reply_err(req, ENOENT);
     }
     memcpy(&stbuf, &inode->i_stat, sizeof(struct stat));
     dfs_inodeUnlock(inode);
-    stbuf.st_ino = dfs_setHandle(dfs_checkfs(fs, stbuf.st_ino), stbuf.st_ino);
-    dfs_unlock(gfs);
+    stbuf.st_ino = dfs_setHandle(dfs_getRoot(fs, stbuf.st_ino,
+                                             stbuf.st_ino), stbuf.st_ino);
+    dfs_unlock(fs);
     fuse_reply_attr(req, &stbuf, 1.0);
 }
 
@@ -240,11 +237,10 @@ dfs_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
     struct fs *fs;
 
     dfs_displayEntry(__func__, ino, 0, NULL);
-    dfs_lock(gfs, false);
-    fs = dfs_getfs(gfs, ino);
+    fs = dfs_getfs(gfs, ino, false);
     inode = dfs_getInode(fs, ino, NULL, true, true);
     if (inode == NULL) {
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         return;
@@ -285,8 +281,9 @@ dfs_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
     }
     memcpy(&stbuf, &inode->i_stat, sizeof(struct stat));
     dfs_inodeUnlock(inode);
-    stbuf.st_ino = dfs_setHandle(dfs_checkfs(fs, stbuf.st_ino), stbuf.st_ino);
-    dfs_unlock(gfs);
+    stbuf.st_ino = dfs_setHandle(dfs_getRoot(fs, stbuf.st_ino,
+                                             stbuf.st_ino), stbuf.st_ino);
+    dfs_unlock(fs);
     fuse_reply_attr(req, &stbuf, 1.0);
 }
 
@@ -300,11 +297,10 @@ dfs_readlink(fuse_req_t req, fuse_ino_t ino) {
     int size;
 
     dfs_displayEntry(__func__, 0, ino, NULL);
-    dfs_lock(gfs, false);
-    fs = dfs_getfs(gfs, ino);
+    fs = dfs_getfs(gfs, ino, false);
     inode = dfs_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         return;
@@ -315,7 +311,7 @@ dfs_readlink(fuse_req_t req, fuse_ino_t ino) {
     strncpy(buf, inode->i_target, size);
     dfs_inodeUnlock(inode);
     buf[size] = 0;
-    dfs_unlock(gfs);
+    dfs_unlock(fs);
     fuse_reply_readlink(req, buf);
 }
 
@@ -408,14 +404,22 @@ dfs_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
     struct fs *fs;
 
     dfs_displayEntry(__func__, parent, newparent, name);
-    dfs_lock(gfs, false);
-    fs = dfs_getfs(gfs, parent);
+    fs = dfs_getfs(gfs, parent, false);
+
+    /* Do not allow moving across file systems */
+    if ((parent != newparent) &&
+        (fs->fs_root != dfs_getRoot(fs, newparent, newparent))) {
+        dfs_unlock(fs);
+        dfs_reportError(__func__, __LINE__, newparent, EPERM);
+        fuse_reply_err(req, EPERM);
+        return;
+    }
 
     /* Follow some locking order while locking the directories */
     if (parent > newparent) {
         tdir = dfs_getInode(fs, newparent, NULL, true, true);
         if (tdir == NULL) {
-            dfs_unlock(gfs);
+            dfs_unlock(fs);
             dfs_reportError(__func__, __LINE__, newparent, ENOENT);
             fuse_reply_err(req, ENOENT);
             return;
@@ -427,7 +431,7 @@ dfs_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
         if (tdir) {
             dfs_inodeUnlock(tdir);
         }
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, parent, ENOENT);
         fuse_reply_err(req, ENOENT);
         return;
@@ -437,7 +441,7 @@ dfs_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
         tdir = dfs_getInode(fs, newparent, NULL, true, true);
         if (tdir == NULL) {
             dfs_inodeUnlock(sdir);
-            dfs_unlock(gfs);
+            dfs_unlock(fs);
             dfs_reportError(__func__, __LINE__, newparent, ENOENT);
             fuse_reply_err(req, ENOENT);
             return;
@@ -465,7 +469,7 @@ dfs_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
         if (inode == NULL) {
             dfs_inodeUnlock(sdir);
             dfs_inodeUnlock(tdir);
-            dfs_unlock(gfs);
+            dfs_unlock(fs);
             dfs_reportError(__func__, __LINE__, ino, ENOENT);
             fuse_reply_err(req, ENOENT);
             return;
@@ -494,7 +498,7 @@ dfs_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
         dfs_inodeUnlock(tdir);
     }
     dfs_inodeUnlock(sdir);
-    dfs_unlock(gfs);
+    dfs_unlock(fs);
     fuse_reply_err(req, 0);
 }
 
@@ -508,11 +512,18 @@ dfs_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
     struct fs *fs;
 
     dfs_displayEntry(__func__, newparent, ino, newname);
-    dfs_lock(gfs, false);
-    fs = dfs_getfs(gfs, ino);
+    fs = dfs_getfs(gfs, ino, false);
+
+    /* Do not allow linking across file systems */
+    if (fs->fs_root != dfs_getRoot(fs, newparent, newparent)) {
+        dfs_unlock(fs);
+        dfs_reportError(__func__, __LINE__, newparent, EPERM);
+        fuse_reply_err(req, EPERM);
+        return;
+    }
     dir = dfs_getInode(fs, newparent, NULL, true, true);
     if (dir == NULL) {
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, newparent, ENOENT);
         fuse_reply_err(req, ENOENT);
         return;
@@ -521,7 +532,7 @@ dfs_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
     inode = dfs_getInode(fs, ino, NULL, true, true);
     if (inode == NULL) {
         dfs_inodeUnlock(dir);
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         return;
@@ -535,8 +546,8 @@ dfs_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
     dfs_inodeUnlock(dir);
     memcpy(&ep.attr, &inode->i_stat, sizeof(struct stat));
     dfs_inodeUnlock(inode);
-    ep.ino = dfs_setHandle(dfs_checkfs(fs, ino), ino);
-    dfs_unlock(gfs);
+    ep.ino = dfs_setHandle(fs->fs_root, ino);
+    dfs_unlock(fs);
     dfs_epInit(&ep);
     fuse_reply_entry(req, &ep);
 }
@@ -553,19 +564,18 @@ dfs_openInode(fuse_ino_t ino, struct fuse_file_info *fi) {
     fi->fh = 0;
     modify = (fi->flags & (O_WRONLY | O_RDWR));
     inum = dfs_getInodeHandle(ino);
-    dfs_lock(gfs, false);
-    fs = dfs_getfs(gfs, ino);
+    fs = dfs_getfs(gfs, ino, false);
     inode = dfs_getInode(fs, ino, NULL, modify, true);
     if (inode == NULL) {
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         return ENOENT;
     }
 
     /* Do not allow opening a removed inode */
     if (inode->i_removed) {
         dfs_inodeUnlock(inode);
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
         return ENOENT;
     }
@@ -584,7 +594,7 @@ dfs_openInode(fuse_ino_t ino, struct fuse_file_info *fi) {
         inode->i_ocount++;
     }
     dfs_inodeUnlock(inode);
-    dfs_unlock(gfs);
+    dfs_unlock(fs);
     return 0;
 }
 
@@ -622,12 +632,11 @@ dfs_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
             (sizeof(struct fuse_buf) * ((size / DFS_BLOCK_SIZE) + 2));
     bufv = malloc(fsize);
     memset(bufv, 0, fsize);
-    dfs_lock(gfs, false);
-    fs = dfs_getfs(gfs, ino);
+    fs = dfs_getfs(gfs, ino, false);
     handle = fi ? (struct inode *)fi->fh : NULL;
     inode = dfs_getInode(fs, ino, handle, false, false);
     if (inode == NULL) {
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         free(bufv);
@@ -639,7 +648,7 @@ dfs_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     fsize = inode->i_stat.st_size;
     if (off >= fsize) {
         dfs_inodeUnlock(inode);
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         fuse_reply_buf(req, NULL, 0);
         free(bufv);
         return;
@@ -651,7 +660,7 @@ dfs_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     dfs_readPages(inode, off, endoffset, bufv);
     fuse_reply_data(req, bufv, FUSE_BUF_SPLICE_MOVE);
     dfs_inodeUnlock(inode);
-    dfs_unlock(gfs);
+    dfs_unlock(fs);
     free(bufv);
 }
 
@@ -687,8 +696,7 @@ dfs_releaseInode(fuse_ino_t ino, struct fuse_file_info *fi) {
         return 0;
     }
     inum = dfs_getInodeHandle(ino);
-    dfs_lock(gfs, false);
-    fs = dfs_getfs(gfs, ino);
+    fs = dfs_getfs(gfs, ino, false);
     inode = dfs_getInode(fs, ino, NULL, false, true);
     if (inode == NULL) {
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
@@ -704,7 +712,7 @@ dfs_releaseInode(fuse_ino_t ino, struct fuse_file_info *fi) {
         dfs_truncate(inode, 0);
     }
     dfs_inodeUnlock(inode);
-    dfs_unlock(gfs);
+    dfs_unlock(fs);
     return 0;
 }
 
@@ -755,12 +763,11 @@ dfs_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     struct fs *fs;
 
     dfs_displayEntry(__func__, ino, 0, NULL);
-    dfs_lock(gfs, false);
-    fs = dfs_getfs(gfs, ino);
+    fs = dfs_getfs(gfs, ino, false);
     handle = fi ? (struct inode *)fi->fh : NULL;
     dir = dfs_getInode(fs, ino, handle, false, false);
     if (dir == NULL) {
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         return;
@@ -776,7 +783,7 @@ dfs_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     while (dirent != NULL) {
         assert(dirent->di_ino > DFS_ROOT_INODE);
         count++;
-        st.st_ino = dfs_setHandle(dfs_checkfs(fs, dirent->di_ino),
+        st.st_ino = dfs_setHandle(dfs_getRoot(fs, ino, dirent->di_ino),
                                   dirent->di_ino);
         st.st_mode = dirent->di_mode;
         esize = fuse_add_direntry(req, &buf[csize], size - csize,
@@ -789,7 +796,7 @@ dfs_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
         dirent = dirent->di_next;
     }
     dfs_inodeUnlock(dir);
-    dfs_unlock(gfs);
+    dfs_unlock(fs);
     if (csize) {
         fuse_reply_buf(req, buf, csize);
     } else {
@@ -947,11 +954,10 @@ dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
     dst = malloc(wsize);
     memset(dst, 0, wsize);
     endoffset = off + size;
-    dfs_lock(gfs, false);
-    fs = dfs_getfs(gfs, ino);
+    fs = dfs_getfs(gfs, ino, false);
     inode = dfs_getInode(fs, ino, NULL, true, true);
     if (inode == NULL) {
-        dfs_unlock(gfs);
+        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         free(dst);
@@ -969,7 +975,7 @@ dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
     if (count) {
         dfs_blockAlloc(fs, count);
     }
-    dfs_unlock(gfs);
+    dfs_unlock(fs);
     fuse_reply_write(req, size);
     free(dst);
 }
@@ -1013,12 +1019,7 @@ dfs_destroy(void *fsp) {
     struct gfs *gfs = (struct gfs *)fsp;
 
     printf("%s: gfs %p\n", __func__, gfs);
-    close(gfs->gfs_fd);
-    if (gfs->gfs_super != NULL) {
-        free(gfs->gfs_super);
-    }
-    pthread_mutex_destroy(&gfs->gfs_ilock);
-    pthread_rwlock_destroy(&gfs->gfs_rwlock);
+    dfs_unmount(gfs);
 }
 
 /* Fuse operations registered with the fuse driver */

@@ -154,7 +154,7 @@ dfs_getInode(struct fs *fs, ino_t ino, struct inode *handle,
     }
 
     /* XXX Reduce the time this lock is held */
-    pthread_mutex_lock(&fs->fs_gfs->gfs_ilock);
+    pthread_mutex_lock(fs->fs_ilock);
     inode = fs->fs_inode[inum];
     if (inode == NULL) {
         pfs = fs->fs_parent;
@@ -177,7 +177,7 @@ dfs_getInode(struct fs *fs, ino_t ino, struct inode *handle,
             pfs = pfs->fs_parent;
         }
     }
-    pthread_mutex_unlock(&fs->fs_gfs->gfs_ilock);
+    pthread_mutex_unlock(fs->fs_ilock);
 
     /* Now lock the inode */
     if (inode) {

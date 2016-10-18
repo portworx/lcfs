@@ -14,6 +14,9 @@ struct fs {
     /* XXX Allocate this dynamically */
     struct inode **fs_inode;
 
+    /* Lock protecting inode chains */
+    pthread_mutex_t *fs_ilock;
+
     /* Global list of file systems */
     struct fs *fs_gnext;
 
@@ -25,6 +28,11 @@ struct fs {
 
     /* Next file system in the snapshot chain of the parent fs */
     struct fs *fs_next;
+
+    /* Lock taken in shared mode by all file system operations.
+     * This lock is taken in exclusive mode when snapshots are created/deleted.
+     */
+    pthread_rwlock_t *fs_rwlock;
 };
 
 /* Global file system */
@@ -42,16 +50,11 @@ struct gfs {
     /* List of layer file systems */
     struct fs *gfs_fs;
 
+    /* Lock protecting global list of file system chain */
+    pthread_mutex_t gfs_lock;
+
     /* fuse channel */
     struct fuse_chan *gfs_ch;
-
-    /* Lock protecting inode chains */
-    pthread_mutex_t gfs_ilock;
-
-    /* Lock taken in shared mode by all file system operations.
-     * This lock is taken in exclusive mode when snapshots are created/deleted.
-     */
-    pthread_rwlock_t gfs_rwlock;
 };
 
 #endif

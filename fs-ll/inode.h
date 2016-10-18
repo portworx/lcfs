@@ -92,11 +92,11 @@ struct inode {
 
 /* Set up inode handle using inode number and file system id */
 static inline uint64_t
-dfs_setHandle(struct fs *fs, ino_t ino) {
-    if (fs->fs_root == DFS_ROOT_INODE) {
+dfs_setHandle(ino_t root, ino_t ino) {
+    if (root == DFS_ROOT_INODE) {
         return ino;
     }
-    return (fs->fs_root << 32) | ino;
+    return (root << 32) | ino;
 }
 
 /* Get the file system id from the file handle */

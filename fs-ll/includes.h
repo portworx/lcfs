@@ -35,12 +35,15 @@ void dfs_blockFree(struct gfs *gfs, uint64_t count);
 int dfs_superRead(struct gfs *gfs);
 int dfs_superWrite(struct gfs *gfs);
 
-struct fs *dfs_getfs(struct gfs *gfs, ino_t ino);
-struct fs *dfs_checkfs(struct fs *fs, ino_t ino);
+struct fs *dfs_getfs(struct gfs *gfs, ino_t ino, bool exclusive);
+ino_t dfs_getRoot(struct fs *nfs, ino_t parent, ino_t ino);
+void dfs_addfs(struct fs *fs, struct fs *snap);
+void dfs_removefs(struct fs *fs);
 void dfs_format(struct gfs *gfs, size_t size);
-void dfs_lock(struct gfs *gfs, bool exclusive);
-void dfs_unlock(struct gfs *gfs);
+void dfs_unlock(struct fs *fs);
 int dfs_mount(char *device, struct gfs **gfsp);
+void dfs_unmount(struct gfs *gfs);
+struct fs *dfs_newFs(struct gfs *gfs, ino_t root, bool child);
 void dfs_removeFs(struct fs *fs);
 
 int dfs_readInodes(struct fs *fs);
