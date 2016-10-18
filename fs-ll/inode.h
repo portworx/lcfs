@@ -92,32 +92,24 @@ struct inode {
 
 /* Set up inode handle using inode number and file system id */
 static inline uint64_t
-dfs_setHandle(ino_t root, ino_t ino) {
-    if (root == DFS_ROOT_INODE) {
-        return ino;
-    }
-    return (root << 32) | ino;
+dfs_setHandle(uint64_t gindex, ino_t ino) {
+    assert(gindex < DFS_FS_MAX);
+    return (gindex << 32) | ino;
 }
 
 /* Get the file system id from the file handle */
-static inline ino_t
+static inline uint64_t
 dfs_getFsHandle(uint64_t fh) {
-    ino_t root;
+    int gindex = fh >> 32;
 
-    if (fh == 1) {
-        return DFS_ROOT_INODE;
-    }
-    if (fh == 0) {
-        return 0;
-    }
-    root = fh >> 32;
-    return root ? root : DFS_ROOT_INODE;
+    assert(gindex < DFS_FS_MAX);
+    return gindex;
 }
 
 /* Get inode number corresponding to the file handle */
 static inline ino_t
 dfs_getInodeHandle(uint64_t fh) {
-    if (fh == 1) {
+    if (fh <= DFS_ROOT_INODE) {
         return DFS_ROOT_INODE;
     }
     return fh & 0xFFFFFFFF;

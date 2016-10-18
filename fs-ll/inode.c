@@ -139,28 +139,10 @@ dfs_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
     return inode;
 }
 
-/* Get an inode locked in the requested mode */
-struct inode *
-dfs_getInode(struct fs *fs, ino_t ino, struct inode *handle,
-             bool copy, bool exclusive) {
-    ino_t inum = dfs_getInodeHandle(ino);
+static struct inode *
+dfs_getInodeParent(struct fs *fs, ino_t inum, bool copy) {
     struct inode *inode, *parent;
     struct fs *pfs;
-
-    /* Check if the file system has the inode or not */
-    inode = fs->fs_inode[inum];
-    if (inode) {
-        dfs_inodeLock(inode, exclusive);
-        return inode;
-    }
-
-    /* Check if the file handle points to the inode */
-    if (handle && !copy) {
-        inode = handle;
-        assert(inode->i_stat.st_ino == inum);
-        dfs_inodeLock(inode, exclusive);
-        return inode;
-    }
 
     /* XXX Reduce the time this lock is held */
     pthread_mutex_lock(fs->fs_ilock);
@@ -187,12 +169,42 @@ dfs_getInode(struct fs *fs, ino_t ino, struct inode *handle,
         }
     }
     pthread_mutex_unlock(fs->fs_ilock);
+    return inode;
+}
+
+/* Get an inode locked in the requested mode */
+struct inode *
+dfs_getInode(struct fs *fs, ino_t ino, struct inode *handle,
+             bool copy, bool exclusive) {
+    ino_t inum = dfs_getInodeHandle(ino);
+    struct inode *inode;
+
+    /* Check if the file system has the inode or not */
+    inode = fs->fs_inode[inum];
+    if (inode) {
+        dfs_inodeLock(inode, exclusive);
+        return inode;
+    }
+
+    /* Check if the file handle points to the inode */
+    if (handle && !copy) {
+        inode = handle;
+        assert(inode->i_stat.st_ino == inum);
+        dfs_inodeLock(inode, exclusive);
+        return inode;
+    }
+
+    /* Lookup inode in the parent chain */
+    if (fs->fs_parent) {
+        inode = dfs_getInodeParent(fs, inum, copy);
+    }
 
     /* Now lock the inode */
     if (inode) {
         dfs_inodeLock(inode, exclusive);
     } else {
-        dfs_printf("Inode is NULL, fs %ld ino %ld\n", fs->fs_root, ino);
+        dfs_printf("Inode is NULL, fs gindex %d root %ld ino %ld\n",
+                   fs->fs_gindex, fs->fs_root, ino);
     }
     return inode;
 }

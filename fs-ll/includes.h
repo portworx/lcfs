@@ -35,8 +35,8 @@ void dfs_blockFree(struct gfs *gfs, uint64_t count);
 int dfs_superRead(struct gfs *gfs);
 int dfs_superWrite(struct gfs *gfs);
 
-struct fs *dfs_getfs(struct gfs *gfs, ino_t ino, bool exclusive);
-ino_t dfs_getRoot(struct fs *nfs, ino_t parent, ino_t ino);
+struct fs *dfs_getfs(ino_t ino, bool exclusive);
+int dfs_getIndex(struct fs *nfs, ino_t parent, ino_t ino);
 void dfs_addfs(struct fs *fs, struct fs *snap);
 void dfs_removefs(struct fs *fs);
 void dfs_format(struct gfs *gfs, size_t size);
@@ -86,6 +86,6 @@ void dfs_xattrCopy(struct inode *inode, struct inode *parent);
 void dfs_xattrFree(struct inode *inode);
 
 int dfs_newClone(struct gfs *gfs, ino_t ino, const char *name);
-int dfs_removeClone(struct gfs *gfs, ino_t ino);
+int dfs_removeClone(ino_t ino);
 
 #endif

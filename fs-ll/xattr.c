@@ -4,14 +4,14 @@
 void
 dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
              const char *value, size_t size, int flags) {
-    struct gfs *gfs = getfs();
     int len = strlen(name);
     struct xattr *xattr;
     struct inode *inode;
+    struct gfs *gfs;
     struct fs *fs;
     int err;
 
-    fs = dfs_getfs(gfs, ino, false);
+    fs = dfs_getfs(ino, false);
     inode = dfs_getInode(fs, ino, NULL, true, true);
     if (inode == NULL) {
         dfs_unlock(fs);
@@ -21,6 +21,7 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
     }
 
     /* XXX Special case of creating a clone */
+    gfs = fs->fs_gfs;
     if (inode->i_parent == gfs->gfs_snap_root) {
         dfs_inodeUnlock(inode);
         dfs_unlock(fs);
@@ -97,12 +98,11 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
 void
 dfs_xattrGet(fuse_req_t req, ino_t ino, const char *name,
              size_t size) {
-    struct gfs *gfs = getfs();
     struct xattr *xattr;
     struct inode *inode;
     struct fs *fs;
 
-    fs = dfs_getfs(gfs, ino, false);
+    fs = dfs_getfs(ino, false);
     inode = dfs_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
         dfs_unlock(fs);
@@ -134,14 +134,13 @@ dfs_xattrGet(fuse_req_t req, ino_t ino, const char *name,
 /* List the specified attributes of the inode */
 void
 dfs_xattrList(fuse_req_t req, ino_t ino, size_t size) {
-    struct gfs *gfs = getfs();
     struct xattr *xattr;
     struct inode *inode;
     struct fs *fs;
     char *buf;
     int i = 0;
 
-    fs = dfs_getfs(gfs, ino, false);
+    fs = dfs_getfs(ino, false);
     inode = dfs_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
         dfs_unlock(fs);
@@ -178,12 +177,11 @@ dfs_xattrList(fuse_req_t req, ino_t ino, size_t size) {
 void
 dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
     struct xattr *xattr, *pxattr = NULL;
-    struct gfs *gfs = getfs();
     struct inode *inode;
     struct fs *fs;
     int err;
 
-    fs = dfs_getfs(gfs, ino, false);
+    fs = dfs_getfs(ino, false);
     inode = dfs_getInode(fs, ino, NULL, true, true);
     if (inode == NULL) {
         dfs_unlock(fs);
@@ -196,7 +194,7 @@ dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
     if (dfs_getInodeHandle(ino) == inode->i_parent) {
         dfs_inodeUnlock(inode);
         dfs_unlock(fs);
-        err = dfs_removeClone(gfs, ino);
+        err = dfs_removeClone(ino);
         fuse_reply_err(req, err);
         return;
     }

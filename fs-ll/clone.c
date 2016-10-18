@@ -3,7 +3,7 @@
 /* Create a new file system */
 int
 dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
-    bool base = strcmp(name, "/") ? false : true;
+    bool base = strncmp(name, "/", 1) ? false : true;
     struct fs *fs, *pfs = NULL, *nfs, *rfs;
     struct inode *inode, *pdir;
     ino_t root, pinum;
@@ -16,10 +16,10 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
         dfs_reportError(__func__, __LINE__, ino, EPERM);
         return EPERM;
     }
-    rfs = dfs_getfs(gfs, DFS_ROOT_INODE, false);
+    rfs = dfs_getfs(DFS_ROOT_INODE, false);
 
     /* Do not allow nested file systems */
-    if (dfs_getFsHandle(ino) != DFS_ROOT_INODE) {
+    if (dfs_getFsHandle(ino)) {
         err = EPERM;
         dfs_reportError(__func__, __LINE__, ino, err);
         goto out;
@@ -65,11 +65,12 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
         /* Get the parent file system root directory from the parent file
          * system.
          */
-        pfs = dfs_getfs(gfs, pinum, true);
+        pfs = dfs_getfs(pinum, true);
+        assert(pfs->fs_root == pinum);
     }
     fs = dfs_newFs(gfs, root, base);
     if (base) {
-        nfs = gfs->gfs_fs;
+        nfs = gfs->gfs_fs[0];
     } else {
         fs->fs_parent = pfs;
         fs->fs_ilock = pfs->fs_ilock;
@@ -106,7 +107,8 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
         dfs_dirCopy(inode, pdir);
         dfs_inodeUnlock(pdir);
         dfs_inodeUnlock(inode);
-        dfs_printf("Created new FS %p, parent %ld root %ld\n", fs, pfs->fs_root, fs->fs_root);
+        dfs_printf("Created new FS %p, parent %ld root %ld\n",
+                   fs, pfs->fs_root, fs->fs_root);
 
         /* Link this file system a snapshot of the parent */
         if (pfs->fs_snap != NULL) {
@@ -133,7 +135,7 @@ out:
 
 /* Remove a file system */
 int
-dfs_removeClone(struct gfs *gfs, ino_t ino) {
+dfs_removeClone(ino_t ino) {
     struct fs *fs;
     ino_t root;
 
@@ -144,7 +146,7 @@ dfs_removeClone(struct gfs *gfs, ino_t ino) {
     }
 
     /* There should be a file system rooted on this directory */
-    fs = dfs_getfs(gfs, ino, true);
+    fs = dfs_getfs(ino, true);
     if ((fs == NULL) || (fs->fs_root != root)) {
         dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);

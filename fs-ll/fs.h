@@ -1,6 +1,8 @@
 #ifndef _FS_H_
 #define _FS_H_
 
+#define DFS_FS_MAX  10000
+
 /* Global file system */
 struct gfs {
 
@@ -16,14 +18,20 @@ struct gfs {
     /* Count of inodes in use */
     ino_t gfs_ninode;
 
+    /* List of file system roots */
+    ino_t *gfs_roots;
+
     /* List of layer file systems starting with global root fs */
-    struct fs *gfs_fs;
+    struct fs **gfs_fs;
 
     /* Lock protecting global list of file system chain */
     pthread_mutex_t gfs_lock;
 
     /* fuse channel */
     struct fuse_chan *gfs_ch;
+
+    /* Last used index in gfs_fs */
+    int gfs_scount;
 };
 
 /* A file system structure created for each layer */
@@ -42,9 +50,6 @@ struct fs {
     /* Lock protecting inode chains */
     pthread_mutex_t *fs_ilock;
 
-    /* Global list of file systems */
-    struct fs *fs_gnext;
-
     /* Parent file system of this layer */
     struct fs *fs_parent;
 
@@ -58,6 +63,9 @@ struct fs {
      * This lock is taken in exclusive mode when snapshots are created/deleted.
      */
     pthread_rwlock_t *fs_rwlock;
+
+    /* Index of this file system in the global table */
+    int fs_gindex;
 };
 
 #endif
