@@ -2,12 +2,12 @@
 
 /* Allocate a new file system structure */
 struct fs *
-dfs_newFs(struct gfs *gfs, ino_t root, bool base) {
+dfs_newFs(struct gfs *gfs, ino_t root, bool locks) {
     struct fs *fs = malloc(sizeof(struct fs));
 
     memset(fs, 0, sizeof(*fs));
     fs->fs_root = root;
-    if (base) {
+    if (locks) {
         fs->fs_ilock = malloc(sizeof(pthread_mutex_t));
         pthread_mutex_init(fs->fs_ilock, NULL);
         fs->fs_rwlock = malloc(sizeof(pthread_rwlock_t));
@@ -27,7 +27,7 @@ dfs_removeFs(struct fs *fs) {
     if (count) {
         dfs_blockFree(gfs, count);
     }
-    if (fs->fs_parent == NULL) {
+    if ((fs->fs_parent == NULL) && (fs->fs_root != DFS_ROOT_INODE)) {
         pthread_rwlock_destroy(fs->fs_rwlock);
         pthread_mutex_destroy(fs->fs_ilock);
         free(fs->fs_ilock);
@@ -38,8 +38,11 @@ dfs_removeFs(struct fs *fs) {
 /* Lock a file system in shared while starting a request.
  * File system is locked in exclusive mode while taking/deleting snapshots.
  */
-static void
+static inline void
 dfs_lock(struct fs *fs, bool exclusive) {
+    if (fs->fs_root == DFS_ROOT_INODE) {
+        return;
+    }
     if (exclusive) {
         pthread_rwlock_wrlock(fs->fs_rwlock);
     } else {
@@ -50,7 +53,9 @@ dfs_lock(struct fs *fs, bool exclusive) {
 /* Unlock the file system */
 void
 dfs_unlock(struct fs *fs) {
-    pthread_rwlock_unlock(fs->fs_rwlock);
+    if (fs->fs_root != DFS_ROOT_INODE) {
+        pthread_rwlock_unlock(fs->fs_rwlock);
+    }
 }
 
 /* Check if the specified inode is root of a file system and if so, returning
@@ -240,7 +245,7 @@ dfs_mount(char *device, struct gfs **gfsp) {
     }
 
     /* Initialize a file system structure in memory */
-    fs = dfs_newFs(gfs, DFS_ROOT_INODE, true);
+    fs = dfs_newFs(gfs, DFS_ROOT_INODE, false);
     gfs->gfs_fs = fs;
     err = dfs_readInodes(fs);
     if (err != 0) {

@@ -223,7 +223,7 @@ dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
     }
     dfs_inodeUnlock(inode);
     dfs_unlock(fs);
-    dfs_reportError(__func__, __LINE__, ino, ENODATA);
+    //dfs_reportError(__func__, __LINE__, ino, ENODATA);
     fuse_reply_err(req, ENODATA);
 }
 

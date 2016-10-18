@@ -43,7 +43,7 @@ void dfs_format(struct gfs *gfs, size_t size);
 void dfs_unlock(struct fs *fs);
 int dfs_mount(char *device, struct gfs **gfsp);
 void dfs_unmount(struct gfs *gfs);
-struct fs *dfs_newFs(struct gfs *gfs, ino_t root, bool child);
+struct fs *dfs_newFs(struct gfs *gfs, ino_t root, bool locks);
 void dfs_removeFs(struct fs *fs);
 
 int dfs_readInodes(struct fs *fs);
