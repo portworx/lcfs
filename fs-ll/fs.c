@@ -73,7 +73,8 @@ dfs_checkRoot(struct gfs *gfs, ino_t ino, int index) {
 }
 
 /* Check if the specified inode is a root of a file system and if so, return
- * the new file system. Otherwise, use the current file system.
+ * the index of the new file system. Otherwise, return the index of current
+ * file system.
  */
 int
 dfs_getIndex(struct fs *nfs, ino_t parent, ino_t ino) {
@@ -82,7 +83,7 @@ dfs_getIndex(struct fs *nfs, ino_t parent, ino_t ino) {
 
     /* Snapshots are allowed in one directory right now */
     if ((gindex == 0) && gfs->gfs_scount && (parent == gfs->gfs_snap_root)) {
-        assert(dfs_getFsHandle(ino) == 0);
+        assert(dfs_globalRoot(ino));
         gindex = dfs_checkRoot(gfs, ino, gindex);
     }
     return gindex;
@@ -96,9 +97,6 @@ dfs_getfs(ino_t ino, bool exclusive) {
     struct fs *fs;
 
     assert(gindex < DFS_FS_MAX);
-    if ((gindex == 0) && gfs->gfs_scount && (ino > DFS_ROOT_INODE)) {
-        gindex = dfs_checkRoot(gfs, ino, gindex);
-    }
     fs = gfs->gfs_fs[gindex];
     dfs_lock(fs, exclusive);
     assert(fs->fs_gindex == gindex);

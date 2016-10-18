@@ -3,14 +3,16 @@
 /* XXX Check return values from fuse_reply_*, for example on interrupt */
 /* XXX Do we need to track lookup counts and forget? */
 
-/* Initialize default values in fuse_entry_param structure */
+/* Initialize default values in fuse_entry_param structure.
+ * Do not cache file system root inodes while layers are being added.
+ */
 static void
-dfs_epInit(struct fuse_entry_param *ep) {
+dfs_epInit(struct fuse_entry_param *ep, bool ecache) {
     assert(ep->ino > DFS_ROOT_INODE);
     ep->attr.st_ino = ep->ino;
     ep->generation = 1;
     ep->attr_timeout = 1.0;
-    ep->entry_timeout = 1.0;
+    ep->entry_timeout = ecache ? 1.0 : 0;
 }
 
 /* Create a new directory entry and associated inode */
@@ -20,6 +22,7 @@ create(ino_t parent, const char *name, mode_t mode, uid_t uid, gid_t gid,
        struct fuse_entry_param *ep) {
     struct inode *dir, *inode;
     struct fs *fs;
+    bool ecache;
     ino_t ino;
 
     fs = dfs_getfs(parent, false);
@@ -43,11 +46,12 @@ create(ino_t parent, const char *name, mode_t mode, uid_t uid, gid_t gid,
     if (open) {
         inode->i_ocount++;
     }
+    ecache = (inode->i_parent != fs->fs_gfs->gfs_snap_root);
     dfs_inodeUnlock(inode);
     dfs_inodeUnlock(dir);
     ep->ino = dfs_setHandle(fs->fs_gindex, ino);
     dfs_unlock(fs);
-    dfs_epInit(ep);
+    dfs_epInit(ep, ecache);
     return 0;
 }
 
@@ -85,7 +89,7 @@ dremove(struct fs *fs, struct inode *dir, const char *name,
 
         /* XXX Allow docker to remove some special directories while not empty */
 #if 0
-        if ((inode->i_dirent != NULL) && (dfs_getFsHandle(ino) == 0)) {
+        if ((inode->i_dirent != NULL) && dfs_globalRoot(ino)) {
             dfs_removeTree(fs, inode);
         }
 #endif
@@ -152,6 +156,7 @@ dfs_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
     struct fuse_entry_param ep;
     struct inode *inode, *dir;
     struct fs *fs;
+    bool ecache;
     ino_t ino;
 
     dfs_displayEntry(__func__, parent, 0, name);
@@ -183,8 +188,10 @@ dfs_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
         memcpy(&ep.attr, &inode->i_stat, sizeof(struct stat));
         dfs_inodeUnlock(inode);
         ep.ino = dfs_setHandle(dfs_getIndex(fs, parent, ino), ino);
+        ecache = (parent != fs->fs_gfs->gfs_snap_root) ||
+                 !dfs_globalRoot(ep.ino);
         dfs_unlock(fs);
-        dfs_epInit(&ep);
+        dfs_epInit(&ep, ecache);
         fuse_reply_entry(req, &ep);
     }
 }
@@ -231,7 +238,6 @@ dfs_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
     struct inode *inode;
     struct stat stbuf;
     struct fs *fs;
-    ino_t parent;
 
     dfs_displayEntry(__func__, ino, 0, NULL);
     fs = dfs_getfs(ino, false);
@@ -277,10 +283,8 @@ dfs_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
         dfs_updateInodeTimes(inode, atime, mtime, ctime);
     }
     memcpy(&stbuf, &inode->i_stat, sizeof(struct stat));
-    parent = inode->i_parent;
     dfs_inodeUnlock(inode);
-    stbuf.st_ino = dfs_setHandle(dfs_getIndex(fs, parent,
-                                              stbuf.st_ino), stbuf.st_ino);
+    stbuf.st_ino = dfs_setHandle(fs->fs_gindex, stbuf.st_ino);
     dfs_unlock(fs);
     fuse_reply_attr(req, &stbuf, 1.0);
 }
@@ -544,7 +548,7 @@ dfs_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
     dfs_inodeUnlock(inode);
     ep.ino = dfs_setHandle(fs->fs_gindex, ino);
     dfs_unlock(fs);
-    dfs_epInit(&ep);
+    dfs_epInit(&ep, true);
     fuse_reply_entry(req, &ep);
 }
 
@@ -578,7 +582,7 @@ dfs_openInode(fuse_ino_t ino, struct fuse_file_info *fi) {
     /* Set up file handle if inode is shared with another file system.
      * Increment open count otherwise.
      */
-    if (!modify && dfs_getFsHandle(ino)) {
+    if (!modify && !dfs_globalRoot(ino)) {
         if (fs->fs_inode[inum] == NULL) {
             fi->fh = (uint64_t)inode;
         } else {

@@ -19,7 +19,7 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
     rfs = dfs_getfs(DFS_ROOT_INODE, false);
 
     /* Do not allow nested file systems */
-    if (dfs_getFsHandle(ino)) {
+    if (!dfs_globalRoot(ino)) {
         err = EPERM;
         dfs_reportError(__func__, __LINE__, ino, err);
         goto out;
@@ -65,8 +65,10 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
         /* Get the parent file system root directory from the parent file
          * system.
          */
+        pinum = dfs_setHandle(dfs_getIndex(rfs, gfs->gfs_snap_root, pinum),
+                             pinum);
         pfs = dfs_getfs(pinum, true);
-        assert(pfs->fs_root == pinum);
+        assert(pfs->fs_root == dfs_getInodeHandle(pinum));
     }
     fs = dfs_newFs(gfs, root, base);
     if (base) {
@@ -107,8 +109,7 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
         dfs_dirCopy(inode, pdir);
         dfs_inodeUnlock(pdir);
         dfs_inodeUnlock(inode);
-        dfs_printf("Created new FS %p, parent %ld root %ld\n",
-                   fs, pfs->fs_root, fs->fs_root);
+        dfs_printf("Created new FS %p, parent %ld root %ld\n", fs, pfs->fs_root, fs->fs_root);
 
         /* Link this file system a snapshot of the parent */
         if (pfs->fs_snap != NULL) {
@@ -121,6 +122,7 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
 
     /* Add this file system to global list of file systems */
     dfs_addfs(fs, nfs);
+        printf("New fs %p with root %ld gindex %d\n", fs, fs->fs_root, fs->fs_gindex);
 
 out:
     dfs_unlock(rfs);

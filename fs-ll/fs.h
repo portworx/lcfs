@@ -68,4 +68,10 @@ struct fs {
     int fs_gindex;
 };
 
+/* Check if specified inode belongs in global file system outside any layers */
+static inline bool
+dfs_globalRoot(ino_t ino) {
+    return dfs_getFsHandle(ino) == 0;
+}
+
 #endif
