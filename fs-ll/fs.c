@@ -26,8 +26,11 @@ dfs_removeFs(struct fs *fs) {
     if (count) {
         dfs_blockFree(fs->fs_gfs, count);
     }
-    if ((fs->fs_parent == NULL) && fs->fs_gindex) {
+    if (fs->fs_rwlock) {
         pthread_rwlock_destroy(fs->fs_rwlock);
+        free(fs->fs_rwlock);
+    }
+    if (fs->fs_ilock) {
         pthread_mutex_destroy(fs->fs_ilock);
         free(fs->fs_ilock);
     }
@@ -37,23 +40,21 @@ dfs_removeFs(struct fs *fs) {
 /* Lock a file system in shared while starting a request.
  * File system is locked in exclusive mode while taking/deleting snapshots.
  */
-static inline void
+void
 dfs_lock(struct fs *fs, bool exclusive) {
-    if (fs->fs_gindex == 0) {
-        return;
-    }
-    assert(fs->fs_rwlock);
-    if (exclusive) {
-        pthread_rwlock_wrlock(fs->fs_rwlock);
-    } else {
-        pthread_rwlock_rdlock(fs->fs_rwlock);
+    if (fs->fs_rwlock) {
+        if (exclusive) {
+            pthread_rwlock_wrlock(fs->fs_rwlock);
+        } else {
+            pthread_rwlock_rdlock(fs->fs_rwlock);
+        }
     }
 }
 
 /* Unlock the file system */
 void
 dfs_unlock(struct fs *fs) {
-    if (fs->fs_gindex) {
+    if (fs->fs_rwlock) {
         pthread_rwlock_unlock(fs->fs_rwlock);
     }
 }

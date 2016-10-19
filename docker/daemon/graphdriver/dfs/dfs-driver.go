@@ -12,7 +12,6 @@ import (
 	"github.com/docker/docker/pkg/idtools"
 	"github.com/docker/docker/pkg/mount"
 	"github.com/opencontainers/runc/libcontainer/label"
-    "github.com/Sirupsen/logrus"
 )
 
 func init() {
@@ -22,7 +21,6 @@ func init() {
 // Init returns a new DFS driver.
 // An error is returned if DFS is not supported.
 func Init(home string, options []string, uidMaps, gidMaps []idtools.IDMap) (graphdriver.Driver, error) {
-    logrus.Errorf("************************************Creating %s", home)
 	rootUID, rootGID, err := idtools.GetRootUIDGID(uidMaps, gidMaps)
 	if err != nil {
 		return nil, err
@@ -70,32 +68,27 @@ func (d *Driver) Status() [][2]string {
 
 // GetMetadata returns empty metadata for this driver.
 func (d *Driver) GetMetadata(id string) (map[string]string, error) {
-    logrus.Errorf("***************************************************GetMetadata %s", id)
 	return nil, nil
 }
 
 // Cleanup unmounts the home directory.
 func (d *Driver) Cleanup() error {
-    logrus.Errorf("***************************************************Cleanup")
 	return mount.Unmount(d.home)
 }
 
 // CreateReadWrite creates a layer that is writable for use as a container
 // file system.
 func (d *Driver) CreateReadWrite(id, parent, mountLabel string, storageOpt map[string]string) error {
-    logrus.Errorf("***************************************************CreateReadWrite %s", id)
 	return d.Create(id, parent, mountLabel, storageOpt)
 }
 
 // Create the filesystem with given id.
 func (d *Driver) Create(id, parent, mountLabel string, storageOpt map[string]string) error {
-    logrus.Errorf("***************************************************Create id %s parent %s mountLabel %s", id, parent, mountLabel)
 	file := path.Join(d.home, id)
 	rootUID, rootGID, err := idtools.GetRootUIDGID(d.uidMaps, d.gidMaps)
 	if err != nil {
 		return err
 	}
-    logrus.Errorf("************** Creating %s", file)
     err = idtools.MkdirAllAs(file, 0700, rootUID, rootGID)
 	if err != nil {
 		return err
@@ -123,9 +116,7 @@ func (d *Driver) setStorageSize(dir string, driver *Driver) error {
 
 // Remove the filesystem with given id.
 func (d *Driver) Remove(id string) error {
-    logrus.Errorf("***************************************************Remove %s", id)
 	dir := path.Join(d.home, id)
-    logrus.Errorf("************** Removing %s", dir)
     err := syscall.Removexattr(dir, "/")
 	if err != nil {
 		return err
@@ -138,7 +129,6 @@ func (d *Driver) Remove(id string) error {
 
 // Get the requested filesystem id.
 func (d *Driver) Get(id, mountLabel string) (string, error) {
-    logrus.Errorf("***************************************************Get %s", id)
     dir := path.Join(d.home, id)
 	st, err := os.Stat(dir)
 	if err != nil {
@@ -154,7 +144,6 @@ func (d *Driver) Get(id, mountLabel string) (string, error) {
 
 // Put is not implemented for DFS as there is no cleanup required for the id.
 func (d *Driver) Put(id string) error {
-    logrus.Errorf("***************************************************Put %s", id)
 	// Get() creates no runtime resources (like e.g. mounts)
 	// so this doesn't need to do anything.
 	file := path.Join(d.home, id)
@@ -164,7 +153,6 @@ func (d *Driver) Put(id string) error {
 
 // Exists checks if the id exists in the filesystem.
 func (d *Driver) Exists(id string) bool {
-    logrus.Errorf("***************************************************Exists %s", id)
     dir := path.Join(d.home, id)
 	_, err := os.Stat(dir)
 	return err == nil

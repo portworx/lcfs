@@ -411,8 +411,8 @@ dfs_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
     if ((parent != newparent) &&
         (fs->fs_gindex != dfs_getIndex(fs, newparent, newparent))) {
         dfs_unlock(fs);
-        dfs_reportError(__func__, __LINE__, newparent, EPERM);
-        fuse_reply_err(req, EPERM);
+        dfs_reportError(__func__, __LINE__, newparent, EXDEV);
+        fuse_reply_err(req, EXDEV);
         return;
     }
 
@@ -517,8 +517,8 @@ dfs_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
     /* Do not allow linking across file systems */
     if (fs->fs_gindex != dfs_getIndex(fs, newparent, newparent)) {
         dfs_unlock(fs);
-        dfs_reportError(__func__, __LINE__, newparent, EPERM);
-        fuse_reply_err(req, EPERM);
+        dfs_reportError(__func__, __LINE__, newparent, EXDEV);
+        fuse_reply_err(req, EXDEV);
         return;
     }
     dir = dfs_getInode(fs, newparent, NULL, true, true);

@@ -4,7 +4,7 @@
 int
 dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
     bool base = strncmp(name, "/", 1) ? false : true;
-    struct fs *fs, *pfs = NULL, *nfs, *rfs;
+    struct fs *fs = NULL, *pfs = NULL, *nfs, *rfs;
     struct inode *inode, *pdir;
     ino_t root, pinum;
     int err = 0;
@@ -70,13 +70,12 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
         pfs = dfs_getfs(pinum, true);
         assert(pfs->fs_root == dfs_getInodeHandle(pinum));
     }
-    fs = dfs_newFs(gfs, root, base);
+    fs = dfs_newFs(gfs, root, true);
+    dfs_lock(fs, true);
     if (base) {
         nfs = gfs->gfs_fs[0];
     } else {
         fs->fs_parent = pfs;
-        fs->fs_ilock = pfs->fs_ilock;
-        fs->fs_rwlock = pfs->fs_rwlock;
     }
     err = dfs_readInodes(fs);
     if (err != 0) {
@@ -85,10 +84,7 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
     }
 
     /* Check if this is a root file system or a snapshot/clone of another */
-    if (base) {
-        dfs_printf("Created new FS %p, no parent, root %ld\n",
-                   fs, fs->fs_root);
-    } else {
+    if (!base) {
 
         /* Copy over root directory */
         pdir = dfs_getInode(pfs, pfs->fs_root, NULL, false, false);
@@ -109,7 +105,6 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
         dfs_dirCopy(inode, pdir);
         dfs_inodeUnlock(pdir);
         dfs_inodeUnlock(inode);
-        dfs_printf("Created new FS %p, parent %ld root %ld\n", fs, pfs->fs_root, fs->fs_root);
 
         /* Link this file system a snapshot of the parent */
         if (pfs->fs_snap != NULL) {
@@ -122,15 +117,19 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
 
     /* Add this file system to global list of file systems */
     dfs_addfs(fs, nfs);
-        printf("New fs %p with root %ld gindex %d\n", fs, fs->fs_root, fs->fs_gindex);
+    dfs_printf("Created new FS %p, parent %ld root %ld index %d\n",
+               fs, pfs ? pfs->fs_root : -1, fs->fs_root, fs->fs_gindex);
 
 out:
     dfs_unlock(rfs);
     if (pfs) {
         dfs_unlock(pfs);
     }
-    if (err && fs) {
-        dfs_removeFs(fs);
+    if (fs) {
+        dfs_unlock(fs);
+        if (err) {
+            dfs_removeFs(fs);
+        }
     }
     return err;
 }
@@ -154,7 +153,8 @@ dfs_removeClone(ino_t ino) {
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
         return ENOENT;
     }
-    dfs_printf("Removing file system with root inode %ld, fs %p\n", root, fs);
+    dfs_printf("Removing file system with root inode %ld index %d, fs %p\n",
+               root, fs->fs_gindex, fs);
 
     /* Remove the file system from the global list */
     dfs_removefs(fs);

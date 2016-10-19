@@ -40,6 +40,7 @@ int dfs_getIndex(struct fs *nfs, ino_t parent, ino_t ino);
 void dfs_addfs(struct fs *fs, struct fs *snap);
 void dfs_removefs(struct fs *fs);
 void dfs_format(struct gfs *gfs, size_t size);
+void dfs_lock(struct fs *fs, bool exclusive);
 void dfs_unlock(struct fs *fs);
 int dfs_mount(char *device, struct gfs **gfsp);
 void dfs_unmount(struct gfs *gfs);
