@@ -35,7 +35,7 @@ main(int argc, char *argv[]) {
     arg[3] = malloc(1024);
     sprintf(arg[3],
             "allow_other,auto_unmount,atomic_o_trunc,"
-            "subtype=dfs,fsname=%s,big_writes,"
+            "subtype=dfs,fsname=%s,big_writes,noatime,"
             "splice_move,splice_read,splice_write",
             argv[1]);
     if (ARGC >= 5) {

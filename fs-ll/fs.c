@@ -141,10 +141,15 @@ dfs_removefs(struct fs *fs) {
 
     assert(pfs);
     assert(fs->fs_snap == NULL);
+    assert(fs->fs_gindex > 0);
     assert(fs->fs_gindex < DFS_FS_MAX);
     pthread_mutex_lock(&gfs->gfs_lock);
     gfs->gfs_fs[fs->fs_gindex] = NULL;
     gfs->gfs_roots[fs->fs_gindex] = 0;
+    if (gfs->gfs_scount == fs->fs_gindex) {
+        assert(gfs->gfs_scount > 0);
+        gfs->gfs_scount--;
+    }
 
     /* Remove the file system from the snapshot list */
     pfs = fs->fs_parent;

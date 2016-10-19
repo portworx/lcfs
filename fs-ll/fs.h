@@ -32,6 +32,9 @@ struct gfs {
 
     /* Last used index in gfs_fs */
     int gfs_scount;
+
+    /* Set if extended attributes are enabled */
+    bool gfs_xattr_enabled;
 };
 
 /* A file system structure created for each layer */

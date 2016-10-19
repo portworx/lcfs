@@ -30,6 +30,10 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
         return;
     }
 
+    if (!gfs->gfs_xattr_enabled) {
+        gfs->gfs_xattr_enabled = true;
+        dfs_printf("Enabled extended attributes\n");
+    }
     xattr = inode->i_xattr;
     while (xattr) {
         if (strcmp(name, xattr->x_name) == 0) {

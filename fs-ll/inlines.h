@@ -4,7 +4,7 @@
 static inline uint64_t dfs_getFsHandle(uint64_t fh);
 static inline ino_t dfs_getInodeHandle(uint64_t fh);
 
-#if 0
+#if 1
 #define dfs_printf  printf
 #else
 #define dfs_printf(a...)

@@ -75,8 +75,8 @@ dfs_truncate(struct inode *inode, off_t size) {
 int
 dremove(struct fs *fs, struct inode *dir, const char *name,
         ino_t ino, bool rmdir) {
-    int err = 0;
     struct inode * inode = dfs_getInode(fs, ino, NULL, true, true);
+    int err = 0;
 
     if (inode == NULL) {
         dfs_reportError(__func__, __LINE__, ino, ESTALE);
@@ -124,10 +124,10 @@ out:
 /* Remove a directory entry */
 static int
 dfs_remove(ino_t parent, const char *name, bool rmdir) {
+    int gindex, err = 0;
     struct inode *dir;
     struct fs *fs;
     ino_t ino;
-    int err;
 
     fs = dfs_getfs(parent, false);
     dir = dfs_getInode(fs, parent, NULL, true, true);
@@ -143,7 +143,16 @@ dfs_remove(ino_t parent, const char *name, bool rmdir) {
         dfs_reportError(__func__, __LINE__, parent, ESTALE);
         err = ESTALE;
     } else {
-        err = dremove(fs, dir, name, ino, rmdir);
+        if (rmdir) {
+            gindex = dfs_getIndex(fs, parent, ino);
+            if (gindex != fs->fs_gindex) {
+                dfs_reportError(__func__, __LINE__, parent, EEXIST);
+                err = EEXIST;
+            }
+        }
+        if (!err) {
+            err = dremove(fs, dir, name, ino, rmdir);
+        }
     }
     dfs_inodeUnlock(dir);
     dfs_unlock(fs);
@@ -853,7 +862,17 @@ dfs_setxattr(fuse_req_t req, fuse_ino_t ino, const char *name,
 /* Get extended attributes of the specified inode */
 static void
 dfs_getxattr(fuse_req_t req, fuse_ino_t ino, const char *name, size_t size) {
+    struct gfs *gfs = getfs();
+
     dfs_displayEntry(__func__, ino, 0, name);
+    if (!gfs->gfs_xattr_enabled) {
+        fuse_reply_err(req, ENODATA);
+        return;
+    }
+
+    /* XXX Figure out a way to avoid invoking this for system.posix_acl_access
+     * and system.posix_acl_default.
+     */
     dfs_xattrGet(req, ino, name, size);
 }
 
@@ -922,6 +941,7 @@ dfs_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
           struct fuse_file_info *fi, unsigned flags,
           const void *in_buf, size_t in_bufsz, size_t out_bufsz) {
     dfs_displayEntry(__func__, ino);
+    fuse_reply_ioctl(req, 0, NULL, 0);
 }
 
 static void

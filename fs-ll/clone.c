@@ -148,10 +148,20 @@ dfs_removeClone(ino_t ino) {
 
     /* There should be a file system rooted on this directory */
     fs = dfs_getfs(ino, true);
-    if ((fs == NULL) || (fs->fs_root != root)) {
+    if (fs == NULL) {
         dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
         return ENOENT;
+    }
+    if (fs->fs_root != root) {
+        dfs_unlock(fs);
+        dfs_reportError(__func__, __LINE__, ino, EINVAL);
+        return EINVAL;
+    }
+    if (fs->fs_snap) {
+        dfs_unlock(fs);
+        dfs_reportError(__func__, __LINE__, ino, EEXIST);
+        return EEXIST;
     }
     dfs_printf("Removing file system with root inode %ld index %d, fs %p\n",
                root, fs->fs_gindex, fs);
