@@ -9,11 +9,10 @@ dfs_newFs(struct gfs *gfs, ino_t root, bool locks) {
     fs->fs_root = root;
     fs->fs_gfs = gfs;
     if (locks) {
-        fs->fs_ilock = malloc(sizeof(pthread_mutex_t));
-        pthread_mutex_init(fs->fs_ilock, NULL);
         fs->fs_rwlock = malloc(sizeof(pthread_rwlock_t));
         pthread_rwlock_init(fs->fs_rwlock, NULL);
     }
+    pthread_mutex_init(&fs->fs_ilock, NULL);
     return fs;
 }
 
@@ -30,10 +29,11 @@ dfs_removeFs(struct fs *fs) {
         pthread_rwlock_destroy(fs->fs_rwlock);
         free(fs->fs_rwlock);
     }
-    if (fs->fs_ilock) {
-        pthread_mutex_destroy(fs->fs_ilock);
-        free(fs->fs_ilock);
+    if (fs->fs_clock && (fs->fs_parent == NULL)) {
+        pthread_mutex_destroy(fs->fs_clock);
+        free(fs->fs_clock);
     }
+    pthread_mutex_destroy(&fs->fs_ilock);
     free(fs);
 }
 
@@ -191,6 +191,9 @@ dfs_gfsAlloc(int fd) {
     struct gfs *gfs = malloc(sizeof(struct gfs));
 
     memset(gfs, 0, sizeof(struct gfs));
+    gfs->gfs_icache = malloc(sizeof(struct icache));
+    memset(gfs->gfs_icache, 0, sizeof(struct icache));
+    pthread_mutex_init(&gfs->gfs_icache->ic_lock, NULL);
     gfs->gfs_fs = malloc(sizeof(struct fs *) * DFS_FS_MAX);
     memset(gfs->gfs_fs, 0, sizeof(struct fs *) * DFS_FS_MAX);
     gfs->gfs_roots = malloc(sizeof(ino_t) * DFS_FS_MAX);
@@ -266,9 +269,10 @@ dfs_unmount(struct gfs *gfs) {
     }
     pthread_mutex_destroy(&gfs->gfs_lock);
     if (fs) {
-        free(fs->fs_ilock);
-        free(fs);
+        dfs_removeFs(fs);
     }
+    pthread_mutex_destroy(&gfs->gfs_icache->ic_lock);
+    free(gfs->gfs_icache);
     free(gfs->gfs_roots);
     free(gfs->gfs_fs);
     free(gfs);

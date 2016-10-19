@@ -24,6 +24,9 @@ struct gfs {
     /* List of layer file systems starting with global root fs */
     struct fs **gfs_fs;
 
+    /* Inode hash table */
+    struct icache *gfs_icache;
+
     /* Lock protecting global list of file system chain */
     pthread_mutex_t gfs_lock;
 
@@ -47,11 +50,13 @@ struct fs {
     struct gfs *fs_gfs;
 
     /* Inodes of this layer */
-    /* XXX Allocate this dynamically */
-    struct inode **fs_inode;
+    struct inode *fs_inode;
 
-    /* Lock protecting inode chains */
-    pthread_mutex_t *fs_ilock;
+    /* Lock protecting file system inode list */
+    pthread_mutex_t fs_ilock;
+
+    /* Lock protecting layer inode chains */
+    pthread_mutex_t *fs_clock;
 
     /* Parent file system of this layer */
     struct fs *fs_parent;

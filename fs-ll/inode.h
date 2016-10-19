@@ -3,12 +3,20 @@
 
 #include "includes.h"
 
-/* Initial size of the inode table */
-/* XXX Do this dynamically */
-#define DFS_ICACHE_SIZE 200000
+/* Initial size of the inode hash table */
+/* XXX This needs to consider available memory */
+#define DFS_ICACHE_SIZE 1024
 
 /* Current file name size limit */
 #define DFS_FILENAME_MAX 255
+
+/* Inode cache header */
+struct icache {
+    pthread_mutex_t ic_lock;
+
+    /* Inode hash chains */
+    struct inode *ic_head[DFS_ICACHE_SIZE];
+};
 
 /* Directory entry */
 struct dirent {
@@ -52,6 +60,15 @@ struct inode {
 
     /* Lock serializing operations on the inode */
     pthread_rwlock_t i_rwlock;
+
+    /* Filesystem inode belongs to */
+    struct fs *i_fs;
+
+    /* Next entry in the hash list */
+    struct inode *i_cnext;
+
+    /* Next entry in the file system list */
+    struct inode *i_fnext;
 
     /* Open count */
     uint64_t i_ocount;

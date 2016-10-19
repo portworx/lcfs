@@ -567,11 +567,9 @@ dfs_openInode(fuse_ino_t ino, struct fuse_file_info *fi) {
     struct inode *inode;
     struct fs *fs;
     bool modify;
-    ino_t inum;
 
     fi->fh = 0;
     modify = (fi->flags & (O_WRONLY | O_RDWR));
-    inum = dfs_getInodeHandle(ino);
     fs = dfs_getfs(ino, false);
     inode = dfs_getInode(fs, ino, NULL, modify, true);
     if (inode == NULL) {
@@ -592,13 +590,13 @@ dfs_openInode(fuse_ino_t ino, struct fuse_file_info *fi) {
      * Increment open count otherwise.
      */
     if (!modify && !dfs_globalRoot(ino)) {
-        if (fs->fs_inode[inum] == NULL) {
+        if (inode->i_fs != fs) {
             fi->fh = (uint64_t)inode;
         } else {
             inode->i_ocount++;
         }
     } else {
-        assert(fs->fs_inode[inum] == inode);
+        assert(inode->i_fs == fs);
         inode->i_ocount++;
     }
     dfs_inodeUnlock(inode);
@@ -693,7 +691,6 @@ static int
 dfs_releaseInode(fuse_ino_t ino, struct fuse_file_info *fi) {
     struct inode *inode;
     struct fs *fs;
-    ino_t inum;
 
     assert(fi);
 
@@ -701,14 +698,13 @@ dfs_releaseInode(fuse_ino_t ino, struct fuse_file_info *fi) {
     if (fi->fh) {
         return 0;
     }
-    inum = dfs_getInodeHandle(ino);
     fs = dfs_getfs(ino, false);
     inode = dfs_getInode(fs, ino, NULL, false, true);
     if (inode == NULL) {
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
         return ENOENT;
     }
-    assert(fs->fs_inode[inum] == inode);
+    assert(inode->i_fs == fs);
     assert(inode->i_ocount > 0);
     inode->i_ocount--;
 

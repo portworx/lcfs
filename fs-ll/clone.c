@@ -73,9 +73,12 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
     fs = dfs_newFs(gfs, root, true);
     dfs_lock(fs, true);
     if (base) {
+        fs->fs_clock = malloc(sizeof(pthread_mutex_t));
+        pthread_mutex_init(fs->fs_clock, NULL);
         nfs = gfs->gfs_fs[0];
     } else {
         fs->fs_parent = pfs;
+        fs->fs_clock = pfs->fs_clock;
     }
     err = dfs_readInodes(fs);
     if (err != 0) {
