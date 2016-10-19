@@ -1,5 +1,11 @@
 #include "includes.h"
 
+/* Given an inode number, return the hash index */
+static inline int
+dfs_inodeHash(ino_t ino) {
+    return ino / DFS_ICACHE_SIZE;
+}
+
 /* Allocate a new inode */
 static struct inode *
 dfs_newInode(struct fs *fs) {
@@ -30,15 +36,15 @@ dfs_inodeUnlock(struct inode *inode) {
 /* Add an inode to the hash and file system list */
 static void
 dfs_addInode(struct fs *fs, struct inode *inode) {
-    int hash = inode->i_stat.st_ino / DFS_ICACHE_SIZE;
+    int hash = dfs_inodeHash(inode->i_stat.st_ino);
     struct gfs *gfs = fs->fs_gfs;
 
     /* Add the inode to the hash list */
     /* XXX Have a separate lock for each hash list */
-    pthread_mutex_lock(&gfs->gfs_icache->ic_lock);
-    inode->i_cnext = gfs->gfs_icache->ic_head[hash];
-    gfs->gfs_icache->ic_head[hash] = inode;
-    pthread_mutex_unlock(&gfs->gfs_icache->ic_lock);
+    pthread_mutex_lock(&gfs->gfs_icache[hash].ic_lock);
+    inode->i_cnext = gfs->gfs_icache[hash].ic_head;
+    gfs->gfs_icache[hash].ic_head = inode;
+    pthread_mutex_unlock(&gfs->gfs_icache[hash].ic_lock);
 
     /* Add the inode to the file system list */
     pthread_mutex_lock(&fs->fs_ilock);
@@ -51,19 +57,25 @@ dfs_addInode(struct fs *fs, struct inode *inode) {
 /* Lookup an inode in the hash list */
 static struct inode *
 dfs_lookupInode(struct fs *fs, ino_t ino) {
-    int hash = ino / DFS_ICACHE_SIZE;
+    int hash = dfs_inodeHash(ino);
     struct gfs *gfs = fs->fs_gfs;
     struct inode *inode;
 
-    pthread_mutex_lock(&gfs->gfs_icache->ic_lock);
-    inode = gfs->gfs_icache->ic_head[hash];
+    if (ino == fs->fs_root) {
+        return fs->fs_rootInode;
+    }
+    if ((ino == gfs->gfs_snap_root) && gfs->gfs_snap_rootInode) {
+        return gfs->gfs_snap_rootInode;
+    }
+    pthread_mutex_lock(&gfs->gfs_icache[hash].ic_lock);
+    inode = gfs->gfs_icache[hash].ic_head;
     while (inode) {
         if ((inode->i_stat.st_ino == ino) && (inode->i_fs == fs)) {
             break;
         }
         inode = inode->i_cnext;
     }
-    pthread_mutex_unlock(&gfs->gfs_icache->ic_lock);
+    pthread_mutex_unlock(&gfs->gfs_icache[hash].ic_lock);
     return inode;
 }
 
@@ -96,6 +108,7 @@ dfs_rootInit(struct fs *fs, ino_t root) {
     inode->i_parent = root;
     dfs_updateInodeTimes(inode, true, true, true);
     dfs_addInode(fs, inode);
+    fs->fs_rootInode = inode;
 }
 
 /* Initialize inode table of a file system */
@@ -108,16 +121,16 @@ dfs_readInodes(struct fs *fs) {
 /* Free an inode and associated resources */
 static uint64_t
 dfs_freeInode(struct inode *inode) {
-    int hash = inode->i_stat.st_ino / DFS_ICACHE_SIZE;
+    int hash = dfs_inodeHash(inode->i_stat.st_ino);
     struct gfs *gfs = inode->i_fs->fs_gfs;
     uint64_t count = 0;
     struct inode *pinode;
 
     /* Take the inode off the hash list */
-    pthread_mutex_lock(&gfs->gfs_icache->ic_lock);
-    pinode = gfs->gfs_icache->ic_head[hash];
+    pthread_mutex_lock(&gfs->gfs_icache[hash].ic_lock);
+    pinode = gfs->gfs_icache[hash].ic_head;
     if (pinode == inode) {
-        gfs->gfs_icache->ic_head[hash] = inode->i_cnext;
+        gfs->gfs_icache[hash].ic_head = inode->i_cnext;
     } else while (pinode) {
         if (pinode->i_cnext == inode) {
             pinode->i_cnext = inode->i_cnext;
@@ -125,7 +138,7 @@ dfs_freeInode(struct inode *inode) {
         }
         pinode = pinode->i_cnext;
     }
-    pthread_mutex_unlock(&gfs->gfs_icache->ic_lock);
+    pthread_mutex_unlock(&gfs->gfs_icache[hash].ic_lock);
 
     if (S_ISREG(inode->i_stat.st_mode)) {
         count = dfs_truncPages(inode, 0);

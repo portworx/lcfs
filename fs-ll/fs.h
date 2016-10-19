@@ -15,6 +15,9 @@ struct gfs {
     /* Directory inode on which snapshot roots are placed */
     ino_t gfs_snap_root;
 
+    /* Inode mapping to gfs_snap_root */
+    struct inode *gfs_snap_rootInode;
+
     /* Count of inodes in use */
     ino_t gfs_ninode;
 
@@ -48,6 +51,9 @@ struct fs {
 
     /* Global file system */
     struct gfs *fs_gfs;
+
+    /* Root inode */
+    struct inode *fs_rootInode;
 
     /* Inodes of this layer */
     struct inode *fs_inode;

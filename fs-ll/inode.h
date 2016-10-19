@@ -12,10 +12,12 @@
 
 /* Inode cache header */
 struct icache {
+
+    /* Lock protecting the hash chain */
     pthread_mutex_t ic_lock;
 
     /* Inode hash chains */
-    struct inode *ic_head[DFS_ICACHE_SIZE];
+    struct inode *ic_head;
 };
 
 /* Directory entry */

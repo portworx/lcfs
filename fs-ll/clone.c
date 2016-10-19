@@ -46,7 +46,7 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
     if (!base) {
 
         /* Lookup parent directory in global root file system */
-        pdir = dfs_getInode(rfs, gfs->gfs_snap_root, NULL, true, true);
+        pdir = dfs_getInode(rfs, gfs->gfs_snap_root, NULL, false, true);
         if (pdir == NULL) {
             err = ENOENT;
             dfs_reportError(__func__, __LINE__, gfs->gfs_snap_root, err);

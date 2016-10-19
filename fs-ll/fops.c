@@ -363,6 +363,9 @@ dfs_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
             printf("snapshot root inode %ld\n", e.ino);
             gfs = getfs();
             gfs->gfs_snap_root = e.ino;
+            gfs->gfs_snap_rootInode = dfs_getInode(gfs->gfs_fs[0], e.ino,
+                                                   NULL, false, false);
+            dfs_inodeUnlock(gfs->gfs_snap_rootInode);
         }
     }
 }
@@ -688,7 +691,7 @@ dfs_flush(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
 
 /* Decrement open count on an inode */
 static int
-dfs_releaseInode(fuse_ino_t ino, struct fuse_file_info *fi) {
+dfs_releaseInode(fuse_ino_t ino, struct fuse_file_info *fi, bool *inval) {
     struct inode *inode;
     struct fs *fs;
 
@@ -696,6 +699,9 @@ dfs_releaseInode(fuse_ino_t ino, struct fuse_file_info *fi) {
 
     /* If this is shared inode, nothing to do */
     if (fi->fh) {
+        if (inval) {
+            *inval = true;
+        }
         return 0;
     }
     fs = dfs_getfs(ino, false);
@@ -713,6 +719,9 @@ dfs_releaseInode(fuse_ino_t ino, struct fuse_file_info *fi) {
         S_ISREG(inode->i_stat.st_mode)) {
         dfs_truncate(inode, 0);
     }
+    if (inval) {
+        *inval = (inode->i_ocount == 0);
+    }
     dfs_inodeUnlock(inode);
     dfs_unlock(fs);
     return 0;
@@ -722,12 +731,15 @@ dfs_releaseInode(fuse_ino_t ino, struct fuse_file_info *fi) {
 static void
 dfs_release(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     struct gfs *gfs = getfs();
+    bool inval;
     int err;
 
     dfs_displayEntry(__func__, ino, 0, NULL);
-    err = dfs_releaseInode(ino, fi);
-    fuse_lowlevel_notify_inval_inode(gfs->gfs_ch, ino, 0, -1);
+    err = dfs_releaseInode(ino, fi, &inval);
     fuse_reply_err(req, err);
+    if (inval) {
+        fuse_lowlevel_notify_inval_inode(gfs->gfs_ch, ino, 0, -1);
+    }
 }
 
 /* Sync a file */
@@ -812,7 +824,7 @@ dfs_releasedir(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     int err;
 
     dfs_displayEntry(__func__, ino, 0, NULL);
-    err = dfs_releaseInode(ino, fi);
+    err = dfs_releaseInode(ino, fi, NULL);
     fuse_reply_err(req, err);
 }
 

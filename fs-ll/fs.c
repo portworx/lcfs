@@ -189,11 +189,14 @@ dfs_format(struct gfs *gfs, size_t size) {
 static struct gfs *
 dfs_gfsAlloc(int fd) {
     struct gfs *gfs = malloc(sizeof(struct gfs));
+    int i;
 
     memset(gfs, 0, sizeof(struct gfs));
-    gfs->gfs_icache = malloc(sizeof(struct icache));
-    memset(gfs->gfs_icache, 0, sizeof(struct icache));
-    pthread_mutex_init(&gfs->gfs_icache->ic_lock, NULL);
+    gfs->gfs_icache = malloc(sizeof(struct icache) * DFS_ICACHE_SIZE);
+    for (i = 0; i < DFS_ICACHE_SIZE; i++) {
+        pthread_mutex_init(&gfs->gfs_icache[i].ic_lock, NULL);
+        gfs->gfs_icache[i].ic_head = NULL;
+    }
     gfs->gfs_fs = malloc(sizeof(struct fs *) * DFS_FS_MAX);
     memset(gfs->gfs_fs, 0, sizeof(struct fs *) * DFS_FS_MAX);
     gfs->gfs_roots = malloc(sizeof(ino_t) * DFS_FS_MAX);
@@ -262,6 +265,7 @@ dfs_mount(char *device, struct gfs **gfsp) {
 void
 dfs_unmount(struct gfs *gfs) {
     struct fs *fs = gfs->gfs_fs[0];
+    int i;
 
     close(gfs->gfs_fd);
     if (gfs->gfs_super != NULL) {
@@ -271,7 +275,9 @@ dfs_unmount(struct gfs *gfs) {
     if (fs) {
         dfs_removeFs(fs);
     }
-    pthread_mutex_destroy(&gfs->gfs_icache->ic_lock);
+    for (i = 0; i < DFS_ICACHE_SIZE; i++) {
+        pthread_mutex_destroy(&gfs->gfs_icache[i].ic_lock);
+    }
     free(gfs->gfs_icache);
     free(gfs->gfs_roots);
     free(gfs->gfs_fs);
