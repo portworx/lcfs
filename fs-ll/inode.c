@@ -67,13 +67,13 @@ dfs_lookupInode(struct fs *fs, ino_t ino) {
     struct gfs *gfs = fs->fs_gfs;
     struct inode *inode;
 
-    if (ino == fs->fs_root) {
-        return fs->fs_rootInode;
-    }
     if (fs->fs_icache[hash].ic_head == NULL) {
         return NULL;
     }
-    if (ino == gfs->gfs_snap_root) {
+    if (ino == fs->fs_root) {
+        return fs->fs_rootInode;
+    }
+    if ((ino == gfs->gfs_snap_root) && gfs->gfs_snap_rootInode) {
         return gfs->gfs_snap_rootInode;
     }
     pthread_mutex_lock(&fs->fs_icache[hash].ic_lock);
@@ -116,7 +116,7 @@ dfs_rootInit(struct fs *fs, ino_t root) {
     inode->i_stat.st_blksize = DFS_BLOCK_SIZE;
     inode->i_parent = root;
     dfs_updateInodeTimes(inode, true, true, true);
-    inode->i_fs = fs;
+    dfs_addInode(fs, inode);
     fs->fs_rootInode = inode;
 }
 
@@ -292,7 +292,7 @@ dfs_getInode(struct fs *fs, ino_t ino, struct inode *handle,
 }
 
 /* Allocate a new inode */
-ino_t
+static ino_t
 dfs_inodeAlloc(struct fs *fs) {
     return __sync_add_and_fetch(&fs->fs_gfs->gfs_super->sb_ninode, 1);
 }
