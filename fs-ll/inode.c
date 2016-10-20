@@ -6,6 +6,19 @@ dfs_inodeHash(ino_t ino) {
     return ino / DFS_ICACHE_SIZE;
 }
 
+/* Allocate and initialize inode hash table */
+struct icache *
+dfs_icache_init() {
+    struct icache * icache = malloc(sizeof(struct icache) * DFS_ICACHE_SIZE);
+    int i;
+
+    for (i = 0; i < DFS_ICACHE_SIZE; i++) {
+        pthread_mutex_init(&icache[i].ic_lock, NULL);
+        icache[i].ic_head = NULL;
+    }
+    return icache;
+}
+
 /* Allocate a new inode */
 static struct inode *
 dfs_newInode(struct fs *fs) {
@@ -37,20 +50,13 @@ dfs_inodeUnlock(struct inode *inode) {
 static void
 dfs_addInode(struct fs *fs, struct inode *inode) {
     int hash = dfs_inodeHash(inode->i_stat.st_ino);
-    struct gfs *gfs = fs->fs_gfs;
 
     /* Add the inode to the hash list */
     /* XXX Have a separate lock for each hash list */
-    pthread_mutex_lock(&gfs->gfs_icache[hash].ic_lock);
-    inode->i_cnext = gfs->gfs_icache[hash].ic_head;
-    gfs->gfs_icache[hash].ic_head = inode;
-    pthread_mutex_unlock(&gfs->gfs_icache[hash].ic_lock);
-
-    /* Add the inode to the file system list */
-    pthread_mutex_lock(&fs->fs_ilock);
-    inode->i_fnext = fs->fs_inode;
-    fs->fs_inode = inode;
-    pthread_mutex_unlock(&fs->fs_ilock);
+    pthread_mutex_lock(&fs->fs_icache[hash].ic_lock);
+    inode->i_cnext = fs->fs_icache[hash].ic_head;
+    fs->fs_icache[hash].ic_head = inode;
+    pthread_mutex_unlock(&fs->fs_icache[hash].ic_lock);
     inode->i_fs = fs;
 }
 
@@ -61,21 +67,24 @@ dfs_lookupInode(struct fs *fs, ino_t ino) {
     struct gfs *gfs = fs->fs_gfs;
     struct inode *inode;
 
+    if (fs->fs_icache[hash].ic_head == NULL) {
+        return NULL;
+    }
     if (ino == fs->fs_root) {
         return fs->fs_rootInode;
     }
     if ((ino == gfs->gfs_snap_root) && gfs->gfs_snap_rootInode) {
         return gfs->gfs_snap_rootInode;
     }
-    pthread_mutex_lock(&gfs->gfs_icache[hash].ic_lock);
-    inode = gfs->gfs_icache[hash].ic_head;
+    pthread_mutex_lock(&fs->fs_icache[hash].ic_lock);
+    inode = fs->fs_icache[hash].ic_head;
     while (inode) {
-        if ((inode->i_stat.st_ino == ino) && (inode->i_fs == fs)) {
+        if (inode->i_stat.st_ino == ino) {
             break;
         }
         inode = inode->i_cnext;
     }
-    pthread_mutex_unlock(&gfs->gfs_icache[hash].ic_lock);
+    pthread_mutex_unlock(&fs->fs_icache[hash].ic_lock);
     return inode;
 }
 
@@ -122,15 +131,15 @@ dfs_readInodes(struct fs *fs) {
 static uint64_t
 dfs_freeInode(struct inode *inode) {
     int hash = dfs_inodeHash(inode->i_stat.st_ino);
-    struct gfs *gfs = inode->i_fs->fs_gfs;
-    uint64_t count = 0;
+    struct fs *fs = inode->i_fs;
     struct inode *pinode;
+    uint64_t count = 0;
 
     /* Take the inode off the hash list */
-    pthread_mutex_lock(&gfs->gfs_icache[hash].ic_lock);
-    pinode = gfs->gfs_icache[hash].ic_head;
+    pthread_mutex_lock(&fs->fs_icache[hash].ic_lock);
+    pinode = fs->fs_icache[hash].ic_head;
     if (pinode == inode) {
-        gfs->gfs_icache[hash].ic_head = inode->i_cnext;
+        fs->fs_icache[hash].ic_head = inode->i_cnext;
     } else while (pinode) {
         if (pinode->i_cnext == inode) {
             pinode->i_cnext = inode->i_cnext;
@@ -138,7 +147,7 @@ dfs_freeInode(struct inode *inode) {
         }
         pinode = pinode->i_cnext;
     }
-    pthread_mutex_unlock(&gfs->gfs_icache[hash].ic_lock);
+    pthread_mutex_unlock(&fs->fs_icache[hash].ic_lock);
 
     if (S_ISREG(inode->i_stat.st_mode)) {
         count = dfs_truncPages(inode, 0);
@@ -157,17 +166,19 @@ uint64_t
 dfs_destroyInodes(struct fs *fs) {
     uint64_t count = 0, icount = 0;
     struct inode *inode, *tmp;
+    int i;
 
-    pthread_mutex_lock(&fs->fs_ilock);
-    inode = fs->fs_inode;
-    fs->fs_inode = NULL;
-    pthread_mutex_unlock(&fs->fs_ilock);
-    while (inode) {
-        tmp = inode;
-        inode = inode->i_fnext;
-        count += dfs_freeInode(tmp);
-        icount++;
+    for (i = 0; i < DFS_ICACHE_SIZE; i++) {
+        inode = fs->fs_icache[i].ic_head;
+        while (inode) {
+            tmp = inode;
+            inode = inode->i_cnext;
+            count += dfs_freeInode(tmp);
+            icount++;
+        }
+        pthread_mutex_destroy(&fs->fs_icache[i].ic_lock);
     }
+    free(fs->fs_icache);
     if (icount) {
         __sync_sub_and_fetch(&fs->fs_gfs->gfs_ninode, icount);
     }
@@ -216,7 +227,7 @@ dfs_getInodeParent(struct fs *fs, ino_t inum, bool copy) {
     struct fs *pfs;
 
     /* XXX Reduce the time this lock is held */
-    pthread_mutex_lock(fs->fs_clock);
+    pthread_mutex_lock(fs->fs_ilock);
     inode = dfs_lookupInode(fs, inum);
     if (inode == NULL) {
         pfs = fs->fs_parent;
@@ -239,7 +250,7 @@ dfs_getInodeParent(struct fs *fs, ino_t inum, bool copy) {
             pfs = pfs->fs_parent;
         }
     }
-    pthread_mutex_unlock(fs->fs_clock);
+    pthread_mutex_unlock(fs->fs_ilock);
     return inode;
 }
 

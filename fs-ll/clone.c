@@ -43,7 +43,13 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
         goto out;
     }
     dfs_inodeUnlock(inode);
-    if (!base) {
+    fs = dfs_newFs(gfs, root, true);
+    dfs_lock(fs, true);
+    if (base) {
+        fs->fs_ilock = malloc(sizeof(pthread_mutex_t));
+        pthread_mutex_init(fs->fs_ilock, NULL);
+        nfs = gfs->gfs_fs[0];
+    } else {
 
         /* Lookup parent directory in global root file system */
         pdir = dfs_getInode(rfs, gfs->gfs_snap_root, NULL, false, true);
@@ -69,16 +75,8 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
                              pinum);
         pfs = dfs_getfs(pinum, true);
         assert(pfs->fs_root == dfs_getInodeHandle(pinum));
-    }
-    fs = dfs_newFs(gfs, root, true);
-    dfs_lock(fs, true);
-    if (base) {
-        fs->fs_clock = malloc(sizeof(pthread_mutex_t));
-        pthread_mutex_init(fs->fs_clock, NULL);
-        nfs = gfs->gfs_fs[0];
-    } else {
         fs->fs_parent = pfs;
-        fs->fs_clock = pfs->fs_clock;
+        fs->fs_ilock = pfs->fs_ilock;
     }
     err = dfs_readInodes(fs);
     if (err != 0) {
@@ -131,22 +129,24 @@ out:
     if (fs) {
         dfs_unlock(fs);
         if (err) {
-            dfs_removeFs(fs);
+            dfs_destroyFs(fs);
         }
     }
     return err;
 }
 
 /* Remove a file system */
-int
-dfs_removeClone(ino_t ino) {
+void
+dfs_removeClone(fuse_req_t req, ino_t ino) {
     struct fs *fs;
+    int err = 0;
     ino_t root;
 
     root = dfs_getInodeHandle(ino);
     if (root <= DFS_ROOT_INODE) {
         dfs_reportError(__func__, __LINE__, ino, EPERM);
-        return EPERM;
+        err = EPERM;
+        goto out;
     }
 
     /* There should be a file system rooted on this directory */
@@ -154,17 +154,20 @@ dfs_removeClone(ino_t ino) {
     if (fs == NULL) {
         dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
-        return ENOENT;
+        err = ENOENT;
+        goto out;
     }
     if (fs->fs_root != root) {
         dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, EINVAL);
-        return EINVAL;
+        err = EINVAL;
+        goto out;
     }
     if (fs->fs_snap) {
         dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, EEXIST);
-        return EEXIST;
+        err = EEXIST;
+        goto out;
     }
     dfs_printf("Removing file system with root inode %ld index %d, fs %p\n",
                root, fs->fs_gindex, fs);
@@ -172,7 +175,9 @@ dfs_removeClone(ino_t ino) {
     /* Remove the file system from the global list */
     dfs_removefs(fs);
     dfs_unlock(fs);
-    dfs_removeFs(fs);
-    return 0;
+
+out:
+    fuse_reply_err(req, err);
+    dfs_destroyFs(fs);
 }
 

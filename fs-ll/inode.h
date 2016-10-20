@@ -69,9 +69,6 @@ struct inode {
     /* Next entry in the hash list */
     struct inode *i_cnext;
 
-    /* Next entry in the file system list */
-    struct inode *i_fnext;
-
     /* Open count */
     uint64_t i_ocount;
 

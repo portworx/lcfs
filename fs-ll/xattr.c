@@ -183,7 +183,6 @@ dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
     struct xattr *xattr, *pxattr = NULL;
     struct inode *inode;
     struct fs *fs;
-    int err;
 
     fs = dfs_getfs(ino, false);
     inode = dfs_getInode(fs, ino, NULL, true, true);
@@ -198,8 +197,7 @@ dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
     if (dfs_getInodeHandle(ino) == inode->i_parent) {
         dfs_inodeUnlock(inode);
         dfs_unlock(fs);
-        err = dfs_removeClone(ino);
-        fuse_reply_err(req, err);
+        dfs_removeClone(req, ino);
         return;
     }
     xattr = inode->i_xattr;

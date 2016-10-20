@@ -45,8 +45,10 @@ void dfs_unlock(struct fs *fs);
 int dfs_mount(char *device, struct gfs **gfsp);
 void dfs_unmount(struct gfs *gfs);
 struct fs *dfs_newFs(struct gfs *gfs, ino_t root, bool locks);
-void dfs_removeFs(struct fs *fs);
+void dfs_destroyFs(struct fs *fs);
 
+struct icache *dfs_icache_init();
+void dfs_icache_deinit(struct icache *icache);
 int dfs_readInodes(struct fs *fs);
 uint64_t dfs_destroyInodes(struct fs *fs);
 struct inode *dfs_getInode(struct fs *fs, ino_t ino, struct inode *handle,
@@ -87,6 +89,6 @@ void dfs_xattrCopy(struct inode *inode, struct inode *parent);
 void dfs_xattrFree(struct inode *inode);
 
 int dfs_newClone(struct gfs *gfs, ino_t ino, const char *name);
-int dfs_removeClone(ino_t ino);
+void dfs_removeClone(fuse_req_t req, ino_t ino);
 
 #endif

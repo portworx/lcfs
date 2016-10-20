@@ -12,13 +12,13 @@ dfs_newFs(struct gfs *gfs, ino_t root, bool locks) {
         fs->fs_rwlock = malloc(sizeof(pthread_rwlock_t));
         pthread_rwlock_init(fs->fs_rwlock, NULL);
     }
-    pthread_mutex_init(&fs->fs_ilock, NULL);
+    fs->fs_icache = dfs_icache_init();
     return fs;
 }
 
 /* Delete a file system */
 void
-dfs_removeFs(struct fs *fs) {
+dfs_destroyFs(struct fs *fs) {
     uint64_t count;
 
     count = dfs_destroyInodes(fs);
@@ -29,11 +29,10 @@ dfs_removeFs(struct fs *fs) {
         pthread_rwlock_destroy(fs->fs_rwlock);
         free(fs->fs_rwlock);
     }
-    if (fs->fs_clock && (fs->fs_parent == NULL)) {
-        pthread_mutex_destroy(fs->fs_clock);
-        free(fs->fs_clock);
+    if (fs->fs_ilock && (fs->fs_parent == NULL)) {
+        pthread_mutex_destroy(fs->fs_ilock);
+        free(fs->fs_ilock);
     }
-    pthread_mutex_destroy(&fs->fs_ilock);
     free(fs);
 }
 
@@ -189,14 +188,8 @@ dfs_format(struct gfs *gfs, size_t size) {
 static struct gfs *
 dfs_gfsAlloc(int fd) {
     struct gfs *gfs = malloc(sizeof(struct gfs));
-    int i;
 
     memset(gfs, 0, sizeof(struct gfs));
-    gfs->gfs_icache = malloc(sizeof(struct icache) * DFS_ICACHE_SIZE);
-    for (i = 0; i < DFS_ICACHE_SIZE; i++) {
-        pthread_mutex_init(&gfs->gfs_icache[i].ic_lock, NULL);
-        gfs->gfs_icache[i].ic_head = NULL;
-    }
     gfs->gfs_fs = malloc(sizeof(struct fs *) * DFS_FS_MAX);
     memset(gfs->gfs_fs, 0, sizeof(struct fs *) * DFS_FS_MAX);
     gfs->gfs_roots = malloc(sizeof(ino_t) * DFS_FS_MAX);
@@ -265,7 +258,6 @@ dfs_mount(char *device, struct gfs **gfsp) {
 void
 dfs_unmount(struct gfs *gfs) {
     struct fs *fs = gfs->gfs_fs[0];
-    int i;
 
     close(gfs->gfs_fd);
     if (gfs->gfs_super != NULL) {
@@ -273,12 +265,8 @@ dfs_unmount(struct gfs *gfs) {
     }
     pthread_mutex_destroy(&gfs->gfs_lock);
     if (fs) {
-        dfs_removeFs(fs);
+        dfs_destroyFs(fs);
     }
-    for (i = 0; i < DFS_ICACHE_SIZE; i++) {
-        pthread_mutex_destroy(&gfs->gfs_icache[i].ic_lock);
-    }
-    free(gfs->gfs_icache);
     free(gfs->gfs_roots);
     free(gfs->gfs_fs);
     free(gfs);
