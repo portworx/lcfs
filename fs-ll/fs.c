@@ -2,11 +2,10 @@
 
 /* Allocate a new file system structure */
 struct fs *
-dfs_newFs(struct gfs *gfs, ino_t root, bool locks) {
+dfs_newFs(struct gfs *gfs, bool locks) {
     struct fs *fs = malloc(sizeof(struct fs));
 
     memset(fs, 0, sizeof(*fs));
-    fs->fs_root = root;
     fs->fs_gfs = gfs;
     if (locks) {
         fs->fs_rwlock = malloc(sizeof(pthread_rwlock_t));
@@ -235,7 +234,8 @@ dfs_mount(char *device, struct gfs **gfsp) {
     }
 
     /* Initialize a file system structure in memory */
-    fs = dfs_newFs(gfs, DFS_ROOT_INODE, false);
+    fs = dfs_newFs(gfs, false);
+    fs->fs_root = DFS_ROOT_INODE;
     gfs->gfs_fs[0] = fs;
     gfs->gfs_roots[0] = DFS_ROOT_INODE;
     err = dfs_readInodes(fs);

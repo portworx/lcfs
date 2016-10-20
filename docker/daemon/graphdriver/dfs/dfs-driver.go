@@ -10,7 +10,6 @@ import (
 
 	"github.com/docker/docker/daemon/graphdriver"
 	"github.com/docker/docker/pkg/idtools"
-	"github.com/docker/docker/pkg/mount"
 	"github.com/opencontainers/runc/libcontainer/label"
 )
 
@@ -73,7 +72,7 @@ func (d *Driver) GetMetadata(id string) (map[string]string, error) {
 
 // Cleanup unmounts the home directory.
 func (d *Driver) Cleanup() error {
-	return mount.Unmount(d.home)
+    return nil;
 }
 
 // CreateReadWrite creates a layer that is writable for use as a container
@@ -84,23 +83,11 @@ func (d *Driver) CreateReadWrite(id, parent, mountLabel string, storageOpt map[s
 
 // Create the filesystem with given id.
 func (d *Driver) Create(id, parent, mountLabel string, storageOpt map[string]string) error {
-	file := path.Join(d.home, id)
-	rootUID, rootGID, err := idtools.GetRootUIDGID(d.uidMaps, d.gidMaps)
-	if err != nil {
-		return err
-	}
-    err = idtools.MkdirAllAs(file, 0700, rootUID, rootGID)
-	if err != nil {
-		return err
-	}
-    if parent == "" {
-	    err = syscall.Setxattr(file, "/", []byte{}, 0)
-    } else {
-	    err = syscall.Setxattr(file, parent, []byte{}, 0)
-    }
+    err := syscall.Setxattr(d.home, id, []byte(parent), 0)
 	if err != nil {
 		return err
     }
+    file := path.Join(d.home, id)
 	return label.Relabel(file, mountLabel, false)
 }
 
@@ -116,15 +103,7 @@ func (d *Driver) setStorageSize(dir string, driver *Driver) error {
 
 // Remove the filesystem with given id.
 func (d *Driver) Remove(id string) error {
-	dir := path.Join(d.home, id)
-    err := syscall.Removexattr(dir, "/")
-	if err != nil {
-		return err
-    }
-    if err := os.Remove(dir); err != nil && !os.IsNotExist(err) {
-        return err
-    }
-	return nil
+    return syscall.Removexattr(d.home, id)
 }
 
 // Get the requested filesystem id.
@@ -144,10 +123,6 @@ func (d *Driver) Get(id, mountLabel string) (string, error) {
 
 // Put is not implemented for DFS as there is no cleanup required for the id.
 func (d *Driver) Put(id string) error {
-	// Get() creates no runtime resources (like e.g. mounts)
-	// so this doesn't need to do anything.
-	file := path.Join(d.home, id)
-	syscall.Listxattr(file, []byte{})
 	return nil
 }
 
