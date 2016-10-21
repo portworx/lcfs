@@ -10,7 +10,6 @@ import (
 
 	"github.com/docker/docker/daemon/graphdriver"
 	"github.com/docker/docker/pkg/idtools"
-	"github.com/docker/docker/pkg/mount"
 	"github.com/opencontainers/runc/libcontainer/label"
 )
 
@@ -73,7 +72,7 @@ func (d *Driver) GetMetadata(id string) (map[string]string, error) {
 
 // Cleanup unmounts the home directory.
 func (d *Driver) Cleanup() error {
-	return mount.Unmount(d.home)
+	return nil
 }
 
 // CreateReadWrite creates a layer that is writable for use as a container
@@ -144,10 +143,6 @@ func (d *Driver) Get(id, mountLabel string) (string, error) {
 
 // Put is not implemented for DFS as there is no cleanup required for the id.
 func (d *Driver) Put(id string) error {
-	// Get() creates no runtime resources (like e.g. mounts)
-	// so this doesn't need to do anything.
-	file := path.Join(d.home, id)
-	syscall.Listxattr(file, []byte{})
 	return nil
 }
 

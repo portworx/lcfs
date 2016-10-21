@@ -138,7 +138,7 @@ out:
 /* Remove a file system */
 void
 dfs_removeClone(fuse_req_t req, ino_t ino) {
-    struct fs *fs;
+    struct fs *fs = NULL;
     int err = 0;
     ino_t root;
 
@@ -178,6 +178,8 @@ dfs_removeClone(fuse_req_t req, ino_t ino) {
 
 out:
     fuse_reply_err(req, err);
-    dfs_destroyFs(fs);
+    if (fs) {
+        dfs_destroyFs(fs);
+    }
 }
 

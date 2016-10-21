@@ -73,7 +73,7 @@ dfs_lookupInode(struct fs *fs, ino_t ino) {
     if (ino == fs->fs_root) {
         return fs->fs_rootInode;
     }
-    if ((ino == gfs->gfs_snap_root) && gfs->gfs_snap_rootInode) {
+    if (ino == gfs->gfs_snap_root) {
         return gfs->gfs_snap_rootInode;
     }
     pthread_mutex_lock(&fs->fs_icache[hash].ic_lock);

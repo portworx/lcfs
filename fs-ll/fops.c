@@ -229,6 +229,7 @@ dfs_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
         dfs_unlock(fs);
         //dfs_reportError(__func__, __LINE__, 0, ENOENT);
         fuse_reply_err(req, ENOENT);
+        return;
     }
     memcpy(&stbuf, &inode->i_stat, sizeof(struct stat));
     parent = inode->i_parent;
@@ -358,14 +359,16 @@ dfs_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
         fuse_reply_err(req, err);
     } else {
         fuse_reply_entry(req, &e);
+
+        /* Remember the directory in which snapshots are created */
         if ((dfs_getInodeHandle(parent) == DFS_ROOT_INODE) &&
             (strcmp(name, "dfs") == 0)) {
             printf("snapshot root inode %ld\n", e.ino);
             gfs = getfs();
-            gfs->gfs_snap_root = e.ino;
             gfs->gfs_snap_rootInode = dfs_getInode(gfs->gfs_fs[0], e.ino,
                                                    NULL, false, false);
             dfs_inodeUnlock(gfs->gfs_snap_rootInode);
+            gfs->gfs_snap_root = e.ino;
         }
     }
 }
