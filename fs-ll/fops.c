@@ -18,7 +18,7 @@ dfs_epInit(struct fuse_entry_param *ep, bool ecache) {
 /* Create a new directory entry and associated inode */
 static int
 create(ino_t parent, const char *name, mode_t mode, uid_t uid, gid_t gid,
-       dev_t rdev, const char *target, bool open,
+       dev_t rdev, const char *target, struct fuse_file_info *fi,
        struct fuse_entry_param *ep) {
     struct inode *dir, *inode;
     struct fs *fs;
@@ -43,8 +43,9 @@ create(ino_t parent, const char *name, mode_t mode, uid_t uid, gid_t gid,
     }
     dfs_updateInodeTimes(dir, false, true, true);
     memcpy(&ep->attr, &inode->i_stat, sizeof(struct stat));
-    if (open) {
+    if (fi) {
         inode->i_ocount++;
+        fi->fh = (uint64_t)inode;
     }
     ecache = (inode->i_parent != fs->fs_gfs->gfs_snap_root);
     dfs_inodeUnlock(inode);
@@ -245,13 +246,14 @@ static void
 dfs_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
             int to_set, struct fuse_file_info *fi) {
     bool ctime = false, mtime = false, atime = false;
-    struct inode *inode;
+    struct inode *inode, *handle;
     struct stat stbuf;
     struct fs *fs;
 
     dfs_displayEntry(__func__, ino, 0, NULL);
     fs = dfs_getfs(ino, false);
-    inode = dfs_getInode(fs, ino, NULL, true, true);
+    handle = fi ? (struct inode *)fi->fh : NULL;
+    inode = dfs_getInode(fs, ino, handle, true, true);
     if (inode == NULL) {
         dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
@@ -336,7 +338,7 @@ dfs_mknod(fuse_req_t req, fuse_ino_t parent, const char *name,
 
     dfs_displayEntry(__func__, parent, 0, name);
     err = create(parent, name, mode & ~ctx->umask,
-                 ctx->uid, ctx->gid, rdev, NULL, false, &e);
+                 ctx->uid, ctx->gid, rdev, NULL, NULL, &e);
     if (err) {
         fuse_reply_err(req, err);
     } else {
@@ -354,7 +356,7 @@ dfs_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
 
     dfs_displayEntry(__func__, parent, 0, name);
     err = create(parent, name, S_IFDIR | (mode & ~ctx->umask),
-                 ctx->uid, ctx->gid, 0, NULL, false, &e);
+                 ctx->uid, ctx->gid, 0, NULL, NULL, &e);
     if (err) {
         fuse_reply_err(req, err);
     } else {
@@ -403,7 +405,7 @@ dfs_symlink(fuse_req_t req, const char *link, fuse_ino_t parent,
 
     dfs_displayEntry(__func__, parent, 0, name);
     err = create(parent, name, S_IFLNK | (0777 & ~ctx->umask),
-                 ctx->uid, ctx->gid, 0, link, false, &e);
+                 ctx->uid, ctx->gid, 0, link, NULL, &e);
     if (err) {
         fuse_reply_err(req, err);
     } else {
@@ -595,16 +597,10 @@ dfs_openInode(fuse_ino_t ino, struct fuse_file_info *fi) {
     /* Set up file handle if inode is shared with another file system.
      * Increment open count otherwise.
      */
-    if (!modify && !dfs_globalRoot(ino)) {
-        if (inode->i_fs != fs) {
-            fi->fh = (uint64_t)inode;
-        } else {
-            inode->i_ocount++;
-        }
-    } else {
-        assert(inode->i_fs == fs);
+    if (inode->i_fs == fs) {
         inode->i_ocount++;
     }
+    fi->fh = (uint64_t)inode;
     dfs_inodeUnlock(inode);
     dfs_unlock(fs);
     return 0;
@@ -699,19 +695,24 @@ dfs_releaseInode(fuse_ino_t ino, struct fuse_file_info *fi, bool *inval) {
     struct fs *fs;
 
     assert(fi);
-
-    /* If this is shared inode, nothing to do */
-    if (fi->fh) {
-        if (inval) {
-            *inval = true;
-        }
-        return 0;
-    }
     fs = dfs_getfs(ino, false);
-    inode = dfs_getInode(fs, ino, NULL, false, true);
-    if (inode == NULL) {
-        dfs_reportError(__func__, __LINE__, ino, ENOENT);
-        return ENOENT;
+    if (fi->fh) {
+        inode = (struct inode *)fi->fh;
+        if (inode->i_fs != fs) {
+            dfs_unlock(fs);
+            if (inval) {
+                *inval = true;
+            }
+            return 0;
+        }
+        dfs_inodeLock(inode, true);
+    } else {
+        inode = dfs_getInode(fs, ino, NULL, false, true);
+        if (inode == NULL) {
+            dfs_reportError(__func__, __LINE__, ino, ENOENT);
+            dfs_unlock(fs);
+            return ENOENT;
+        }
     }
     assert(inode->i_fs == fs);
     assert(inode->i_ocount > 0);
@@ -919,9 +920,8 @@ dfs_create(fuse_req_t req, fuse_ino_t parent, const char *name,
     int err;
 
     dfs_displayEntry(__func__, parent, 0, name);
-    fi->fh = 0;
     err = create(parent, name, S_IFREG | (mode & ~ctx->umask),
-                 ctx->uid, ctx->gid, 0, NULL, true, &e);
+                 ctx->uid, ctx->gid, 0, NULL, fi, &e);
     if (err) {
         fuse_reply_err(req, err);
     } else {
@@ -966,8 +966,8 @@ dfs_poll(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi,
 static void
 dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
               struct fuse_bufvec *bufv, off_t off, struct fuse_file_info *fi) {
+    struct inode *inode, *handle;
     struct fuse_bufvec *dst;
-    struct inode *inode;
     size_t size, wsize;
     off_t endoffset;
     struct fs *fs;
@@ -981,7 +981,8 @@ dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
     memset(dst, 0, wsize);
     endoffset = off + size;
     fs = dfs_getfs(ino, false);
-    inode = dfs_getInode(fs, ino, NULL, true, true);
+    handle = fi ? (struct inode *)fi->fh : NULL;
+    inode = dfs_getInode(fs, ino, handle, true, true);
     if (inode == NULL) {
         dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);

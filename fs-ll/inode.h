@@ -14,7 +14,8 @@
 struct icache {
 
     /* Lock protecting the hash chain */
-    pthread_mutex_t ic_lock;
+    /* XXX Not needed right now as inodes are not freed */
+    //pthread_mutex_t ic_lock;
 
     /* Inode hash chains */
     struct inode *ic_head;
