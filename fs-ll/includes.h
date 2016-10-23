@@ -38,17 +38,19 @@ int dfs_superWrite(struct gfs *gfs);
 struct fs *dfs_getfs(ino_t ino, bool exclusive);
 int dfs_getIndex(struct fs *nfs, ino_t parent, ino_t ino);
 void dfs_addfs(struct fs *fs, struct fs *snap);
-void dfs_removefs(struct fs *fs);
+void dfs_removefs(struct gfs *gfs, struct fs *fs);
+void dfs_removeSnap(struct gfs *gfs, struct fs *fs);
 void dfs_format(struct gfs *gfs, size_t size);
 void dfs_lock(struct fs *fs, bool exclusive);
 void dfs_unlock(struct fs *fs);
 int dfs_mount(char *device, struct gfs **gfsp);
 void dfs_unmount(struct gfs *gfs);
-struct fs *dfs_newFs(struct gfs *gfs, ino_t root, bool locks);
+struct fs *dfs_newFs(struct gfs *gfs, bool locks);
 void dfs_destroyFs(struct fs *fs);
 
 struct icache *dfs_icache_init();
 void dfs_icache_deinit(struct icache *icache);
+ino_t dfs_inodeAlloc(struct fs *fs);
 int dfs_readInodes(struct fs *fs);
 uint64_t dfs_destroyInodes(struct fs *fs);
 struct inode *dfs_getInode(struct fs *fs, ino_t ino, struct inode *handle,
@@ -64,6 +66,7 @@ void dfs_inodeUnlock(struct inode *inode);
 ino_t dfs_dirLookup(struct fs *fs, struct inode *dir, const char *name);
 void dfs_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name);
 void dfs_dirRemove(struct inode *dir, const char *name);
+void dfs_dirRemoveInode(struct inode *dir, ino_t ino);
 void dfs_dirRename(struct inode *dir, ino_t ino,
                    const char *name, const char *newname);
 void dfs_dirCopy(struct inode *inode, struct inode *dir);
@@ -88,7 +91,9 @@ void dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name);
 void dfs_xattrCopy(struct inode *inode, struct inode *parent);
 void dfs_xattrFree(struct inode *inode);
 
-int dfs_newClone(struct gfs *gfs, ino_t ino, const char *name);
-void dfs_removeClone(fuse_req_t req, ino_t ino);
+int dfs_newClone(struct gfs *gfs, const char *name, const char *parent,
+                 size_t size);
+void dfs_removeClone(fuse_req_t req, struct gfs *gfs,
+                     ino_t ino, const char *name);
 
 #endif

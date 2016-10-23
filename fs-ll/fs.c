@@ -2,11 +2,10 @@
 
 /* Allocate a new file system structure */
 struct fs *
-dfs_newFs(struct gfs *gfs, ino_t root, bool locks) {
+dfs_newFs(struct gfs *gfs, bool locks) {
     struct fs *fs = malloc(sizeof(struct fs));
 
     memset(fs, 0, sizeof(*fs));
-    fs->fs_root = root;
     fs->fs_gfs = gfs;
     if (locks) {
         fs->fs_rwlock = malloc(sizeof(pthread_rwlock_t));
@@ -134,11 +133,7 @@ dfs_addfs(struct fs *fs, struct fs *snap) {
 
 /* Remove a file system from the global list */
 void
-dfs_removefs(struct fs *fs) {
-    struct gfs *gfs = fs->fs_gfs;
-    struct fs *pfs, *nfs;
-
-    assert(pfs);
+dfs_removefs(struct gfs *gfs, struct fs *fs) {
     assert(fs->fs_snap == NULL);
     assert(fs->fs_gindex > 0);
     assert(fs->fs_gindex < DFS_FS_MAX);
@@ -149,8 +144,18 @@ dfs_removefs(struct fs *fs) {
         assert(gfs->gfs_scount > 0);
         gfs->gfs_scount--;
     }
+    pthread_mutex_unlock(&gfs->gfs_lock);
+}
 
-    /* Remove the file system from the snapshot list */
+/* Remove the file system from the snapshot list */
+void
+dfs_removeSnap(struct gfs *gfs, struct fs *fs) {
+    struct fs *pfs, *nfs;
+
+    assert(fs->fs_snap == NULL);
+    assert(fs->fs_gindex > 0);
+    assert(fs->fs_gindex < DFS_FS_MAX);
+    pthread_mutex_lock(&gfs->gfs_lock);
     pfs = fs->fs_parent;
     if (pfs && (pfs->fs_snap == fs)) {
         pfs->fs_snap = fs->fs_next;
@@ -235,7 +240,8 @@ dfs_mount(char *device, struct gfs **gfsp) {
     }
 
     /* Initialize a file system structure in memory */
-    fs = dfs_newFs(gfs, DFS_ROOT_INODE, false);
+    fs = dfs_newFs(gfs, false);
+    fs->fs_root = DFS_ROOT_INODE;
     gfs->gfs_fs[0] = fs;
     gfs->gfs_roots[0] = DFS_ROOT_INODE;
     err = dfs_readInodes(fs);

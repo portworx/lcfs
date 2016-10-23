@@ -2,110 +2,85 @@
 
 /* Create a new file system */
 int
-dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
-    bool base = strncmp(name, "/", 1) ? false : true;
-    struct fs *fs = NULL, *pfs = NULL, *nfs, *rfs;
-    struct inode *inode, *pdir;
-    ino_t root, pinum;
+dfs_newClone(struct gfs *gfs, const char *name, const char *parent,
+             size_t size) {
+    struct fs *fs = NULL, *pfs = NULL, *nfs, *rfs = NULL;
+    struct inode *dir, *pdir;
+    ino_t root, pinum = 0;
+    char pname[size + 1];
     int err = 0;
+    bool base;
 
-    root = dfs_getInodeHandle(ino);
-
-    /* Do not allow new file systems to be created on global root */
-    if (root <= DFS_ROOT_INODE) {
-        dfs_reportError(__func__, __LINE__, ino, EPERM);
-        return EPERM;
+    if (size) {
+        memcpy(pname, parent, size);
+        pname[size] = 0;
+        base = false;
+    } else {
+        base = true;
     }
     rfs = dfs_getfs(DFS_ROOT_INODE, false);
-
-    /* Do not allow nested file systems */
-    if (!dfs_globalRoot(ino)) {
-        err = EPERM;
-        dfs_reportError(__func__, __LINE__, ino, err);
-        goto out;
+    if (!base) {
+        /* Lookup parent directory in global root file system */
+        pdir = dfs_getInode(rfs, gfs->gfs_snap_root, NULL, false, false);
+        if (pdir == NULL) {
+            err = ENOENT;
+            dfs_reportError(__func__, __LINE__, gfs->gfs_snap_root, err);
+            goto out;
+        }
+        pinum = dfs_dirLookup(rfs, pdir, pname);
+        dfs_inodeUnlock(pdir);
+        if (pinum == DFS_INVALID_INODE) {
+            err = ENOENT;
+            dfs_reportError(__func__, __LINE__, gfs->gfs_snap_root, err);
+            goto out;
+        }
+        pinum = dfs_setHandle(dfs_getIndex(rfs, gfs->gfs_snap_root, pinum),
+                             pinum);
     }
 
-    /* Get the new root directory inode */
-    inode = dfs_getInode(rfs, ino, NULL, false, true);
-    if (inode == NULL) {
-        err = ENOENT;
-        dfs_reportError(__func__, __LINE__, ino, err);
-        goto out;
-    }
-
-    /* Do not allow creating file systems on non-directories or non-empty
-     * directories.  Also snapshots can be created in /dfs directory only.
-     */
-    if (!S_ISDIR(inode->i_stat.st_mode) || (inode->i_dirent != NULL) ||
-        (inode->i_parent != gfs->gfs_snap_root)) {
-        err = EINVAL;
-        dfs_reportError(__func__, __LINE__, ino, err);
-        goto out;
-    }
-    dfs_inodeUnlock(inode);
-    fs = dfs_newFs(gfs, root, true);
+    /* Create a new file system structure */
+    fs = dfs_newFs(gfs, true);
     dfs_lock(fs, true);
+
+    /* Allocate root inode and add to the directory */
+    root = dfs_inodeAlloc(rfs);
+    fs->fs_root = root;
+    err = dfs_readInodes(fs);
+    if (err != 0) {
+        dfs_reportError(__func__, __LINE__, root, err);
+        goto out;
+    }
     if (base) {
         fs->fs_ilock = malloc(sizeof(pthread_mutex_t));
         pthread_mutex_init(fs->fs_ilock, NULL);
         nfs = gfs->gfs_fs[0];
     } else {
 
-        /* Lookup parent directory in global root file system */
-        pdir = dfs_getInode(rfs, gfs->gfs_snap_root, NULL, false, true);
-        if (pdir == NULL) {
+        /* Get the root directory of the new file system */
+        dir = dfs_getInode(fs, root, NULL, false, true);
+        if (dir == NULL) {
             err = ENOENT;
-            dfs_reportError(__func__, __LINE__, gfs->gfs_snap_root, err);
+            dfs_reportError(__func__, __LINE__, root, err);
             goto out;
         }
 
-        /* Find parent file system root */
-        pinum = dfs_dirLookup(rfs, pdir, name);
-        dfs_inodeUnlock(pdir);
-        if (pinum == DFS_INVALID_INODE) {
-            err = ENOENT;
-            dfs_reportError(__func__, __LINE__, ino, err);
-            goto out;
-        }
-
-        /* Get the parent file system root directory from the parent file
-         * system.
-         */
-        pinum = dfs_setHandle(dfs_getIndex(rfs, gfs->gfs_snap_root, pinum),
-                             pinum);
+        /* Inode chain lock is shared with the parent */
         pfs = dfs_getfs(pinum, true);
         assert(pfs->fs_root == dfs_getInodeHandle(pinum));
-        fs->fs_parent = pfs;
-        fs->fs_ilock = pfs->fs_ilock;
-    }
-    err = dfs_readInodes(fs);
-    if (err != 0) {
-        dfs_reportError(__func__, __LINE__, ino, err);
-        goto out;
-    }
 
-    /* Check if this is a root file system or a snapshot/clone of another */
-    if (!base) {
-
-        /* Copy over root directory */
+        /* Copy the root directory of the parent file system */
         pdir = dfs_getInode(pfs, pfs->fs_root, NULL, false, false);
         if (pdir == NULL) {
+            dfs_inodeUnlock(dir);
             err = ENOENT;
             dfs_reportError(__func__, __LINE__, pfs->fs_root, err);
+            dfs_unlock(pfs);
             goto out;
         }
 
-        /* Get the root directory of the new file system */
-        inode = dfs_getInode(fs, root, NULL, false, true);
-        if (inode == NULL) {
-            dfs_inodeUnlock(pdir);
-            err = ENOENT;
-            dfs_reportError(__func__, __LINE__, ino, err);
-            goto out;
-        }
-        dfs_dirCopy(inode, pdir);
+        dfs_dirCopy(dir, pdir);
         dfs_inodeUnlock(pdir);
-        dfs_inodeUnlock(inode);
+        dfs_inodeUnlock(dir);
 
         /* Link this file system a snapshot of the parent */
         if (pfs->fs_snap != NULL) {
@@ -114,18 +89,33 @@ dfs_newClone(struct gfs *gfs, ino_t ino, const char *name) {
             pfs->fs_snap = fs;
             nfs = NULL;
         }
+        fs->fs_parent = pfs;
+        fs->fs_ilock = pfs->fs_ilock;
     }
 
     /* Add this file system to global list of file systems */
     dfs_addfs(fs, nfs);
-    dfs_printf("Created new FS %p, parent %ld root %ld index %d\n",
-               fs, pfs ? pfs->fs_root : -1, fs->fs_root, fs->fs_gindex);
-
-out:
-    dfs_unlock(rfs);
     if (pfs) {
         dfs_unlock(pfs);
     }
+
+    /* Add the new directory to the parent directory */
+    pdir = dfs_getInode(rfs, gfs->gfs_snap_root, NULL, false, true);
+    if (pdir == NULL) {
+        err = ENOENT;
+        dfs_reportError(__func__, __LINE__, gfs->gfs_snap_root, err);
+        goto out;
+    }
+    dfs_dirAdd(pdir, root, S_IFDIR, name);
+    pdir->i_stat.st_nlink++;
+    dfs_updateInodeTimes(pdir, false, true, true);
+    dfs_inodeUnlock(pdir);
+
+    dfs_printf("Created FS %p, parent %ld root %ld index %d name %s\n",
+               fs, pfs ? pfs->fs_root : -1, root, fs->fs_gindex, name);
+
+out:
+    dfs_unlock(rfs);
     if (fs) {
         dfs_unlock(fs);
         if (err) {
@@ -137,49 +127,83 @@ out:
 
 /* Remove a file system */
 void
-dfs_removeClone(fuse_req_t req, ino_t ino) {
-    struct fs *fs = NULL;
+dfs_removeClone(fuse_req_t req, struct gfs *gfs, ino_t ino, const char *name) {
+    struct fs *fs = NULL, *rfs;
+    struct inode *pdir;
     int err = 0;
     ino_t root;
 
-    root = dfs_getInodeHandle(ino);
-    if (root <= DFS_ROOT_INODE) {
-        dfs_reportError(__func__, __LINE__, ino, EPERM);
-        err = EPERM;
+    assert(ino == gfs->gfs_snap_root);
+    rfs = dfs_getfs(DFS_ROOT_INODE, false);
+    pdir = dfs_getInode(rfs, ino, NULL, false, false);
+    if (pdir == NULL) {
+        err = ENOENT;
+        dfs_reportError(__func__, __LINE__, ino, err);
         goto out;
     }
-
-    /* There should be a file system rooted on this directory */
-    fs = dfs_getfs(ino, true);
-    if (fs == NULL) {
-        dfs_unlock(fs);
-        dfs_reportError(__func__, __LINE__, ino, ENOENT);
+    root = dfs_dirLookup(rfs, pdir, name);
+    dfs_inodeUnlock(pdir);
+    if (root == DFS_INVALID_INODE) {
+        dfs_reportError(__func__, __LINE__, root, ENOENT);
         err = ENOENT;
         goto out;
     }
-    if (fs->fs_root != root) {
+    root = dfs_setHandle(dfs_getIndex(rfs, ino, root), root);
+
+    /* There should be a file system rooted on this directory */
+    fs = dfs_getfs(root, true);
+    if (fs == NULL) {
+        dfs_reportError(__func__, __LINE__, root, ENOENT);
+        err = ENOENT;
+        goto out;
+    }
+    if (fs->fs_root != dfs_getInodeHandle(root)) {
         dfs_unlock(fs);
-        dfs_reportError(__func__, __LINE__, ino, EINVAL);
+        dfs_reportError(__func__, __LINE__, root, EINVAL);
         err = EINVAL;
         goto out;
     }
     if (fs->fs_snap) {
         dfs_unlock(fs);
-        dfs_reportError(__func__, __LINE__, ino, EEXIST);
+        dfs_reportError(__func__, __LINE__, root, EEXIST);
         err = EEXIST;
         goto out;
     }
-    dfs_printf("Removing file system with root inode %ld index %d, fs %p\n",
-               root, fs->fs_gindex, fs);
+    dfs_printf("Removing FS %p, parent %ld root %ld index %d name %s\n",
+               fs, fs->fs_parent ? fs->fs_parent->fs_root : - 1,
+               fs->fs_root, fs->fs_gindex, name);
 
-    /* Remove the file system from the global list */
-    dfs_removefs(fs);
-    dfs_unlock(fs);
+    /* Remove the file system from the snapshot chain */
+    dfs_removeSnap(gfs, fs);
+
+    /* Remove the root directory */
+    pdir = dfs_getInode(rfs, ino, NULL, false, true);
+    if (pdir == NULL) {
+        err = ENOENT;
+        dfs_reportError(__func__, __LINE__, ino, err);
+        goto out;
+    }
+    dfs_dirRemoveInode(pdir, fs->fs_root);
+    assert(pdir->i_stat.st_nlink > 2);
+    pdir->i_stat.st_nlink--;
+    dfs_updateInodeTimes(pdir, false, true, true);
+    dfs_inodeUnlock(pdir);
 
 out:
+    dfs_unlock(rfs);
     fuse_reply_err(req, err);
     if (fs) {
-        dfs_destroyFs(fs);
+
+        /* Remove the file system from the global list and notify VFS layer */
+        if (!err) {
+            fuse_lowlevel_notify_delete(gfs->gfs_ch, ino, root, name,
+                                        strlen(name));
+            dfs_removefs(gfs, fs);
+        }
+        dfs_unlock(fs);
+        if (!err) {
+            dfs_destroyFs(fs);
+        }
     }
 }
 

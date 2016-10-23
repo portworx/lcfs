@@ -83,23 +83,11 @@ func (d *Driver) CreateReadWrite(id, parent, mountLabel string, storageOpt map[s
 
 // Create the filesystem with given id.
 func (d *Driver) Create(id, parent, mountLabel string, storageOpt map[string]string) error {
-	file := path.Join(d.home, id)
-	rootUID, rootGID, err := idtools.GetRootUIDGID(d.uidMaps, d.gidMaps)
-	if err != nil {
-		return err
-	}
-    err = idtools.MkdirAllAs(file, 0700, rootUID, rootGID)
-	if err != nil {
-		return err
-	}
-    if parent == "" {
-	    err = syscall.Setxattr(file, "/", []byte{}, 0)
-    } else {
-	    err = syscall.Setxattr(file, parent, []byte{}, 0)
-    }
+    err := syscall.Setxattr(d.home, id, []byte(parent), 0)
 	if err != nil {
 		return err
     }
+    file := path.Join(d.home, id)
 	return label.Relabel(file, mountLabel, false)
 }
 
@@ -115,15 +103,7 @@ func (d *Driver) setStorageSize(dir string, driver *Driver) error {
 
 // Remove the filesystem with given id.
 func (d *Driver) Remove(id string) error {
-	dir := path.Join(d.home, id)
-    err := syscall.Removexattr(dir, "/")
-	if err != nil {
-		return err
-    }
-    if err := os.Remove(dir); err != nil && !os.IsNotExist(err) {
-        return err
-    }
-	return nil
+    return syscall.Removexattr(d.home, id)
 }
 
 // Get the requested filesystem id.

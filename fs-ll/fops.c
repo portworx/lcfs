@@ -4,15 +4,14 @@
 /* XXX Do we need to track lookup counts and forget? */
 
 /* Initialize default values in fuse_entry_param structure.
- * Do not cache file system root inodes while layers are being added.
  */
 static void
-dfs_epInit(struct fuse_entry_param *ep, bool ecache) {
+dfs_epInit(struct fuse_entry_param *ep) {
     assert(ep->ino > DFS_ROOT_INODE);
     ep->attr.st_ino = ep->ino;
     ep->generation = 1;
     ep->attr_timeout = 1.0;
-    ep->entry_timeout = ecache ? 1.0 : 0;
+    ep->entry_timeout = 1.0;
 }
 
 /* Create a new directory entry and associated inode */
@@ -22,7 +21,6 @@ create(ino_t parent, const char *name, mode_t mode, uid_t uid, gid_t gid,
        struct fuse_entry_param *ep) {
     struct inode *dir, *inode;
     struct fs *fs;
-    bool ecache;
     ino_t ino;
 
     fs = dfs_getfs(parent, false);
@@ -47,12 +45,11 @@ create(ino_t parent, const char *name, mode_t mode, uid_t uid, gid_t gid,
         inode->i_ocount++;
         fi->fh = (uint64_t)inode;
     }
-    ecache = (inode->i_parent != fs->fs_gfs->gfs_snap_root);
     dfs_inodeUnlock(inode);
     dfs_inodeUnlock(dir);
     ep->ino = dfs_setHandle(fs->fs_gindex, ino);
     dfs_unlock(fs);
-    dfs_epInit(ep, ecache);
+    dfs_epInit(ep);
     return 0;
 }
 
@@ -117,8 +114,10 @@ dremove(struct fs *fs, struct inode *dir, const char *name,
 
 out:
     dfs_dirRemove(dir, name);
-    dfs_updateInodeTimes(dir, false, false, true);
-    dfs_inodeUnlock(inode);
+    if (inode) {
+        dfs_updateInodeTimes(dir, false, false, true);
+        dfs_inodeUnlock(inode);
+    }
     return err;
 }
 
@@ -145,6 +144,8 @@ dfs_remove(ino_t parent, const char *name, bool rmdir) {
         err = ESTALE;
     } else {
         if (rmdir) {
+
+            /* Do not allow removing a snapshot root */
             gindex = dfs_getIndex(fs, parent, ino);
             if (gindex != fs->fs_gindex) {
                 dfs_reportError(__func__, __LINE__, parent, EEXIST);
@@ -165,8 +166,8 @@ static void
 dfs_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
     struct fuse_entry_param ep;
     struct inode *inode, *dir;
-    struct fs *fs;
-    bool ecache;
+    struct fs *fs, *nfs = NULL;
+    int gindex;
     ino_t ino;
 
     dfs_displayEntry(__func__, parent, 0, name);
@@ -189,19 +190,34 @@ dfs_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
         fuse_reply_entry(req, &ep);
         return;
     }
-    inode = dfs_getInode(fs, ino, NULL, false, false);
+
+    /* Check if looking up a snapshot root */
+    if (parent == fs->fs_gfs->gfs_snap_root) {
+        gindex = dfs_getIndex(fs, parent, ino);
+        if (fs->fs_gindex != gindex) {
+            nfs = dfs_getfs(dfs_setHandle(gindex, ino), false);
+        }
+    } else {
+        gindex = fs->fs_gindex;
+    }
+    inode = dfs_getInode(nfs ? nfs : fs, ino, NULL, false, false);
     dfs_inodeUnlock(dir);
     if (inode == NULL) {
-        fuse_reply_err(req, ENOENT);
         dfs_unlock(fs);
+        if (nfs) {
+            dfs_unlock(nfs);
+        }
+        dfs_reportError(__func__, __LINE__, ino, ENOENT);
+        fuse_reply_err(req, ENOENT);
     } else {
         memcpy(&ep.attr, &inode->i_stat, sizeof(struct stat));
         dfs_inodeUnlock(inode);
-        ep.ino = dfs_setHandle(dfs_getIndex(fs, parent, ino), ino);
-        ecache = (parent != fs->fs_gfs->gfs_snap_root) ||
-                 !dfs_globalRoot(ep.ino);
+        if (nfs) {
+            dfs_unlock(nfs);
+        }
+        ep.ino = dfs_setHandle(gindex, ino);
         dfs_unlock(fs);
-        dfs_epInit(&ep, ecache);
+        dfs_epInit(&ep);
         fuse_reply_entry(req, &ep);
     }
 }
@@ -228,7 +244,7 @@ dfs_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     inode = dfs_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
         dfs_unlock(fs);
-        //dfs_reportError(__func__, __LINE__, 0, ENOENT);
+        dfs_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         return;
     }
@@ -565,7 +581,7 @@ dfs_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
     dfs_inodeUnlock(inode);
     ep.ino = dfs_setHandle(fs->fs_gindex, ino);
     dfs_unlock(fs);
-    dfs_epInit(&ep, true);
+    dfs_epInit(&ep);
     fuse_reply_entry(req, &ep);
 }
 
