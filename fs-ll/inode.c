@@ -219,6 +219,8 @@ dfs_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
         memcpy(inode->i_target, target, len);
         inode->i_target[len] = 0;
     }
+    inode->i_parent = (parent->i_parent == parent->i_fs->fs_root) ?
+                      fs->fs_root : parent->i_parent;
     dfs_xattrCopy(inode, parent);
     dfs_addInode(fs, inode);
     return inode;

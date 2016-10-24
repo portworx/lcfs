@@ -12,6 +12,35 @@ getfs() {
     return gfs;
 }
 
+/* Process fuse requests */
+static int
+dfs_loop(struct fuse_session *se, bool daemon) {
+    int err = -1;
+    pid_t pid;
+    int fd;
+
+    /* Detach from the terminal */
+    if (daemon) {
+        pid = fork();
+        if (pid > 0) {
+            exit(0);
+        }
+        setsid();
+        chdir("/");
+        fd = open("/dev/null", O_RDWR);
+        dup2(fd, STDIN_FILENO);
+        dup2(fd, STDOUT_FILENO);
+        dup2(fd, STDERR_FILENO);
+    }
+    if (fuse_set_signal_handlers(se) != -1) {
+        fuse_session_add_chan(se, gfs->gfs_ch);
+        err = fuse_session_loop_mt(se);
+        fuse_remove_signal_handlers(se);
+        fuse_session_remove_chan(gfs->gfs_ch);
+    }
+    return err;
+}
+
 /* Mount the specified device and start serving requests */
 int
 main(int argc, char *argv[]) {
@@ -19,6 +48,7 @@ main(int argc, char *argv[]) {
     char *mountpoint;
     char *arg[ARGC];
     int err = -1;
+    bool daemon;
 
     if (argc != 3) {
         printf("%s: device mnt\n", argv[0]);
@@ -40,6 +70,9 @@ main(int argc, char *argv[]) {
             argv[1]);
     if (ARGC >= 5) {
         arg[4] = "-d";
+        daemon = false;
+    } else {
+        daemon = true;
     }
 
     struct fuse_args args = FUSE_ARGS_INIT(ARGC, arg);
@@ -48,13 +81,7 @@ main(int argc, char *argv[]) {
         se = fuse_lowlevel_new(&args, &dfs_ll_oper,
                                sizeof(dfs_ll_oper), gfs);
         if (se) {
-            if (fuse_set_signal_handlers(se) != -1) {
-                fuse_session_add_chan(se, gfs->gfs_ch);
-                err = fuse_session_loop_mt(se);
-                //err = fuse_session_loop(se);
-                fuse_remove_signal_handlers(se);
-                fuse_session_remove_chan(gfs->gfs_ch);
-            }
+            err = dfs_loop(se, daemon);
             fuse_session_destroy(se);
         }
         fuse_unmount(mountpoint, gfs->gfs_ch);

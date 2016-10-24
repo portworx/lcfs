@@ -11,6 +11,7 @@ dfs_newClone(struct gfs *gfs, const char *name, const char *parent,
     int err = 0;
     bool base;
 
+    /* Check if parent is specified */
     if (size) {
         memcpy(pname, parent, size);
         pname[size] = 0;
@@ -43,7 +44,7 @@ dfs_newClone(struct gfs *gfs, const char *name, const char *parent,
     dfs_lock(fs, true);
 
     /* Allocate root inode and add to the directory */
-    root = dfs_inodeAlloc(rfs);
+    root = dfs_inodeAlloc(fs);
     fs->fs_root = root;
     err = dfs_readInodes(fs);
     if (err != 0) {
@@ -53,7 +54,7 @@ dfs_newClone(struct gfs *gfs, const char *name, const char *parent,
     if (base) {
         fs->fs_ilock = malloc(sizeof(pthread_mutex_t));
         pthread_mutex_init(fs->fs_ilock, NULL);
-        nfs = gfs->gfs_fs[0];
+        nfs = dfs_getGlobalFs(gfs);
     } else {
 
         /* Get the root directory of the new file system */
@@ -133,8 +134,10 @@ dfs_removeClone(fuse_req_t req, struct gfs *gfs, ino_t ino, const char *name) {
     int err = 0;
     ino_t root;
 
+    /* Find the inode in snapshot directory */
     assert(ino == gfs->gfs_snap_root);
     rfs = dfs_getfs(DFS_ROOT_INODE, false);
+    dfs_setupSpecialDir(gfs, rfs);
     pdir = dfs_getInode(rfs, ino, NULL, false, false);
     if (pdir == NULL) {
         err = ENOENT;

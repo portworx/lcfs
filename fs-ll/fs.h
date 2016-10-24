@@ -12,8 +12,20 @@ struct gfs {
     /* File system super block */
     struct super *gfs_super;
 
-    /* Directory inode on which snapshot roots are placed */
+    /* Directory inode in which snapshot roots are placed (/dfs) */
     ino_t gfs_snap_root;
+
+    /* Directory inode for /tmp */
+    ino_t gfs_tmp_root;
+
+    /* Directory inode for /containers */
+    ino_t gfs_containers_root;
+
+    /* Directory inode for /image/dfs/layerdb/mounts */
+    ino_t gfs_mounts_root;
+
+    /* Directory inode for /image/dfs/layerdb/sha256 */
+    ino_t gfs_sha256_root;
 
     /* Inode mapping to gfs_snap_root */
     struct inode *gfs_snap_rootInode;
@@ -80,6 +92,15 @@ struct fs {
 static inline bool
 dfs_globalRoot(ino_t ino) {
     return dfs_getFsHandle(ino) == 0;
+}
+
+/* Return global file system */
+static inline struct fs *
+dfs_getGlobalFs(struct gfs *gfs) {
+    struct fs *fs = gfs->gfs_fs[0];
+
+    assert(fs->fs_root == DFS_ROOT_INODE);
+    return fs;
 }
 
 #endif

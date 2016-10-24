@@ -57,20 +57,6 @@ dfs_unlock(struct fs *fs) {
     }
 }
 
-/* Check if the specified inode is a root of a file system */
-static int
-dfs_checkRoot(struct gfs *gfs, ino_t ino, int index) {
-    ino_t root = dfs_getInodeHandle(ino);
-    int i;
-
-    for (i = 0; i <= gfs->gfs_scount; i++) {
-        if (gfs->gfs_roots[i] == root) {
-            return i;
-        }
-    }
-    return index;
-}
-
 /* Check if the specified inode is a root of a file system and if so, return
  * the index of the new file system. Otherwise, return the index of current
  * file system.
@@ -78,12 +64,18 @@ dfs_checkRoot(struct gfs *gfs, ino_t ino, int index) {
 int
 dfs_getIndex(struct fs *nfs, ino_t parent, ino_t ino) {
     struct gfs *gfs = nfs->fs_gfs;
-    int gindex = nfs->fs_gindex;
+    int i, gindex = nfs->fs_gindex;
+    ino_t root;
 
     /* Snapshots are allowed in one directory right now */
     if ((gindex == 0) && gfs->gfs_scount && (parent == gfs->gfs_snap_root)) {
+        root = dfs_getInodeHandle(ino);
         assert(dfs_globalRoot(ino));
-        gindex = dfs_checkRoot(gfs, ino, gindex);
+        for (i = 1; i <= gfs->gfs_scount; i++) {
+            if (gfs->gfs_roots[i] == root) {
+                return i;
+            }
+        }
     }
     return gindex;
 }
@@ -110,7 +102,7 @@ dfs_addfs(struct fs *fs, struct fs *snap) {
     int i;
 
     pthread_mutex_lock(&gfs->gfs_lock);
-    for (i = 0; i < DFS_FS_MAX; i++) {
+    for (i = 1; i < DFS_FS_MAX; i++) {
         if (gfs->gfs_fs[i] == NULL) {
             fs->fs_gindex = i;
             gfs->gfs_fs[i] = fs;
@@ -160,11 +152,7 @@ dfs_removeSnap(struct gfs *gfs, struct fs *fs) {
     if (pfs && (pfs->fs_snap == fs)) {
         pfs->fs_snap = fs->fs_next;
     } else {
-        if (pfs) {
-            nfs = pfs->fs_snap;
-        } else {
-            nfs = gfs->gfs_fs[0];
-        }
+        nfs = pfs ? pfs->fs_snap : dfs_getGlobalFs(gfs);
         while (nfs) {
             if (nfs->fs_next == fs) {
                 nfs->fs_next = fs->fs_next;
@@ -174,6 +162,56 @@ dfs_removeSnap(struct gfs *gfs, struct fs *fs) {
         }
     }
     pthread_mutex_unlock(&gfs->gfs_lock);
+}
+
+/* Find out inode numbers for "image/dfs/layerdb/mounts" and
+ * "image/dfs/layerdb/sha256" directories.
+ */
+void
+dfs_setupSpecialDir(struct gfs *gfs, struct fs *fs) {
+    struct inode *inode;
+    ino_t inum;
+    int i;
+
+    if (gfs->gfs_mounts_root && gfs->gfs_sha256_root) {
+        return;
+    }
+
+    char *path[] = {"image", "dfs", "layerdb"};
+    inum = DFS_ROOT_INODE;
+    for (i = 0; i < 3; i++) {
+        inode = dfs_getInode(fs, inum, NULL, false, false);
+        if (inode == NULL) {
+            dfs_reportError(__func__, __LINE__, inum, ENOENT);
+            return;
+        }
+        inum = dfs_dirLookup(fs, inode, path[i]);
+        dfs_inodeUnlock(inode);
+        if (inum == DFS_INVALID_INODE) {
+            dfs_reportError(__func__, __LINE__, inum, ENOENT);
+            return;
+        }
+    }
+    inode = dfs_getInode(fs, inum, NULL, false, false);
+    if (inode == NULL) {
+        dfs_reportError(__func__, __LINE__, inum, ENOENT);
+        return;
+    }
+    inum = dfs_dirLookup(fs, inode, "mounts");
+    if (inum != DFS_INVALID_INODE) {
+        gfs->gfs_mounts_root = inum;
+        printf("mounts directory is %ld\n", inum);
+    } else {
+        dfs_reportError(__func__, __LINE__, inum, ENOENT);
+    }
+    inum = dfs_dirLookup(fs, inode, "sha256");
+    if (inum != DFS_INVALID_INODE) {
+        gfs->gfs_sha256_root = inum;
+        printf("sha256 directory is %ld\n", inum);
+    } else {
+        dfs_reportError(__func__, __LINE__, inum, ENOENT);
+    }
+    dfs_inodeUnlock(inode);
 }
 
 /* Format a file system by initializing its super block */
@@ -263,7 +301,7 @@ dfs_mount(char *device, struct gfs **gfsp) {
 /* Free the global file system as part of unmount */
 void
 dfs_unmount(struct gfs *gfs) {
-    struct fs *fs = gfs->gfs_fs[0];
+    struct fs *fs = dfs_getGlobalFs(gfs);
 
     close(gfs->gfs_fd);
     if (gfs->gfs_super != NULL) {

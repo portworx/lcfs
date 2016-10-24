@@ -74,6 +74,8 @@ int
 dremove(struct fs *fs, struct inode *dir, const char *name,
         ino_t ino, bool rmdir) {
     struct inode * inode = dfs_getInode(fs, ino, NULL, true, true);
+    struct gfs *gfs;
+    ino_t parent;
     int err = 0;
 
     if (inode == NULL) {
@@ -84,13 +86,21 @@ dremove(struct fs *fs, struct inode *dir, const char *name,
     assert(inode->i_stat.st_nlink);
     if (rmdir) {
         assert(dir->i_stat.st_nlink > 2);
+        parent =  dir->i_stat.st_ino;
+        assert(inode->i_parent == parent);
+        gfs = fs->fs_gfs;
 
-        /* XXX Allow docker to remove some special directories while not empty */
-#if 0
-        if ((inode->i_dirent != NULL) && dfs_globalRoot(ino)) {
+        /* Allow docker to remove some special directories while not empty */
+        if ((inode->i_dirent != NULL) &&
+            (dir->i_removed || (gfs->gfs_containers_root == parent) ||
+             (gfs->gfs_tmp_root == parent) ||
+             (gfs->gfs_mounts_root == parent) ||
+             (gfs->gfs_sha256_root == parent))) {
             dfs_removeTree(fs, inode);
+            /* XXX Does VFS deal with invalidating the entries under this
+             * directory?
+             */
         }
-#endif
         if (inode->i_dirent != NULL) {
             dfs_inodeUnlock(inode);
             //dfs_reportError(__func__, __LINE__, ino, EEXIST);
@@ -124,9 +134,9 @@ out:
 /* Remove a directory entry */
 static int
 dfs_remove(ino_t parent, const char *name, bool rmdir) {
-    int gindex, err = 0;
     struct inode *dir;
     struct fs *fs;
+    int err = 0;
     ino_t ino;
 
     fs = dfs_getfs(parent, false);
@@ -143,11 +153,10 @@ dfs_remove(ino_t parent, const char *name, bool rmdir) {
         dfs_reportError(__func__, __LINE__, parent, ESTALE);
         err = ESTALE;
     } else {
-        if (rmdir) {
+        if (rmdir && (fs->fs_gindex == 0)) {
 
             /* Do not allow removing a snapshot root */
-            gindex = dfs_getIndex(fs, parent, ino);
-            if (gindex != fs->fs_gindex) {
+            if (dfs_getIndex(fs, parent, ino)) {
                 dfs_reportError(__func__, __LINE__, parent, EEXIST);
                 err = EEXIST;
             }
@@ -368,6 +377,7 @@ dfs_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
     const struct fuse_ctx *ctx = fuse_req_ctx(req);
     struct fuse_entry_param e;
     struct gfs *gfs;
+    bool global;
     int err;
 
     dfs_displayEntry(__func__, parent, 0, name);
@@ -378,15 +388,19 @@ dfs_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
     } else {
         fuse_reply_entry(req, &e);
 
-        /* Remember the directory in which snapshots are created */
-        if ((dfs_getInodeHandle(parent) == DFS_ROOT_INODE) &&
-            (strcmp(name, "dfs") == 0)) {
+        /* Remember some special directories created */
+        gfs = getfs();
+        global = dfs_getInodeHandle(parent) == DFS_ROOT_INODE;
+        if (global && (strcmp(name, "dfs") == 0)) {
             printf("snapshot root inode %ld\n", e.ino);
-            gfs = getfs();
             gfs->gfs_snap_rootInode = dfs_getInode(gfs->gfs_fs[0], e.ino,
                                                    NULL, false, false);
             dfs_inodeUnlock(gfs->gfs_snap_rootInode);
             gfs->gfs_snap_root = e.ino;
+        } else if (global && (strcmp(name, "containers") == 0)) {
+            gfs->gfs_containers_root = e.ino;
+        } else if (global && (strcmp(name, "tmp") == 0)) {
+            gfs->gfs_tmp_root = e.ino;
         }
     }
 }
@@ -439,15 +453,6 @@ dfs_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
 
     dfs_displayEntry(__func__, parent, newparent, name);
     fs = dfs_getfs(parent, false);
-
-    /* Do not allow moving across file systems */
-    if ((parent != newparent) &&
-        (fs->fs_gindex != dfs_getIndex(fs, newparent, newparent))) {
-        dfs_unlock(fs);
-        dfs_reportError(__func__, __LINE__, newparent, EXDEV);
-        fuse_reply_err(req, EXDEV);
-        return;
-    }
 
     /* Follow some locking order while locking the directories */
     if (parent > newparent) {
@@ -546,14 +551,6 @@ dfs_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
 
     dfs_displayEntry(__func__, newparent, ino, newname);
     fs = dfs_getfs(ino, false);
-
-    /* Do not allow linking across file systems */
-    if (fs->fs_gindex != dfs_getIndex(fs, newparent, newparent)) {
-        dfs_unlock(fs);
-        dfs_reportError(__func__, __LINE__, newparent, EXDEV);
-        fuse_reply_err(req, EXDEV);
-        return;
-    }
     dir = dfs_getInode(fs, newparent, NULL, true, true);
     if (dir == NULL) {
         dfs_unlock(fs);

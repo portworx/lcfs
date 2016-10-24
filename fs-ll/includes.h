@@ -37,6 +37,7 @@ int dfs_superWrite(struct gfs *gfs);
 
 struct fs *dfs_getfs(ino_t ino, bool exclusive);
 int dfs_getIndex(struct fs *nfs, ino_t parent, ino_t ino);
+void dfs_setupSpecialDir(struct gfs *gfs, struct fs *fs);
 void dfs_addfs(struct fs *fs, struct fs *snap);
 void dfs_removefs(struct gfs *gfs, struct fs *fs);
 void dfs_removeSnap(struct gfs *gfs, struct fs *fs);
