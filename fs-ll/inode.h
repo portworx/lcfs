@@ -14,8 +14,7 @@
 struct icache {
 
     /* Lock protecting the hash chain */
-    /* XXX Not needed right now as inodes are not freed */
-    //pthread_mutex_t ic_lock;
+    pthread_mutex_t ic_lock;
 
     /* Inode hash chains */
     struct inode *ic_head;
@@ -102,6 +101,10 @@ struct inode {
 
     /* Set if page list if shared between inodes in a snapshot chain */
     bool i_shared;
+
+    /* Set if pages can be cached in kernel */
+    bool i_pcache;
+
 }  __attribute__((packed));
 
 /* XXX Replace ino_t with fuse_ino_t */
@@ -116,8 +119,8 @@ dfs_setHandle(uint64_t gindex, ino_t ino) {
 
 /* Get the file system id from the file handle */
 static inline uint64_t
-dfs_getFsHandle(uint64_t fh) {
-    int gindex = fh >> 32;
+dfs_getFsHandle(uint64_t handle) {
+    int gindex = handle >> 32;
 
     assert(gindex < DFS_FS_MAX);
     return gindex;
@@ -125,11 +128,18 @@ dfs_getFsHandle(uint64_t fh) {
 
 /* Get inode number corresponding to the file handle */
 static inline ino_t
-dfs_getInodeHandle(uint64_t fh) {
-    if (fh <= DFS_ROOT_INODE) {
+dfs_getInodeHandle(uint64_t handle) {
+    if (handle <= DFS_ROOT_INODE) {
         return DFS_ROOT_INODE;
     }
-    return fh & 0xFFFFFFFF;
+    return handle & 0xFFFFFFFF;
+}
+
+/* kernel page cache to be kept or not */
+static inline bool
+dfs_keepcache(struct fs *fs, struct inode *inode) {
+    return dfs_globalRoot(inode->i_stat.st_ino) ||
+           (inode->i_pcache && (fs->fs_snap == NULL));
 }
 
 #endif

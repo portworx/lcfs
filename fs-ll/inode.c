@@ -3,22 +3,19 @@
 /* Given an inode number, return the hash index */
 static inline int
 dfs_inodeHash(ino_t ino) {
-    return ino / DFS_ICACHE_SIZE;
+    return ino % DFS_ICACHE_SIZE;
 }
 
 /* Allocate and initialize inode hash table */
 struct icache *
 dfs_icache_init() {
-    struct icache * icache = malloc(sizeof(struct icache) * DFS_ICACHE_SIZE);
-    /*
+    struct icache *icache = malloc(sizeof(struct icache) * DFS_ICACHE_SIZE);
     int i;
 
     for (i = 0; i < DFS_ICACHE_SIZE; i++) {
         pthread_mutex_init(&icache[i].ic_lock, NULL);
         icache[i].ic_head = NULL;
     }
-    */
-    memset(icache, 0, sizeof(struct icache) * DFS_ICACHE_SIZE);
     return icache;
 }
 
@@ -55,11 +52,10 @@ dfs_addInode(struct fs *fs, struct inode *inode) {
     int hash = dfs_inodeHash(inode->i_stat.st_ino);
 
     /* Add the inode to the hash list */
-    /* XXX Have a separate lock for each hash list */
-    //pthread_mutex_lock(&fs->fs_icache[hash].ic_lock);
+    pthread_mutex_lock(&fs->fs_icache[hash].ic_lock);
     inode->i_cnext = fs->fs_icache[hash].ic_head;
     fs->fs_icache[hash].ic_head = inode;
-    //pthread_mutex_unlock(&fs->fs_icache[hash].ic_lock);
+    pthread_mutex_unlock(&fs->fs_icache[hash].ic_lock);
     inode->i_fs = fs;
 }
 
@@ -79,6 +75,7 @@ dfs_lookupInode(struct fs *fs, ino_t ino) {
     if (ino == gfs->gfs_snap_root) {
         return gfs->gfs_snap_rootInode;
     }
+    /* XXX Locking not needed right now, as inodes are not removed */
     //pthread_mutex_lock(&fs->fs_icache[hash].ic_lock);
     inode = fs->fs_icache[hash].ic_head;
     while (inode) {
@@ -139,6 +136,8 @@ dfs_freeInode(struct inode *inode) {
     uint64_t count = 0;
 
     /* Take the inode off the hash list */
+    /* XXX Lock is not needed as the file system is locked for exclusive access
+     */
     //pthread_mutex_lock(&fs->fs_icache[hash].ic_lock);
     pinode = fs->fs_icache[hash].ic_head;
     if (pinode == inode) {
@@ -164,6 +163,34 @@ dfs_freeInode(struct inode *inode) {
     return count;
 }
 
+/* Invalidate kernel page cache for a file system */
+void
+dfs_invalidate_pcache(struct gfs *gfs, struct fs *fs) {
+    int gindex = fs->fs_gindex;
+    struct inode *inode;
+    int i;
+
+    for (i = 0; i < DFS_ICACHE_SIZE; i++) {
+        inode = fs->fs_icache[i].ic_head;
+        if (inode == NULL) {
+            continue;
+        }
+        /* XXX Locking not needed right now, as inodes are not removed */
+        //pthread_mutex_lock(&fs->fs_icache[i].ic_lock);
+        while (inode) {
+            assert(inode->i_fs == fs);
+            if (inode->i_pcache && !inode->i_removed && inode->i_page) {
+                fuse_lowlevel_notify_inval_inode(gfs->gfs_ch,
+                                                 dfs_setHandle(gindex,
+                                                         inode->i_stat.st_ino),
+                                                         0, -1);
+            }
+            inode = inode->i_cnext;
+        }
+        //pthread_mutex_unlock(&fs->fs_icache[i].ic_lock);
+    }
+}
+
 /* Destroy inodes belong to a file system */
 uint64_t
 dfs_destroyInodes(struct fs *fs) {
@@ -179,8 +206,9 @@ dfs_destroyInodes(struct fs *fs) {
             count += dfs_freeInode(tmp);
             icount++;
         }
-        //pthread_mutex_destroy(&fs->fs_icache[i].ic_lock);
+        pthread_mutex_destroy(&fs->fs_icache[i].ic_lock);
     }
+    /* XXX reuse this cache for another file system */
     free(fs->fs_icache);
     if (icount) {
         __sync_sub_and_fetch(&fs->fs_gfs->gfs_ninode, icount);
@@ -205,6 +233,8 @@ dfs_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
             inode->i_page = parent->i_page;
             inode->i_pcount = parent->i_pcount;
             inode->i_shared = true;
+        } else {
+            inode->i_pcache = true;
         }
     } else if (S_ISDIR(inode->i_stat.st_mode)) {
 
@@ -316,12 +346,13 @@ dfs_inodeInit(struct fs *fs, mode_t mode, uid_t uid, gid_t gid,
     inode = dfs_newInode(fs);
     inode->i_stat.st_ino = ino;
     inode->i_stat.st_mode = mode;
-    inode->i_stat.st_nlink = (mode & S_IFDIR) ? 2 : 1;
+    inode->i_stat.st_nlink = S_ISDIR(mode) ? 2 : 1;
     inode->i_stat.st_uid = uid;
     inode->i_stat.st_gid = gid;
     inode->i_stat.st_rdev = rdev;
     inode->i_stat.st_blksize = DFS_BLOCK_SIZE;
     inode->i_parent = dfs_getInodeHandle(parent);
+    inode->i_pcache = S_ISREG(mode);
     dfs_updateInodeTimes(inode, true, true, true);
     if (target != NULL) {
         len = strlen(target);

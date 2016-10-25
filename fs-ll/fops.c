@@ -392,15 +392,27 @@ dfs_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
         gfs = getfs();
         global = dfs_getInodeHandle(parent) == DFS_ROOT_INODE;
         if (global && (strcmp(name, "dfs") == 0)) {
-            printf("snapshot root inode %ld\n", e.ino);
-            gfs->gfs_snap_rootInode = dfs_getInode(gfs->gfs_fs[0], e.ino,
+            gfs->gfs_snap_rootInode = dfs_getInode(dfs_getGlobalFs(gfs), e.ino,
                                                    NULL, false, false);
             dfs_inodeUnlock(gfs->gfs_snap_rootInode);
             gfs->gfs_snap_root = e.ino;
+            printf("snapshot root inode %ld\n", e.ino);
         } else if (global && (strcmp(name, "containers") == 0)) {
             gfs->gfs_containers_root = e.ino;
+            printf("containers root %ld\n", e.ino);
         } else if (global && (strcmp(name, "tmp") == 0)) {
             gfs->gfs_tmp_root = e.ino;
+            printf("tmp root %ld\n", e.ino);
+        } else if ((parent == gfs->gfs_layerdb_root) &&
+                   (strcmp(name, "mounts") == 0)) {
+            assert(gfs->gfs_mounts_root == 0);
+            gfs->gfs_mounts_root = e.ino;
+            printf("mounts root %ld\n", e.ino);
+        } else if ((parent == gfs->gfs_layerdb_root) &&
+                   (strcmp(name, "sha256") == 0)) {
+            assert(gfs->gfs_sha256_root == 0);
+            gfs->gfs_sha256_root = e.ino;
+            printf("sha256 root %ld\n", e.ino);
         }
     }
 }
@@ -607,8 +619,12 @@ dfs_openInode(fuse_ino_t ino, struct fuse_file_info *fi) {
         return ENOENT;
     }
 
-    /* Set up file handle if inode is shared with another file system.
-     * Increment open count otherwise.
+    /* Keep kernel pages for global file system or non-shared files */
+    if ((inode->i_ocount > 0) || dfs_keepcache(fs, inode)) {
+        fi->keep_cache = true;
+    }
+
+    /* Increment open count if inode is private to this layer.
      */
     if (inode->i_fs == fs) {
         inode->i_ocount++;
@@ -709,24 +725,15 @@ dfs_releaseInode(fuse_ino_t ino, struct fuse_file_info *fi, bool *inval) {
 
     assert(fi);
     fs = dfs_getfs(ino, false);
-    if (fi->fh) {
-        inode = (struct inode *)fi->fh;
-        if (inode->i_fs != fs) {
-            dfs_unlock(fs);
-            if (inval) {
-                *inval = true;
-            }
-            return 0;
+    inode = (struct inode *)fi->fh;
+    if (inode->i_fs != fs) {
+        dfs_unlock(fs);
+        if (inval) {
+            *inval = true;
         }
-        dfs_inodeLock(inode, true);
-    } else {
-        inode = dfs_getInode(fs, ino, NULL, false, true);
-        if (inode == NULL) {
-            dfs_reportError(__func__, __LINE__, ino, ENOENT);
-            dfs_unlock(fs);
-            return ENOENT;
-        }
+        return 0;
     }
+    dfs_inodeLock(inode, true);
     assert(inode->i_fs == fs);
     assert(inode->i_ocount > 0);
     inode->i_ocount--;
@@ -737,7 +744,7 @@ dfs_releaseInode(fuse_ino_t ino, struct fuse_file_info *fi, bool *inval) {
         dfs_truncate(inode, 0);
     }
     if (inval) {
-        *inval = (inode->i_ocount == 0);
+        *inval = (inode->i_ocount == 0) && !dfs_keepcache(fs, inode);
     }
     dfs_inodeUnlock(inode);
     dfs_unlock(fs);

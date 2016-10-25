@@ -21,6 +21,9 @@ struct gfs {
     /* Directory inode for /containers */
     ino_t gfs_containers_root;
 
+    /* Directory inode for /image/dfs/layerdb */
+    ino_t gfs_layerdb_root;
+
     /* Directory inode for /image/dfs/layerdb/mounts */
     ino_t gfs_mounts_root;
 

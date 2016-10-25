@@ -9,12 +9,10 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
     struct xattr *xattr;
     struct inode *inode;
     struct fs *fs;
-    int err;
 
     /* XXX Special case of creating a clone */
     if (ino == gfs->gfs_snap_root) {
-        err = dfs_newClone(gfs, name, value, size);
-        fuse_reply_err(req, err);
+        dfs_newClone(req, gfs, name, value, size);
         return;
     }
 

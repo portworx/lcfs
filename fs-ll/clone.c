@@ -1,10 +1,10 @@
 #include "includes.h"
 
 /* Create a new file system */
-int
-dfs_newClone(struct gfs *gfs, const char *name, const char *parent,
-             size_t size) {
-    struct fs *fs = NULL, *pfs = NULL, *nfs, *rfs = NULL;
+void
+dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
+             const char *parent, size_t size) {
+    struct fs *fs = NULL, *pfs = NULL, *nfs = NULL, *rfs = NULL;
     struct inode *dir, *pdir;
     ino_t root, pinum = 0;
     char pname[size + 1];
@@ -36,7 +36,7 @@ dfs_newClone(struct gfs *gfs, const char *name, const char *parent,
             goto out;
         }
         pinum = dfs_setHandle(dfs_getIndex(rfs, gfs->gfs_snap_root, pinum),
-                             pinum);
+                              pinum);
     }
 
     /* Create a new file system structure */
@@ -123,7 +123,17 @@ out:
             dfs_destroyFs(fs);
         }
     }
-    return err;
+    fuse_reply_err(req, err);
+
+    /* Invalidate page cache of the previous layer when snapshot is taken on it
+     * first time.
+     */
+    if ((err == 0) && (nfs == NULL)) {
+        pfs = dfs_getfs(pinum, false);
+        assert(pfs->fs_root == dfs_getInodeHandle(pinum));
+        dfs_invalidate_pcache(gfs, pfs);
+        dfs_unlock(pfs);
+    }
 }
 
 /* Remove a file system */

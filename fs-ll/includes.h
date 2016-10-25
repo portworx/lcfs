@@ -63,6 +63,7 @@ void dfs_updateInodeTimes(struct inode *inode, bool atime,
                           bool mtime, bool ctime);
 void dfs_inodeLock(struct inode *inode, bool exclusive);
 void dfs_inodeUnlock(struct inode *inode);
+void dfs_invalidate_pcache(struct gfs *gfs, struct fs *fs);
 
 ino_t dfs_dirLookup(struct fs *fs, struct inode *dir, const char *name);
 void dfs_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name);
@@ -92,8 +93,8 @@ void dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name);
 void dfs_xattrCopy(struct inode *inode, struct inode *parent);
 void dfs_xattrFree(struct inode *inode);
 
-int dfs_newClone(struct gfs *gfs, const char *name, const char *parent,
-                 size_t size);
+void dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
+                  const char *parent, size_t size);
 void dfs_removeClone(fuse_req_t req, struct gfs *gfs,
                      ino_t ino, const char *name);
 

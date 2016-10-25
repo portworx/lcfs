@@ -216,6 +216,7 @@ dfs_truncPages(struct inode *inode, off_t size) {
         if (size == 0) {
             inode->i_stat.st_blocks = 0;
             inode->i_shared = false;
+            inode->i_pcache = true;
             inode->i_page = NULL;
             inode->i_pcount = 0;
             return 0;
@@ -264,6 +265,7 @@ dfs_truncPages(struct inode *inode, off_t size) {
             inode->i_pcount = 0;
         }
         assert(inode->i_pcount == 0);
+        inode->i_pcache = true;
     }
     return tcount;
 }

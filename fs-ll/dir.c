@@ -74,11 +74,12 @@ dfs_dirRemove(struct inode *dir, const char *name) {
             }
             free(dirent->di_name);
             free(dirent);
-            break;
+            return;
         }
         pdirent = dirent;
         dirent = dirent->di_next;
     }
+    assert(false);
 }
 
 /* Remove a directory entry by inode number */

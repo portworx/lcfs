@@ -173,7 +173,7 @@ dfs_setupSpecialDir(struct gfs *gfs, struct fs *fs) {
     ino_t inum;
     int i;
 
-    if (gfs->gfs_mounts_root && gfs->gfs_sha256_root) {
+    if (gfs->gfs_layerdb_root) {
         return;
     }
 
@@ -197,19 +197,17 @@ dfs_setupSpecialDir(struct gfs *gfs, struct fs *fs) {
         dfs_reportError(__func__, __LINE__, inum, ENOENT);
         return;
     }
+    gfs->gfs_layerdb_root = inum;
+    printf("layerdb root %ld\n", inum);
     inum = dfs_dirLookup(fs, inode, "mounts");
     if (inum != DFS_INVALID_INODE) {
         gfs->gfs_mounts_root = inum;
-        printf("mounts directory is %ld\n", inum);
-    } else {
-        dfs_reportError(__func__, __LINE__, inum, ENOENT);
+        printf("mounts root %ld\n", inum);
     }
     inum = dfs_dirLookup(fs, inode, "sha256");
     if (inum != DFS_INVALID_INODE) {
         gfs->gfs_sha256_root = inum;
-        printf("sha256 directory is %ld\n", inum);
-    } else {
-        dfs_reportError(__func__, __LINE__, inum, ENOENT);
+        printf("sha256 root %ld\n", inum);
     }
     dfs_inodeUnlock(inode);
 }
