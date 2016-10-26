@@ -2,11 +2,12 @@
 
 /* Allocate a new file system structure */
 struct fs *
-dfs_newFs(struct gfs *gfs, bool locks) {
+dfs_newFs(struct gfs *gfs, bool rw, bool locks) {
     struct fs *fs = malloc(sizeof(struct fs));
 
     memset(fs, 0, sizeof(*fs));
     fs->fs_gfs = gfs;
+    fs->fs_readOnly = (rw == 0);
     if (locks) {
         fs->fs_rwlock = malloc(sizeof(pthread_rwlock_t));
         pthread_rwlock_init(fs->fs_rwlock, NULL);
@@ -276,7 +277,7 @@ dfs_mount(char *device, struct gfs **gfsp) {
     }
 
     /* Initialize a file system structure in memory */
-    fs = dfs_newFs(gfs, false);
+    fs = dfs_newFs(gfs, true, false);
     fs->fs_root = DFS_ROOT_INODE;
     gfs->gfs_fs[0] = fs;
     gfs->gfs_roots[0] = DFS_ROOT_INODE;

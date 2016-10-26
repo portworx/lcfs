@@ -12,7 +12,7 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
 
     /* XXX Special case of creating a clone */
     if (ino == gfs->gfs_snap_root) {
-        dfs_newClone(req, gfs, name, value, size);
+        dfs_newClone(req, gfs, name, value, size, flags);
         return;
     }
 

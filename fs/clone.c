@@ -3,7 +3,7 @@
 /* Create a new file system */
 void
 dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
-             const char *parent, size_t size) {
+             const char *parent, size_t size, bool rw) {
     struct fs *fs = NULL, *pfs = NULL, *nfs = NULL, *rfs = NULL;
     struct inode *dir, *pdir;
     ino_t root, pinum = 0;
@@ -40,7 +40,7 @@ dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     }
 
     /* Create a new file system structure */
-    fs = dfs_newFs(gfs, true);
+    fs = dfs_newFs(gfs, rw, true);
     dfs_lock(fs, true);
 
     /* Allocate root inode and add to the directory */
@@ -84,11 +84,9 @@ dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
         dfs_inodeUnlock(dir);
 
         /* Link this file system a snapshot of the parent */
-        if (pfs->fs_snap != NULL) {
-            nfs = pfs->fs_snap;
-        } else {
+        nfs = pfs->fs_snap;
+        if (nfs == NULL) {
             pfs->fs_snap = fs;
-            nfs = NULL;
         }
         fs->fs_parent = pfs;
         fs->fs_ilock = pfs->fs_ilock;

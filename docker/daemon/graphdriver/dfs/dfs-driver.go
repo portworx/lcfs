@@ -75,20 +75,30 @@ func (d *Driver) Cleanup() error {
 	return nil
 }
 
-// CreateReadWrite creates a layer that is writable for use as a container
-// file system.
-func (d *Driver) CreateReadWrite(id, parent, mountLabel string, storageOpt map[string]string) error {
-	return d.Create(id, parent, mountLabel, storageOpt)
-}
-
-// Create the filesystem with given id.
-func (d *Driver) Create(id, parent, mountLabel string, storageOpt map[string]string) error {
-    err := syscall.Setxattr(d.home, id, []byte(parent), 0)
+// Create a file system with the given id
+func (d *Driver) create(id, parent, mountLabel string, rw bool,
+                        storageOpt map[string]string) error {
+    readwrite := 0
+    if rw {
+        readwrite = 1
+    }
+    err := syscall.Setxattr(d.home, id, []byte(parent), readwrite)
 	if err != nil {
 		return err
     }
     file := path.Join(d.home, id)
 	return label.Relabel(file, mountLabel, false)
+}
+
+// CreateReadWrite creates a layer that is writable for use as a container
+// file system.
+func (d *Driver) CreateReadWrite(id, parent, mountLabel string, storageOpt map[string]string) error {
+	return d.create(id, parent, mountLabel, true, storageOpt)
+}
+
+// Create the filesystem with given id.
+func (d *Driver) Create(id, parent, mountLabel string, storageOpt map[string]string) error {
+	return d.create(id, parent, mountLabel, false, storageOpt)
 }
 
 // Parse dfs storage options

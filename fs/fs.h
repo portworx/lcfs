@@ -89,7 +89,10 @@ struct fs {
 
     /* Index of this file system in the global table */
     int fs_gindex;
-};
+
+    /* Set if readOnly snapshot */
+    bool fs_readOnly;
+} __attribute__((packed));
 
 /* Check if specified inode belongs in global file system outside any layers */
 static inline bool
