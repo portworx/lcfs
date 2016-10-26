@@ -59,21 +59,13 @@ dfs_addInode(struct fs *fs, struct inode *inode) {
     inode->i_fs = fs;
 }
 
-/* Lookup an inode in the hash list */
 static struct inode *
-dfs_lookupInode(struct fs *fs, ino_t ino) {
+dfs_lookupInodeCache(struct fs *fs, ino_t ino) {
     int hash = dfs_inodeHash(ino);
-    struct gfs *gfs = fs->fs_gfs;
     struct inode *inode;
 
-    if (ino == fs->fs_root) {
-        return fs->fs_rootInode;
-    }
     if (fs->fs_icache[hash].ic_head == NULL) {
         return NULL;
-    }
-    if (ino == gfs->gfs_snap_root) {
-        return gfs->gfs_snap_rootInode;
     }
     /* XXX Locking not needed right now, as inodes are not removed */
     //pthread_mutex_lock(&fs->fs_icache[hash].ic_lock);
@@ -86,6 +78,20 @@ dfs_lookupInode(struct fs *fs, ino_t ino) {
     }
     //pthread_mutex_unlock(&fs->fs_icache[hash].ic_lock);
     return inode;
+}
+
+/* Lookup an inode in the hash list */
+static struct inode *
+dfs_lookupInode(struct fs *fs, ino_t ino) {
+    struct gfs *gfs = fs->fs_gfs;
+
+    if (ino == fs->fs_root) {
+        return fs->fs_rootInode;
+    }
+    if (ino == gfs->gfs_snap_root) {
+        return gfs->gfs_snap_rootInode;
+    }
+    return dfs_lookupInodeCache(fs, ino);
 }
 
 /* Update inode times */
@@ -256,6 +262,7 @@ dfs_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
     return inode;
 }
 
+/* Lookup the requested inode in the chain */
 static struct inode *
 dfs_getInodeParent(struct fs *fs, ino_t inum, bool copy) {
     struct inode *inode, *parent;
@@ -263,11 +270,11 @@ dfs_getInodeParent(struct fs *fs, ino_t inum, bool copy) {
 
     /* XXX Reduce the time this lock is held */
     pthread_mutex_lock(fs->fs_ilock);
-    inode = dfs_lookupInode(fs, inum);
+    inode = dfs_lookupInodeCache(fs, inum);
     if (inode == NULL) {
         pfs = fs->fs_parent;
         while (pfs) {
-            parent = dfs_lookupInode(pfs, inum);
+            parent = dfs_lookupInodeCache(pfs, inum);
             if (parent != NULL) {
 
                 /* Do not clone if the inode is removed in a parent layer */
@@ -275,8 +282,10 @@ dfs_getInodeParent(struct fs *fs, ino_t inum, bool copy) {
 
                     /* Clone the inode only when modified */
                     if (copy) {
+                        assert(fs->fs_snap == NULL);
                         inode = dfs_cloneInode(fs, parent, inum);
                     } else {
+                        /* XXX Remember this for future lookup */
                         inode = parent;
                     }
                 }

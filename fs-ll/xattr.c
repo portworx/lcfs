@@ -17,6 +17,12 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
     }
 
     fs = dfs_getfs(ino, false);
+    if (fs->fs_snap) {
+        dfs_unlock(fs);
+        dfs_reportError(__func__, __LINE__, ino, EROFS);
+        fuse_reply_err(req, EROFS);
+        return;
+    }
     inode = dfs_getInode(fs, ino, NULL, true, true);
     if (inode == NULL) {
         dfs_unlock(fs);
@@ -187,6 +193,12 @@ dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
     }
 
     fs = dfs_getfs(ino, false);
+    if (fs->fs_snap) {
+        dfs_unlock(fs);
+        dfs_reportError(__func__, __LINE__, ino, EROFS);
+        fuse_reply_err(req, EROFS);
+        return;
+    }
     inode = dfs_getInode(fs, ino, NULL, true, true);
     if (inode == NULL) {
         dfs_unlock(fs);

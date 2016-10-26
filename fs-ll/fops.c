@@ -24,6 +24,11 @@ create(ino_t parent, const char *name, mode_t mode, uid_t uid, gid_t gid,
     ino_t ino;
 
     fs = dfs_getfs(parent, false);
+    if (fs->fs_snap) {
+        dfs_unlock(fs);
+        dfs_reportError(__func__, __LINE__, parent, EROFS);
+        return EROFS;
+    }
     dir = dfs_getInode(fs, parent, NULL, true, true);
     if (dir == NULL) {
         dfs_unlock(fs);
@@ -140,6 +145,11 @@ dfs_remove(ino_t parent, const char *name, bool rmdir) {
     ino_t ino;
 
     fs = dfs_getfs(parent, false);
+    if (fs->fs_snap) {
+        dfs_unlock(fs);
+        dfs_reportError(__func__, __LINE__, parent, EROFS);
+        return EROFS;
+    }
     dir = dfs_getInode(fs, parent, NULL, true, true);
     if (dir == NULL) {
         dfs_unlock(fs);
@@ -277,6 +287,12 @@ dfs_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
 
     dfs_displayEntry(__func__, ino, 0, NULL);
     fs = dfs_getfs(ino, false);
+    if (fs->fs_snap) {
+        dfs_unlock(fs);
+        dfs_reportError(__func__, __LINE__, ino, EROFS);
+        fuse_reply_err(req, EROFS);
+        return;
+    }
     handle = fi ? (struct inode *)fi->fh : NULL;
     inode = dfs_getInode(fs, ino, handle, true, true);
     if (inode == NULL) {
@@ -465,6 +481,12 @@ dfs_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
 
     dfs_displayEntry(__func__, parent, newparent, name);
     fs = dfs_getfs(parent, false);
+    if (fs->fs_snap) {
+        dfs_unlock(fs);
+        dfs_reportError(__func__, __LINE__, parent, EROFS);
+        fuse_reply_err(req, EROFS);
+        return;
+    }
 
     /* Follow some locking order while locking the directories */
     if (parent > newparent) {
@@ -563,6 +585,12 @@ dfs_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
 
     dfs_displayEntry(__func__, newparent, ino, newname);
     fs = dfs_getfs(ino, false);
+    if (fs->fs_snap) {
+        dfs_unlock(fs);
+        dfs_reportError(__func__, __LINE__, ino, EROFS);
+        fuse_reply_err(req, EROFS);
+        return;
+    }
     dir = dfs_getInode(fs, newparent, NULL, true, true);
     if (dir == NULL) {
         dfs_unlock(fs);
@@ -604,10 +632,15 @@ dfs_openInode(fuse_ino_t ino, struct fuse_file_info *fi) {
     fi->fh = 0;
     modify = (fi->flags & (O_WRONLY | O_RDWR));
     fs = dfs_getfs(ino, false);
+    if (modify && fs->fs_snap) {
+        dfs_unlock(fs);
+        dfs_reportError(__func__, __LINE__, ino, EROFS);
+        return EROFS;
+    }
     inode = dfs_getInode(fs, ino, NULL, modify, true);
     if (inode == NULL) {
-        dfs_reportError(__func__, __LINE__, ino, ENOENT);
         dfs_unlock(fs);
+        dfs_reportError(__func__, __LINE__, ino, ENOENT);
         return ENOENT;
     }
 
@@ -653,8 +686,8 @@ dfs_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
 static void
 dfs_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
          struct fuse_file_info *fi) {
-    struct inode *inode, *handle;
     struct fuse_bufvec *bufv;
+    struct inode *inode;
     off_t endoffset;
     struct fs *fs;
     size_t fsize;
@@ -669,8 +702,7 @@ dfs_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     bufv = malloc(fsize);
     memset(bufv, 0, fsize);
     fs = dfs_getfs(ino, false);
-    handle = fi ? (struct inode *)fi->fh : NULL;
-    inode = dfs_getInode(fs, ino, handle, false, false);
+    inode = dfs_getInode(fs, ino, (struct inode *)fi->fh, false, false);
     if (inode == NULL) {
         dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
@@ -734,6 +766,7 @@ dfs_releaseInode(fuse_ino_t ino, struct fuse_file_info *fi, bool *inval) {
         return 0;
     }
     dfs_inodeLock(inode, true);
+    assert(inode->i_stat.st_ino == dfs_getInodeHandle(ino));
     assert(inode->i_fs == fs);
     assert(inode->i_ocount > 0);
     inode->i_ocount--;
@@ -792,9 +825,9 @@ dfs_opendir(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
 static void
 dfs_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
             struct fuse_file_info *fi) {
-    struct inode *dir, *handle;
     struct dirent *dirent;
     size_t esize, csize;
+    struct inode *dir;
     char buf[size];
     struct stat st;
     int count = 0;
@@ -802,8 +835,7 @@ dfs_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 
     dfs_displayEntry(__func__, ino, 0, NULL);
     fs = dfs_getfs(ino, false);
-    handle = fi ? (struct inode *)fi->fh : NULL;
-    dir = dfs_getInode(fs, ino, handle, false, false);
+    dir = dfs_getInode(fs, ino, (struct inode *)fi->fh, false, false);
     if (dir == NULL) {
         dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
@@ -986,8 +1018,8 @@ dfs_poll(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi,
 static void
 dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
               struct fuse_bufvec *bufv, off_t off, struct fuse_file_info *fi) {
-    struct inode *inode, *handle;
     struct fuse_bufvec *dst;
+    struct inode *inode;
     size_t size, wsize;
     off_t endoffset;
     struct fs *fs;
@@ -1001,8 +1033,14 @@ dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
     memset(dst, 0, wsize);
     endoffset = off + size;
     fs = dfs_getfs(ino, false);
-    handle = fi ? (struct inode *)fi->fh : NULL;
-    inode = dfs_getInode(fs, ino, handle, true, true);
+    if (fs->fs_snap) {
+        dfs_unlock(fs);
+        dfs_reportError(__func__, __LINE__, ino, EROFS);
+        fuse_reply_err(req, EROFS);
+        free(dst);
+        return;
+    }
+    inode = dfs_getInode(fs, ino, (struct inode *)fi->fh, true, true);
     if (inode == NULL) {
         dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
