@@ -4,15 +4,20 @@
 struct fs *
 dfs_newFs(struct gfs *gfs, bool rw, bool locks) {
     struct fs *fs = malloc(sizeof(struct fs));
+    time_t t;
 
+    t = time(NULL);
     memset(fs, 0, sizeof(*fs));
     fs->fs_gfs = gfs;
     fs->fs_readOnly = (rw == 0);
+    fs->fs_ctime = t;
+    fs->fs_atime = t;
     if (locks) {
         fs->fs_rwlock = malloc(sizeof(pthread_rwlock_t));
         pthread_rwlock_init(fs->fs_rwlock, NULL);
     }
     fs->fs_icache = dfs_icache_init();
+    fs->fs_stats = dfs_statsNew();
     return fs;
 }
 
@@ -21,6 +26,7 @@ void
 dfs_destroyFs(struct fs *fs) {
     uint64_t count;
 
+    dfs_displayStats(fs);
     count = dfs_destroyInodes(fs);
     if (count) {
         dfs_blockFree(fs->fs_gfs, count);
@@ -33,6 +39,7 @@ dfs_destroyFs(struct fs *fs) {
         pthread_mutex_destroy(fs->fs_ilock);
         free(fs->fs_ilock);
     }
+    dfs_statsDeinit(fs);
     free(fs);
 }
 

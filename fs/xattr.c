@@ -6,9 +6,11 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
              const char *value, size_t size, int flags) {
     struct gfs *gfs = getfs();
     int len = strlen(name);
+    struct timeval start;
     struct xattr *xattr;
     struct inode *inode;
     struct fs *fs;
+    int err = 0;
 
     /* XXX Special case of creating a clone */
     if (ino == gfs->gfs_snap_root) {
@@ -16,19 +18,20 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
         return;
     }
 
+    gettimeofday(&start, NULL);
     fs = dfs_getfs(ino, false);
     if (fs->fs_snap) {
-        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
-        return;
+        err = EROFS;
+        goto out;
     }
     inode = dfs_getInode(fs, ino, NULL, true, true);
     if (inode == NULL) {
-        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
-        return;
+        err = ENOENT;
+        goto out;
     }
 
     if (!gfs->gfs_xattr_enabled) {
@@ -44,10 +47,10 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
              */
             if (flags == XATTR_CREATE) {
                 dfs_inodeUnlock(inode);
-                dfs_unlock(fs);
                 dfs_reportError(__func__, __LINE__, ino, EEXIST);
                 fuse_reply_err(req, EEXIST);
-                return;
+                err = EEXIST;
+                goto out;
             } else {
 
                 /* Replace the attribute with new value */
@@ -63,9 +66,8 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
                 }
                 xattr->x_size = size;
                 dfs_inodeUnlock(inode);
-                dfs_unlock(fs);
                 fuse_reply_err(req, 0);
-                return;
+                goto out;
             }
         }
         xattr = xattr->x_next;
@@ -76,10 +78,10 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
      */
     if (flags == XATTR_REPLACE) {
         dfs_inodeUnlock(inode);
-        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENODATA);
         fuse_reply_err(req, ENODATA);
-        return;
+        err = ENODATA;
+        goto out;
     }
     xattr = malloc(sizeof(struct xattr));
     xattr->x_name = malloc(len + 1);
@@ -95,25 +97,31 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
     xattr->x_next = inode->i_xattr;
     inode->i_xattr = xattr;
     dfs_inodeUnlock(inode);
-    dfs_unlock(fs);
     fuse_reply_err(req, 0);
+
+out:
+    dfs_statsAdd(fs, DFS_SETXATTR, err, &start);
+    dfs_unlock(fs);
 }
 
 /* Get the specified attribute of the inode */
 void
 dfs_xattrGet(fuse_req_t req, ino_t ino, const char *name,
              size_t size) {
+    struct timeval start;
     struct xattr *xattr;
     struct inode *inode;
     struct fs *fs;
+    int err = 0;
 
+    gettimeofday(&start, NULL);
     fs = dfs_getfs(ino, false);
     inode = dfs_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
-        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
-        return;
+        err = ENOENT;
+        goto out;
     }
     xattr = inode->i_xattr;
     while (xattr) {
@@ -124,46 +132,51 @@ dfs_xattrGet(fuse_req_t req, ino_t ino, const char *name,
                 fuse_reply_buf(req, xattr->x_value, xattr->x_size);
             } else {
                 fuse_reply_err(req, ERANGE);
+                err = ERANGE;
             }
             dfs_inodeUnlock(inode);
-            dfs_unlock(fs);
-            return;
+            goto out;
         }
         xattr = xattr->x_next;
     }
     dfs_inodeUnlock(inode);
-    dfs_unlock(fs);
     fuse_reply_err(req, ENODATA);
+    err = ENODATA;
+
+out:
+    dfs_statsAdd(fs, DFS_GETXATTR, err, &start);
+    dfs_unlock(fs);
 }
 
 /* List the specified attributes of the inode */
 void
 dfs_xattrList(fuse_req_t req, ino_t ino, size_t size) {
+    struct timeval start;
     struct xattr *xattr;
     struct inode *inode;
+    int i = 0, err = 0;
     struct fs *fs;
     char *buf;
-    int i = 0;
 
+    gettimeofday(&start, NULL);
     fs = dfs_getfs(ino, false);
     inode = dfs_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
-        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
-        return;
+        err = ENOENT;
+        goto out;
     }
     if (size == 0) {
         fuse_reply_xattr(req, inode->i_xsize);
         dfs_inodeUnlock(inode);
-        dfs_unlock(fs);
-        return;
+        goto out;
     } else if (size < inode->i_xsize) {
-        dfs_unlock(fs);
         dfs_inodeUnlock(inode);
         dfs_reportError(__func__, __LINE__, ino, ERANGE);
         fuse_reply_err(req, ERANGE);
-        return;
+        err = ERANGE;
+        goto out;
     }
     buf = malloc(inode->i_xsize);
     xattr = inode->i_xattr;
@@ -174,8 +187,11 @@ dfs_xattrList(fuse_req_t req, ino_t ino, size_t size) {
     }
     assert(i == inode->i_xsize);
     dfs_inodeUnlock(inode);
-    dfs_unlock(fs);
     fuse_reply_buf(req, buf, inode->i_xsize);
+
+out:
+    dfs_statsAdd(fs, DFS_LISTXATTR, err, &start);
+    dfs_unlock(fs);
 }
 
 /* Remove the specified extended attribute */
@@ -183,8 +199,10 @@ void
 dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
     struct xattr *xattr, *pxattr = NULL;
     struct gfs *gfs = getfs();
+    struct timeval start;
     struct inode *inode;
     struct fs *fs;
+    int err = 0;
 
     /* XXX Special case of removing a clone */
     if (ino == gfs->gfs_snap_root) {
@@ -192,19 +210,20 @@ dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
         return;
     }
 
+    gettimeofday(&start, NULL);
     fs = dfs_getfs(ino, false);
     if (fs->fs_snap) {
-        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
-        return;
+        err = EROFS;
+        goto out;
     }
     inode = dfs_getInode(fs, ino, NULL, true, true);
     if (inode == NULL) {
-        dfs_unlock(fs);
         dfs_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
-        return;
+        err = ENOENT;
+        goto out;
     }
 
     xattr = inode->i_xattr;
@@ -221,17 +240,20 @@ dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
             }
             free(xattr);
             dfs_inodeUnlock(inode);
-            dfs_unlock(fs);
             fuse_reply_err(req, 0);
-            return;
+            goto out;
         }
         pxattr = xattr;
         xattr = xattr->x_next;
     }
     dfs_inodeUnlock(inode);
-    dfs_unlock(fs);
     //dfs_reportError(__func__, __LINE__, ino, ENODATA);
     fuse_reply_err(req, ENODATA);
+    err = ENODATA;
+
+out:
+    dfs_statsAdd(fs, DFS_REMOVEXATTR, err, &start);
+    dfs_unlock(fs);
 }
 
 /* Copy extended attributes of one inode to another */

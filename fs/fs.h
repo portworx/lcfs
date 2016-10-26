@@ -58,6 +58,9 @@ struct gfs {
 /* A file system structure created for each layer */
 struct fs {
 
+    /* Index of this file system in the global table */
+    int fs_gindex;
+
     /* Root inode of the layer */
     ino_t fs_root;
 
@@ -87,8 +90,14 @@ struct fs {
      */
     pthread_rwlock_t *fs_rwlock;
 
-    /* Index of this file system in the global table */
-    int fs_gindex;
+    /* Creation time in seconds since Epoch */
+    time_t fs_ctime;
+
+    /* Last accessed time in seconds since Epoch */
+    time_t fs_atime;
+
+    /* Stats for this file system */
+    struct stats *fs_stats;
 
     /* Set if readOnly snapshot */
     bool fs_readOnly;

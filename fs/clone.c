@@ -7,9 +7,12 @@ dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     struct fs *fs = NULL, *pfs = NULL, *nfs = NULL, *rfs = NULL;
     struct inode *dir, *pdir;
     ino_t root, pinum = 0;
+    struct timeval start;
     char pname[size + 1];
     int err = 0;
     bool base;
+
+    gettimeofday(&start, NULL);
 
     /* Check if parent is specified */
     if (size) {
@@ -114,6 +117,8 @@ dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
                fs, pfs ? pfs->fs_root : -1, root, fs->fs_gindex, name);
 
 out:
+    fuse_reply_err(req, err);
+    dfs_statsAdd(rfs, DFS_CLONE_CREATE, err, &start);
     dfs_unlock(rfs);
     if (fs) {
         dfs_unlock(fs);
@@ -121,7 +126,6 @@ out:
             dfs_destroyFs(fs);
         }
     }
-    fuse_reply_err(req, err);
 
     /* Invalidate page cache of the previous layer when snapshot is taken on it
      * first time.
@@ -138,11 +142,13 @@ out:
 void
 dfs_removeClone(fuse_req_t req, struct gfs *gfs, ino_t ino, const char *name) {
     struct fs *fs = NULL, *rfs;
+    struct timeval start;
     struct inode *pdir;
     int err = 0;
     ino_t root;
 
     /* Find the inode in snapshot directory */
+    gettimeofday(&start, NULL);
     assert(ino == gfs->gfs_snap_root);
     rfs = dfs_getfs(DFS_ROOT_INODE, false);
     dfs_setupSpecialDir(gfs, rfs);
@@ -201,8 +207,9 @@ dfs_removeClone(fuse_req_t req, struct gfs *gfs, ino_t ino, const char *name) {
     dfs_inodeUnlock(pdir);
 
 out:
-    dfs_unlock(rfs);
     fuse_reply_err(req, err);
+    dfs_statsAdd(rfs, DFS_CLONE_REMOVE, err, &start);
+    dfs_unlock(rfs);
     if (fs) {
 
         /* Remove the file system from the global list and notify VFS layer */

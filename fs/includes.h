@@ -23,11 +23,13 @@
 #include "layout.h"
 #include "fs.h"
 #include "inode.h"
+#include "stats.h"
 
 struct gfs *getfs();
 
 void *dfs_readBlock(int fd, off_t block);
 int dfs_writeBlock(int fd, void *buf, off_t block);
+int dfs_writeBlocks(int fd, struct iovec *iov, int iovcnt, off_t block);
 
 void dfs_blockAlloc(struct fs *fs, int count);
 void dfs_blockFree(struct gfs *gfs, uint64_t count);
@@ -97,5 +99,12 @@ void dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
                   const char *parent, size_t size, bool rw);
 void dfs_removeClone(fuse_req_t req, struct gfs *gfs,
                      ino_t ino, const char *name);
+
+struct stats *dfs_statsNew();
+void dfs_statsAdd(struct fs *fs, enum dfs_stats type, bool err,
+                  struct timeval *start);
+void dfs_displayStats(struct fs *fs);
+void dfs_displayStatsAll(struct gfs *gfs);
+void dfs_statsDeinit(struct fs *fs);
 
 #endif
