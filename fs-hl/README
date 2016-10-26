@@ -1,7 +1,0 @@
-This file system driver is implemented using fuse high level API.
-
-*  Install fuse library.
-*  Build this directory by running make.
-*  Mount a device/file - "sudo ./dfs <device> <mnt>"
-*  Stop docker and start docker with arguments "-s dfs -g <mnt>"
-*  Run experiments, stop docker, umount - "sudo fusermount -u <mnt>"
