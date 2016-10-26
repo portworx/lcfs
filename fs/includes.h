@@ -48,6 +48,7 @@ void dfs_lock(struct fs *fs, bool exclusive);
 void dfs_unlock(struct fs *fs);
 int dfs_mount(char *device, struct gfs **gfsp);
 void dfs_unmount(struct gfs *gfs);
+void dfs_umount(const char *name);
 struct fs *dfs_newFs(struct gfs *gfs, bool rw, bool locks);
 void dfs_destroyFs(struct fs *fs);
 
@@ -95,6 +96,7 @@ void dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name);
 void dfs_xattrCopy(struct inode *inode, struct inode *parent);
 void dfs_xattrFree(struct inode *inode);
 
+ino_t dfs_getRootIno(struct fs *fs, ino_t parent, const char *name);
 void dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
                   const char *parent, size_t size, bool rw);
 void dfs_removeClone(fuse_req_t req, struct gfs *gfs,

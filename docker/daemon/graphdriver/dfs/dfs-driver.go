@@ -131,8 +131,9 @@ func (d *Driver) Get(id, mountLabel string) (string, error) {
 	return dir, nil
 }
 
-// Put is not implemented for DFS as there is no cleanup required for the id.
+// Put is kind of unmounting the file system.
 func (d *Driver) Put(id string) error {
+    syscall.Getxattr(d.home, id, []byte{});
 	return nil
 }
 

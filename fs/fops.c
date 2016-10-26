@@ -1020,6 +1020,11 @@ dfs_getxattr(fuse_req_t req, fuse_ino_t ino, const char *name, size_t size) {
     struct gfs *gfs = getfs();
 
     dfs_displayEntry(__func__, ino, 0, name);
+    if (ino == gfs->gfs_snap_root) {
+        dfs_umount(name);
+        fuse_reply_err(req, ENODATA);
+        return;
+    }
     if (!gfs->gfs_xattr_enabled) {
         fuse_reply_err(req, ENODATA);
         return;

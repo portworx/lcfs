@@ -1,5 +1,27 @@
 #include "includes.h"
 
+/* Given a snapshot name, find its root inode */
+ino_t
+dfs_getRootIno(struct fs *fs, ino_t parent, const char *name) {
+    struct inode *dir;
+    ino_t root;
+
+    /* Lookup parent directory in global root file system */
+    dir = dfs_getInode(fs, parent, NULL, false, false);
+    if (dir == NULL) {
+        dfs_reportError(__func__, __LINE__, parent, ENOENT);
+        return DFS_INVALID_INODE;
+    }
+    root = dfs_dirLookup(fs, dir, name);
+    dfs_inodeUnlock(dir);
+    if (root == DFS_INVALID_INODE) {
+        dfs_reportError(__func__, __LINE__, parent, ENOENT);
+    } else {
+        root = dfs_setHandle(dfs_getIndex(fs, parent, root), root);
+    }
+    return root;
+}
+
 /* Create a new file system */
 void
 dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
@@ -24,22 +46,11 @@ dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     }
     rfs = dfs_getfs(DFS_ROOT_INODE, false);
     if (!base) {
-        /* Lookup parent directory in global root file system */
-        pdir = dfs_getInode(rfs, gfs->gfs_snap_root, NULL, false, false);
-        if (pdir == NULL) {
-            err = ENOENT;
-            dfs_reportError(__func__, __LINE__, gfs->gfs_snap_root, err);
-            goto out;
-        }
-        pinum = dfs_dirLookup(rfs, pdir, pname);
-        dfs_inodeUnlock(pdir);
+        pinum = dfs_getRootIno(rfs, gfs->gfs_snap_root, pname);
         if (pinum == DFS_INVALID_INODE) {
             err = ENOENT;
-            dfs_reportError(__func__, __LINE__, gfs->gfs_snap_root, err);
             goto out;
         }
-        pinum = dfs_setHandle(dfs_getIndex(rfs, gfs->gfs_snap_root, pinum),
-                              pinum);
     }
 
     /* Create a new file system structure */
@@ -142,20 +153,11 @@ dfs_removeClone(fuse_req_t req, struct gfs *gfs, ino_t ino, const char *name) {
     assert(ino == gfs->gfs_snap_root);
     rfs = dfs_getfs(DFS_ROOT_INODE, false);
     dfs_setupSpecialDir(gfs, rfs);
-    pdir = dfs_getInode(rfs, ino, NULL, false, false);
-    if (pdir == NULL) {
-        err = ENOENT;
-        dfs_reportError(__func__, __LINE__, ino, err);
-        goto out;
-    }
-    root = dfs_dirLookup(rfs, pdir, name);
-    dfs_inodeUnlock(pdir);
+    root = dfs_getRootIno(rfs, ino, name);
     if (root == DFS_INVALID_INODE) {
-        dfs_reportError(__func__, __LINE__, root, ENOENT);
         err = ENOENT;
         goto out;
     }
-    root = dfs_setHandle(dfs_getIndex(rfs, ino, root), root);
 
     /* There should be a file system rooted on this directory */
     fs = dfs_getfs(root, true);

@@ -72,6 +72,7 @@ main(int argc, char *argv[]) {
         arg[4] = "-d";
         daemon = false;
     } else {
+        /* XXX Add command line argument for disabling this */
         daemon = true;
     }
 
