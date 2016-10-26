@@ -18,7 +18,7 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
         return;
     }
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     fs = dfs_getfs(ino, false);
     if (fs->fs_snap) {
         dfs_reportError(__func__, __LINE__, ino, EROFS);
@@ -114,7 +114,7 @@ dfs_xattrGet(fuse_req_t req, ino_t ino, const char *name,
     struct fs *fs;
     int err = 0;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     fs = dfs_getfs(ino, false);
     inode = dfs_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
@@ -158,7 +158,7 @@ dfs_xattrList(fuse_req_t req, ino_t ino, size_t size) {
     struct fs *fs;
     char *buf;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     fs = dfs_getfs(ino, false);
     inode = dfs_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
@@ -210,7 +210,7 @@ dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
         return;
     }
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     fs = dfs_getfs(ino, false);
     if (fs->fs_snap) {
         dfs_reportError(__func__, __LINE__, ino, EROFS);

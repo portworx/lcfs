@@ -185,7 +185,8 @@ dfs_invalidate_pcache(struct gfs *gfs, struct fs *fs) {
         //pthread_mutex_lock(&fs->fs_icache[i].ic_lock);
         while (inode) {
             assert(inode->i_fs == fs);
-            if (inode->i_pcache && !inode->i_removed && inode->i_page) {
+            if (inode->i_pcache && (inode->i_stat.st_size > 0)) {
+                assert(S_ISREG(inode->i_stat.st_mode));
                 fuse_lowlevel_notify_inval_inode(gfs->gfs_ch,
                                                  dfs_setHandle(gindex,
                                                          inode->i_stat.st_ino),

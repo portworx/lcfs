@@ -135,11 +135,4 @@ dfs_getInodeHandle(uint64_t handle) {
     return handle & 0xFFFFFFFF;
 }
 
-/* kernel page cache to be kept or not */
-static inline bool
-dfs_keepcache(struct fs *fs, struct inode *inode) {
-    return dfs_globalRoot(inode->i_stat.st_ino) ||
-           (inode->i_pcache && (fs->fs_snap == NULL));
-}
-
 #endif

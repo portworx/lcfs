@@ -101,6 +101,7 @@ void dfs_removeClone(fuse_req_t req, struct gfs *gfs,
                      ino_t ino, const char *name);
 
 struct stats *dfs_statsNew();
+void dfs_statsBegin(struct timeval *start);
 void dfs_statsAdd(struct fs *fs, enum dfs_stats type, bool err,
                   struct timeval *start);
 void dfs_displayStats(struct fs *fs);

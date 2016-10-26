@@ -12,7 +12,7 @@ dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     int err = 0;
     bool base;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
 
     /* Check if parent is specified */
     if (size) {
@@ -126,16 +126,6 @@ out:
             dfs_destroyFs(fs);
         }
     }
-
-    /* Invalidate page cache of the previous layer when snapshot is taken on it
-     * first time.
-     */
-    if ((err == 0) && (nfs == NULL)) {
-        pfs = dfs_getfs(pinum, false);
-        assert(pfs->fs_root == dfs_getInodeHandle(pinum));
-        dfs_invalidate_pcache(gfs, pfs);
-        dfs_unlock(pfs);
-    }
 }
 
 /* Remove a file system */
@@ -148,7 +138,7 @@ dfs_removeClone(fuse_req_t req, struct gfs *gfs, ino_t ino, const char *name) {
     ino_t root;
 
     /* Find the inode in snapshot directory */
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     assert(ino == gfs->gfs_snap_root);
     rfs = dfs_getfs(DFS_ROOT_INODE, false);
     dfs_setupSpecialDir(gfs, rfs);

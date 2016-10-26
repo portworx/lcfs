@@ -180,7 +180,7 @@ dfs_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
     int gindex, err = 0;
     ino_t ino;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, parent, 0, name);
     fs = dfs_getfs(parent, false);
     dir = dfs_getInode(fs, parent, NULL, false, false);
@@ -239,7 +239,7 @@ static void
 dfs_forget(fuse_req_t req, fuse_ino_t ino, unsigned long nlookup) {
     struct timeval start;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, 0, ino, NULL);
     fuse_reply_none(req);
     dfs_statsAdd(fs, DFS_FORGET, err, &start);
@@ -256,7 +256,7 @@ dfs_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     ino_t parent;
     int err = 0;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, 0, ino, NULL);
     fs = dfs_getfs(ino, false);
     inode = dfs_getInode(fs, ino, NULL, false, false);
@@ -289,7 +289,7 @@ dfs_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
     struct fs *fs;
     int err = 0;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, ino, 0, NULL);
     fs = dfs_getfs(ino, false);
     if (fs->fs_snap) {
@@ -359,7 +359,7 @@ dfs_readlink(fuse_req_t req, fuse_ino_t ino) {
     int size, err = 0;
     struct fs *fs;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, 0, ino, NULL);
     fs = dfs_getfs(ino, false);
     inode = dfs_getInode(fs, ino, NULL, false, false);
@@ -392,7 +392,7 @@ dfs_mknod(fuse_req_t req, fuse_ino_t parent, const char *name,
     struct fs *fs;
     int err;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, parent, 0, name);
     fs = dfs_getfs(parent, false);
     err = create(fs, parent, name, mode & ~ctx->umask,
@@ -417,7 +417,7 @@ dfs_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
     bool global;
     int err;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, parent, 0, name);
     fs = dfs_getfs(parent, false);
     err = create(fs, parent, name, S_IFDIR | (mode & ~ctx->umask),
@@ -465,7 +465,7 @@ dfs_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
     struct fs *fs;
     int err;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, parent, 0, name);
     fs = dfs_getfs(parent, false);
     err = dfs_remove(fs, parent, name, false);
@@ -481,7 +481,7 @@ dfs_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name) {
     struct fs *fs;
     int err;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, parent, 0, name);
     fs = dfs_getfs(parent, false);
     err = dfs_remove(fs, parent, name, true);
@@ -500,7 +500,7 @@ dfs_symlink(fuse_req_t req, const char *link, fuse_ino_t parent,
     struct fs *fs;
     int err;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, parent, 0, name);
     fs = dfs_getfs(parent, false);
     err = create(fs, parent, name, S_IFLNK | (0777 & ~ctx->umask),
@@ -524,7 +524,7 @@ dfs_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
     struct fs *fs;
     int err = 0;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, parent, newparent, name);
     fs = dfs_getfs(parent, false);
     if (fs->fs_snap) {
@@ -635,7 +635,7 @@ dfs_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
     struct fs *fs;
     int err = 0;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, newparent, ino, newname);
     fs = dfs_getfs(ino, false);
     if (fs->fs_snap) {
@@ -703,14 +703,10 @@ dfs_openInode(struct fs *fs, fuse_ino_t ino, struct fuse_file_info *fi) {
         return ENOENT;
     }
 
-    /* Keep kernel pages for global file system or non-shared files */
-    if ((inode->i_ocount > 0) || dfs_keepcache(fs, inode)) {
-        fi->keep_cache = true;
-    }
-
     /* Increment open count if inode is private to this layer.
      */
     if (inode->i_fs == fs) {
+        fi->keep_cache = inode->i_pcache;
         inode->i_ocount++;
     }
     fi->fh = (uint64_t)inode;
@@ -725,7 +721,7 @@ dfs_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     struct fs *fs;
     int err;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, 0, ino, NULL);
     fs = dfs_getfs(ino, false);
     err = dfs_openInode(fs, ino, fi);
@@ -750,7 +746,7 @@ dfs_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     size_t fsize;
     int err = 0;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, ino, 0, NULL);
     if (size == 0) {
         fuse_reply_buf(req, NULL, 0);
@@ -797,7 +793,7 @@ dfs_flush(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     /*
     struct timeval start;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     */
     dfs_displayEntry(__func__, ino, 0, NULL);
     fuse_reply_err(req, 0);
@@ -832,7 +828,9 @@ dfs_releaseInode(struct fs *fs, fuse_ino_t ino,
         dfs_truncate(inode, 0);
     }
     if (inval) {
-        *inval = (inode->i_ocount == 0) && !dfs_keepcache(fs, inode);
+        *inval = (inode->i_ocount == 0) && (inode->i_stat.st_size > 0) &&
+                 (!inode->i_pcache || fs->fs_readOnly ||
+                  (fs->fs_snap != NULL));
     }
     dfs_inodeUnlock(inode);
 }
@@ -845,7 +843,7 @@ dfs_release(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     struct fs *fs;
     bool inval;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, ino, 0, NULL);
     fs = dfs_getfs(ino, false);
     dfs_releaseInode(fs, ino, fi, &inval);
@@ -864,7 +862,7 @@ dfs_fsync(fuse_req_t req, fuse_ino_t ino, int datasync,
     /*
     struct timeval start;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     */
     dfs_displayEntry(__func__, ino, 0, NULL);
     fuse_reply_err(req, 0);
@@ -880,7 +878,7 @@ dfs_opendir(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     struct fs *fs;
     int err;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, 0, ino, NULL);
     fs = dfs_getfs(ino, false);
     err = dfs_openInode(fs, ino, fi);
@@ -906,7 +904,7 @@ dfs_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     struct stat st;
     struct fs *fs;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, ino, 0, NULL);
     fs = dfs_getfs(ino, false);
     dir = dfs_getInode(fs, ino, (struct inode *)fi->fh, false, false);
@@ -957,7 +955,7 @@ dfs_releasedir(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     struct timeval start;
     struct fs *fs;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, ino, 0, NULL);
     fs = dfs_getfs(ino, false);
     dfs_releaseInode(fs, ino, fi, NULL);
@@ -972,7 +970,7 @@ dfs_fsyncdir(fuse_req_t req, fuse_ino_t ino, int datasync,
     /*
     struct timeval start;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     */
     dfs_displayEntry(__func__, ino, 0, NULL);
     fuse_reply_err(req, 0);
@@ -988,7 +986,7 @@ dfs_statfs(fuse_req_t req, fuse_ino_t ino) {
     struct timeval start;
     struct statvfs buf;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, ino, 0, NULL);
     memset(&buf, 0, sizeof(struct statvfs));
     buf.f_bsize = DFS_BLOCK_SIZE;
@@ -1066,7 +1064,7 @@ dfs_create(fuse_req_t req, fuse_ino_t parent, const char *name,
     struct fs *fs;
     int err;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, parent, 0, name);
     fs = dfs_getfs(parent, false);
     err = create(fs, parent, name, S_IFREG | (mode & ~ctx->umask),
@@ -1125,7 +1123,7 @@ dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
     off_t endoffset;
     struct fs *fs;
 
-    gettimeofday(&start, NULL);
+    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, ino, 0, NULL);
     size = bufv->buf[bufv->idx].size;
     wsize = sizeof(struct fuse_bufvec) +

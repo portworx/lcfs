@@ -72,7 +72,7 @@ main(int argc, char *argv[]) {
         arg[4] = "-d";
         daemon = false;
     } else {
-        daemon = false;
+        daemon = true;
     }
 
     struct fuse_args args = FUSE_ARGS_INIT(ARGC, arg);
