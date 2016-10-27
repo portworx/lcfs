@@ -128,7 +128,11 @@ dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
                fs, pfs ? pfs->fs_root : -1, root, fs->fs_gindex, name);
 
 out:
-    fuse_reply_err(req, err);
+    if (err) {
+        fuse_reply_err(req, err);
+    } else {
+        fuse_reply_ioctl(req, 0, NULL, 0);
+    }
     dfs_statsAdd(rfs, DFS_CLONE_CREATE, err, &start);
     dfs_unlock(rfs);
     if (fs) {
@@ -199,7 +203,11 @@ dfs_removeClone(fuse_req_t req, struct gfs *gfs, ino_t ino, const char *name) {
     dfs_inodeUnlock(pdir);
 
 out:
-    fuse_reply_err(req, err);
+    if (err) {
+        fuse_reply_err(req, err);
+    } else {
+        fuse_reply_ioctl(req, 0, NULL, 0);
+    }
     dfs_statsAdd(rfs, DFS_CLONE_REMOVE, err, &start);
     dfs_unlock(rfs);
     if (fs) {
@@ -215,5 +223,45 @@ out:
             dfs_destroyFs(fs);
         }
     }
+}
+
+/* Mount, unmount, stat a snapshot */
+int
+dfs_snap(struct gfs *gfs, const char *name, enum ioctl_cmd cmd) {
+    struct timeval start;
+    struct fs *fs, *rfs;
+    ino_t root;
+    int err;
+
+    dfs_statsBegin(&start);
+    rfs = dfs_getGlobalFs(gfs);
+    if (cmd == UMOUNT_ALL) {
+        dfs_statsAdd(rfs, DFS_CLEANUP, 0, &start);
+        return 0;
+    }
+    root = dfs_getRootIno(rfs, gfs->gfs_snap_root, name);
+    err = (root == DFS_INVALID_INODE) ? ENOENT : 0;
+    switch (cmd) {
+    case SNAP_MOUNT:
+        dfs_statsAdd(rfs, DFS_MOUNT, err, &start);
+        break;
+
+    case SNAP_STAT:
+        dfs_statsAdd(rfs, DFS_STAT, err, &start);
+        break;
+
+    case SNAP_UMOUNT:
+        if (err == 0) {
+            fs = dfs_getfs(root, false);
+            dfs_displayStats(fs);
+            dfs_unlock(fs);
+        }
+        dfs_statsAdd(rfs, DFS_UMOUNT, err, &start);
+        break;
+
+    default:
+        err = EINVAL;
+    }
+    return err;
 }
 

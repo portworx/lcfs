@@ -233,22 +233,6 @@ dfs_format(struct gfs *gfs, size_t size) {
     sb->sb_tblocks = size / DFS_BLOCK_SIZE;
 }
 
-/* Unmount a file system */
-void
-dfs_umount(const char *name) {
-    struct gfs *gfs = getfs();
-    struct fs *rfs, *fs;
-    ino_t root;
-
-    rfs = dfs_getGlobalFs(gfs);
-    root = dfs_getRootIno(rfs, gfs->gfs_snap_root, name);
-    if (root != DFS_INVALID_INODE) {
-        fs = dfs_getfs(root, false);
-        dfs_displayStats(fs);
-        dfs_unlock(fs);
-    }
-}
-
 /* Allocate global file system */
 static struct gfs *
 dfs_gfsAlloc(int fd) {

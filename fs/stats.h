@@ -32,7 +32,11 @@ enum dfs_stats {
     DFS_WRITE_BUF = 26,
     DFS_CLONE_CREATE = 27,
     DFS_CLONE_REMOVE = 28,
-    DFS_REQUEST_MAX = 29,
+    DFS_MOUNT = 29,
+    DFS_STAT = 30,
+    DFS_UMOUNT = 31,
+    DFS_CLEANUP = 32,
+    DFS_REQUEST_MAX = 33,
 };
 
 /* Structure tracking stats */

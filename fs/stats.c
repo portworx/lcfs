@@ -33,6 +33,10 @@ static const char *requests[] = {
     "WRITE_BUF",
     "CLONE_CREATE",
     "CLONE_REMOVE",
+    "MOUNT",
+    "STAT",
+    "UMOUNT",
+    "CLEANUP",
 };
 
 /* Allocate a new stats structure */

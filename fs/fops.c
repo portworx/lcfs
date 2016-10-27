@@ -1002,8 +1002,6 @@ dfs_statfs(fuse_req_t req, fuse_ino_t ino) {
     dfs_statsAdd(dfs_getGlobalFs(gfs), DFS_STATFS, false, &start);
 }
 
-/* XXX Use ioctl instead of setxattr/removexattr for clone operations */
-
 /* Set extended attributes on a file, currently used for creating a new file
  * system
  */
@@ -1020,11 +1018,6 @@ dfs_getxattr(fuse_req_t req, fuse_ino_t ino, const char *name, size_t size) {
     struct gfs *gfs = getfs();
 
     dfs_displayEntry(__func__, ino, 0, name);
-    if (ino == gfs->gfs_snap_root) {
-        dfs_umount(name);
-        fuse_reply_err(req, ENODATA);
-        return;
-    }
     if (!gfs->gfs_xattr_enabled) {
         fuse_reply_err(req, ENODATA);
         return;
@@ -1100,15 +1093,62 @@ static void
 dfs_bmap(fuse_req_t req, fuse_ino_t ino, size_t blocksize, uint64_t idx) {
     dfs_displayEntry(__func__, ino);
 }
+#endif
 
 static void
 dfs_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
           struct fuse_file_info *fi, unsigned flags,
           const void *in_buf, size_t in_bufsz, size_t out_bufsz) {
-    dfs_displayEntry(__func__, ino);
-    fuse_reply_ioctl(req, 0, NULL, 0);
+    char name[in_bufsz + 1], *snap, *parent;
+    struct gfs *gfs = getfs();
+    int len, op, err = ENOSYS;
+
+    dfs_displayEntry(__func__, ino, cmd, NULL);
+    if (ino != gfs->gfs_snap_root) {
+        //dfs_reportError(__func__, __LINE__, ino, ENOSYS);
+        fuse_reply_err(req, ENOSYS);
+        return;
+    }
+    if (in_bufsz > 0) {
+        memcpy(name, in_buf, in_bufsz);
+    }
+    name[in_bufsz] = 0;
+    op = _IOC_NR(cmd);
+    switch (op) {
+    case SNAP_CREATE:
+    case CLONE_CREATE:
+        len = _IOC_TYPE(cmd);
+        if (len) {
+            parent = name;
+            name[len] = 0;
+            snap = &name[len + 1];
+        } else {
+            parent = "";
+            len = 0;
+            snap = name;
+        }
+        dfs_newClone(req, gfs, snap, parent, len, op == CLONE_CREATE);
+        return;
+
+    case SNAP_REMOVE:
+        dfs_removeClone(req, gfs, ino, name);
+        return;
+
+    case SNAP_MOUNT:
+    case SNAP_STAT:
+    case SNAP_UMOUNT:
+    case UMOUNT_ALL:
+        err = dfs_snap(gfs, name, op);
+        break;
+    }
+    if (err) {
+        fuse_reply_err(req, err);
+    } else {
+        fuse_reply_ioctl(req, 0, NULL, 0);
+    }
 }
 
+#if 0
 static void
 dfs_poll(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi,
          struct fuse_pollhandle *ph) {
@@ -1201,6 +1241,7 @@ static void
 dfs_init(void *userdata, struct fuse_conn_info *conn) {
     printf("%s: capable 0x%x want 0x%x gfs %p\n", __func__,
            conn->capable, conn->want, userdata);
+    conn->want |= FUSE_CAP_IOCTL_DIR;
 }
 
 /* Destroy a file system */
@@ -1248,7 +1289,9 @@ struct fuse_lowlevel_ops dfs_ll_oper = {
     .getlk      = dfs_getlk,
     .setlk      = dfs_setlk,
     .bmap       = dfs_bmap,
+#endif
     .ioctl      = dfs_ioctl,
+#if 0
     .poll       = dfs_poll,
 #endif
     .write_buf  = dfs_write_buf,

@@ -152,7 +152,7 @@ dfs_removeTree(struct fs *fs, struct inode *dir) {
 
     dir->i_removed = true;
     while (dirent != NULL) {
-        dfs_printf("dfs_removeTree: dir %ld nlink %ld removing %s inode %ld dir %d\n", dir->i_stat.st_ino, dir->i_stat.st_nlink, dirent->di_name, dirent->di_ino, S_ISDIR(dirent->di_mode));
+        //dfs_printf("dfs_removeTree: dir %ld nlink %ld removing %s inode %ld dir %d\n", dir->i_stat.st_ino, dir->i_stat.st_nlink, dirent->di_name, dirent->di_ino, S_ISDIR(dirent->di_mode));
         dremove(fs, dir, dirent->di_name, dirent->di_ino,
                 S_ISDIR(dirent->di_mode));
         dirent = dir->i_dirent;

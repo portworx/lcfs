@@ -12,12 +12,6 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
     struct fs *fs;
     int err = 0;
 
-    /* XXX Special case of creating a clone */
-    if (ino == gfs->gfs_snap_root) {
-        dfs_newClone(req, gfs, name, value, size, flags);
-        return;
-    }
-
     dfs_statsBegin(&start);
     fs = dfs_getfs(ino, false);
     if (fs->fs_snap) {
@@ -198,17 +192,10 @@ out:
 void
 dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
     struct xattr *xattr, *pxattr = NULL;
-    struct gfs *gfs = getfs();
     struct timeval start;
     struct inode *inode;
     struct fs *fs;
     int err = 0;
-
-    /* XXX Special case of removing a clone */
-    if (ino == gfs->gfs_snap_root) {
-        dfs_removeClone(req, gfs, ino, name);
-        return;
-    }
 
     dfs_statsBegin(&start);
     fs = dfs_getfs(ino, false);

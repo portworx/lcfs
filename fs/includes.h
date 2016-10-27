@@ -18,7 +18,9 @@
 #include <sys/xattr.h>
 #include <pthread.h>
 #include <assert.h>
+#include <linux/ioctl.h>
 
+#include "dfs.h"
 #include "inlines.h"
 #include "layout.h"
 #include "fs.h"
@@ -48,7 +50,6 @@ void dfs_lock(struct fs *fs, bool exclusive);
 void dfs_unlock(struct fs *fs);
 int dfs_mount(char *device, struct gfs **gfsp);
 void dfs_unmount(struct gfs *gfs);
-void dfs_umount(const char *name);
 struct fs *dfs_newFs(struct gfs *gfs, bool rw, bool locks);
 void dfs_destroyFs(struct fs *fs);
 
@@ -101,6 +102,7 @@ void dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
                   const char *parent, size_t size, bool rw);
 void dfs_removeClone(fuse_req_t req, struct gfs *gfs,
                      ino_t ino, const char *name);
+int dfs_snap(struct gfs *gfs, const char *name, enum ioctl_cmd cmd);
 
 struct stats *dfs_statsNew();
 void dfs_statsBegin(struct timeval *start);
