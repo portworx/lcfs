@@ -6,3 +6,6 @@ dfs: $(OBJ)
 
 clean:
 	rm *.o dfs
+
+test:
+	sudo ./test.sh
