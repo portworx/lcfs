@@ -9,7 +9,7 @@ struct gfs {
     /* File descriptor of the underlying device */
     int gfs_fd;
 
-    /* File system super block */
+    /* Global File system super block */
     struct super *gfs_super;
 
     /* Directory inode in which snapshot roots are placed (/dfs) */
@@ -33,9 +33,6 @@ struct gfs {
     /* Inode mapping to gfs_snap_root */
     struct inode *gfs_snap_rootInode;
 
-    /* Count of inodes in use */
-    ino_t gfs_ninode;
-
     /* List of file system roots */
     ino_t *gfs_roots;
 
@@ -57,6 +54,12 @@ struct gfs {
 
 /* A file system structure created for each layer */
 struct fs {
+
+    /* File system super block */
+    struct super *fs_super;
+
+    /* Super block location */
+    uint64_t fs_sblock;
 
     /* Index of this file system in the global table */
     int fs_gindex;

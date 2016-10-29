@@ -33,11 +33,12 @@ void *dfs_readBlock(int fd, off_t block);
 int dfs_writeBlock(int fd, void *buf, off_t block);
 int dfs_writeBlocks(int fd, struct iovec *iov, int iovcnt, off_t block);
 
-void dfs_blockAlloc(struct fs *fs, int count);
+uint64_t dfs_blockAlloc(struct fs *fs, int count);
 void dfs_blockFree(struct gfs *gfs, uint64_t count);
 
-int dfs_superRead(struct gfs *gfs);
-int dfs_superWrite(struct gfs *gfs);
+struct super *dfs_superRead(struct gfs *gfs, uint64_t block);
+int dfs_superWrite(struct gfs *gfs, struct fs *fs);
+void dfs_superInit(struct super *super, size_t size, bool global);
 
 struct fs *dfs_getfs(ino_t ino, bool exclusive);
 int dfs_getIndex(struct fs *nfs, ino_t parent, ino_t ino);
@@ -45,12 +46,12 @@ void dfs_setupSpecialDir(struct gfs *gfs, struct fs *fs);
 void dfs_addfs(struct fs *fs, struct fs *snap);
 void dfs_removefs(struct gfs *gfs, struct fs *fs);
 void dfs_removeSnap(struct gfs *gfs, struct fs *fs);
-void dfs_format(struct gfs *gfs, size_t size);
 void dfs_lock(struct fs *fs, bool exclusive);
 void dfs_unlock(struct fs *fs);
 int dfs_mount(char *device, struct gfs **gfsp);
 void dfs_unmount(struct gfs *gfs);
-struct fs *dfs_newFs(struct gfs *gfs, bool rw, bool locks);
+void dfs_umountAll(struct gfs *gfs);
+struct fs *dfs_newFs(struct gfs *gfs, bool rw, bool snapshot);
 void dfs_destroyFs(struct fs *fs);
 
 struct icache *dfs_icache_init();
@@ -63,6 +64,7 @@ struct inode *dfs_getInode(struct fs *fs, ino_t ino, struct inode *handle,
 struct inode *dfs_inodeInit(struct fs *fs, mode_t mode,
                             uid_t uid, gid_t gid, dev_t rdev, ino_t parent,
                             const char *target);
+void dfs_rootInit(struct fs *fs, ino_t root);
 void dfs_updateInodeTimes(struct inode *inode, bool atime,
                           bool mtime, bool ctime);
 void dfs_inodeLock(struct inode *inode, bool exclusive);

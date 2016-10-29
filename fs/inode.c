@@ -26,7 +26,9 @@ dfs_newInode(struct fs *fs) {
 
     memset(inode, 0, sizeof(struct inode));
     pthread_rwlock_init(&inode->i_rwlock, NULL);
-    __sync_add_and_fetch(&fs->fs_gfs->gfs_ninode, 1);
+
+    /* XXX This accounting is not correct after restart */
+    __sync_add_and_fetch(&fs->fs_gfs->gfs_super->sb_inodes, 1);
     return inode;
 }
 
@@ -112,7 +114,7 @@ dfs_updateInodeTimes(struct inode *inode, bool atime, bool mtime, bool ctime) {
 }
 
 /* Initialize root inode of a file system */
-static void
+void
 dfs_rootInit(struct fs *fs, ino_t root) {
     struct inode *inode = dfs_newInode(fs);
 
@@ -218,7 +220,7 @@ dfs_destroyInodes(struct fs *fs) {
     /* XXX reuse this cache for another file system */
     free(fs->fs_icache);
     if (icount) {
-        __sync_sub_and_fetch(&fs->fs_gfs->gfs_ninode, icount);
+        __sync_sub_and_fetch(&fs->fs_gfs->gfs_super->sb_inodes, icount);
     }
     return count;
 }

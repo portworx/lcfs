@@ -31,6 +31,7 @@ dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     ino_t root, pinum = 0;
     struct timeval start;
     char pname[size + 1];
+    void *super;
     int err = 0;
     bool base;
 
@@ -55,11 +56,20 @@ dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
 
     /* Create a new file system structure */
     fs = dfs_newFs(gfs, rw, true);
+    posix_memalign(&super, DFS_BLOCK_SIZE, DFS_BLOCK_SIZE);
+    dfs_superInit(super, 0, false);
+    fs->fs_super = super;
     dfs_lock(fs, true);
 
     /* Allocate root inode and add to the directory */
     root = dfs_inodeAlloc(fs);
     fs->fs_root = root;
+    fs->fs_super->sb_root = root;
+    fs->fs_super->sb_flags |= DFS_SUPER_DIRTY;
+    if (rw) {
+        fs->fs_super->sb_flags |= DFS_SUPER_RDWR;
+    }
+    fs->fs_sblock = dfs_blockAlloc(fs, 1);
     err = dfs_readInodes(fs);
     if (err != 0) {
         dfs_reportError(__func__, __LINE__, root, err);
@@ -101,6 +111,7 @@ dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
         nfs = pfs->fs_snap;
         if (nfs == NULL) {
             pfs->fs_snap = fs;
+            pfs->fs_super->sb_childSnap = fs->fs_sblock;
         }
         fs->fs_parent = pfs;
         fs->fs_ilock = pfs->fs_ilock;
@@ -124,8 +135,8 @@ dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     dfs_updateInodeTimes(pdir, false, true, true);
     dfs_inodeUnlock(pdir);
 
-    dfs_printf("Created FS %p, parent %ld root %ld index %d name %s\n",
-               fs, pfs ? pfs->fs_root : -1, root, fs->fs_gindex, name);
+    dfs_printf("Created fs with parent %ld root %ld index %d block %ld name %s\n",
+               pfs ? pfs->fs_root : -1, root, fs->fs_gindex, fs->fs_sblock, name);
 
 out:
     if (err) {
@@ -182,8 +193,8 @@ dfs_removeClone(fuse_req_t req, struct gfs *gfs, ino_t ino, const char *name) {
         err = EEXIST;
         goto out;
     }
-    dfs_printf("Removing FS %p, parent %ld root %ld index %d name %s\n",
-               fs, fs->fs_parent ? fs->fs_parent->fs_root : - 1,
+    dfs_printf("Removing fs with parent %ld root %ld index %d name %s\n",
+               fs->fs_parent ? fs->fs_parent->fs_root : - 1,
                fs->fs_root, fs->fs_gindex, name);
 
     /* Remove the file system from the snapshot chain */
@@ -236,6 +247,7 @@ dfs_snap(struct gfs *gfs, const char *name, enum ioctl_cmd cmd) {
     dfs_statsBegin(&start);
     rfs = dfs_getGlobalFs(gfs);
     if (cmd == UMOUNT_ALL) {
+        dfs_umountAll(gfs);
         dfs_statsAdd(rfs, DFS_CLEANUP, 0, &start);
         return 0;
     }

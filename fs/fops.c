@@ -983,6 +983,7 @@ dfs_fsyncdir(fuse_req_t req, fuse_ino_t ino, int datasync,
 static void
 dfs_statfs(fuse_req_t req, fuse_ino_t ino) {
     struct gfs *gfs = getfs();
+    struct super *super = gfs->gfs_super;
     struct timeval start;
     struct statvfs buf;
 
@@ -991,12 +992,12 @@ dfs_statfs(fuse_req_t req, fuse_ino_t ino) {
     memset(&buf, 0, sizeof(struct statvfs));
     buf.f_bsize = DFS_BLOCK_SIZE;
     buf.f_frsize = DFS_BLOCK_SIZE;
-    buf.f_blocks = gfs->gfs_super->sb_tblocks;
-    buf.f_bfree = buf.f_blocks - gfs->gfs_super->sb_nblock;
+    buf.f_blocks = super->sb_tblocks;
+    buf.f_bfree = buf.f_blocks - super->sb_blocks;
     buf.f_bavail = buf.f_bfree;
     buf.f_files = UINT32_MAX;
-    buf.f_ffree = buf.f_files - gfs->gfs_ninode;
-    buf.f_favail = buf.f_files - gfs->gfs_ninode;
+    buf.f_ffree = buf.f_files - super->sb_inodes;
+    buf.f_favail = buf.f_ffree;
     buf.f_namemax = DFS_FILENAME_MAX;
     fuse_reply_statfs(req, &buf);
     dfs_statsAdd(dfs_getGlobalFs(gfs), DFS_STATFS, false, &start);
