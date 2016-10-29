@@ -5,6 +5,7 @@ void
 dfs_superInit(struct super *super, size_t size, bool global) {
     memset(super, 0, sizeof(struct super));
     super->sb_magic = DFS_SUPER_MAGIC;
+    super->sb_inodeBlock = DFS_INVALID_BLOCK;
     if (global) {
         super->sb_root = DFS_ROOT_INODE;
         super->sb_version = DFS_VERSION;

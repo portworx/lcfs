@@ -46,6 +46,8 @@ create(struct fs *fs, ino_t parent, const char *name, mode_t mode,
         inode->i_ocount++;
         fi->fh = (uint64_t)inode;
     }
+    dfs_markInodeDirty(inode, true, false, false, false);
+    dfs_markInodeDirty(dir, true, true, false, false);
     dfs_inodeUnlock(inode);
     dfs_inodeUnlock(dir);
     ep->ino = dfs_setHandle(fs->fs_gindex, ino);
@@ -126,8 +128,10 @@ out:
     dfs_dirRemove(dir, name);
     if (inode) {
         dfs_updateInodeTimes(dir, false, false, true);
+        dfs_markInodeDirty(inode, true, true, true, false);
         dfs_inodeUnlock(inode);
     }
+    dfs_markInodeDirty(dir, true, true, false, false);
     return err;
 }
 
@@ -340,6 +344,7 @@ dfs_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
     if (ctime || mtime || atime) {
         dfs_updateInodeTimes(inode, atime, mtime, ctime);
     }
+    dfs_markInodeDirty(inode, true, false, to_set & FUSE_SET_ATTR_SIZE, false);
     memcpy(&stbuf, &inode->i_stat, sizeof(struct stat));
     dfs_inodeUnlock(inode);
     stbuf.st_ino = dfs_setHandle(fs->fs_gindex, stbuf.st_ino);
@@ -603,6 +608,8 @@ dfs_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
             tdir->i_stat.st_nlink++;
         }
         inode->i_parent = dfs_getInodeHandle(newparent);
+        dfs_updateInodeTimes(inode, false, false, true);
+        dfs_markInodeDirty(inode, true, false, false, false);
         dfs_inodeUnlock(inode);
     } else {
 
@@ -613,8 +620,10 @@ dfs_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
         dfs_dirRename(sdir, ino, name, newname);
     }
     dfs_updateInodeTimes(sdir, false, true, true);
+    dfs_markInodeDirty(sdir, true, true, false, false);
     if (tdir) {
         dfs_updateInodeTimes(tdir, false, true, true);
+        dfs_markInodeDirty(tdir, true, true, false, false);
         dfs_inodeUnlock(tdir);
     }
     dfs_inodeUnlock(sdir);
@@ -664,8 +673,10 @@ dfs_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
     assert(dir->i_stat.st_nlink >= 2);
     dfs_dirAdd(dir, inode->i_stat.st_ino, inode->i_stat.st_mode, newname);
     dfs_updateInodeTimes(dir, false, true, true);
+    dfs_markInodeDirty(dir, true, true, false, false);
     inode->i_stat.st_nlink++;
     dfs_updateInodeTimes(inode, false, false, true);
+    dfs_markInodeDirty(inode, true, false, false, false);
     dfs_inodeUnlock(dir);
     memcpy(&ep.attr, &inode->i_stat, sizeof(struct stat));
     dfs_inodeUnlock(inode);
@@ -1199,6 +1210,7 @@ dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
     }
     count = dfs_addPages(inode, off, size, bufv, dst);
     dfs_updateInodeTimes(inode, false, true, true);
+    dfs_markInodeDirty(inode, true, false, true, false);
     dfs_inodeUnlock(inode);
     if (count) {
         dfs_blockAlloc(fs, count);

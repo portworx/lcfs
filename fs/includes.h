@@ -49,6 +49,7 @@ void dfs_removeSnap(struct gfs *gfs, struct fs *fs);
 void dfs_lock(struct fs *fs, bool exclusive);
 void dfs_unlock(struct fs *fs);
 int dfs_mount(char *device, struct gfs **gfsp);
+void dfs_newInodeBlock(struct gfs *gfs, struct fs *fs);
 void dfs_unmount(struct gfs *gfs);
 void dfs_umountAll(struct gfs *gfs);
 struct fs *dfs_newFs(struct gfs *gfs, bool rw, bool snapshot);
@@ -57,7 +58,7 @@ void dfs_destroyFs(struct fs *fs);
 struct icache *dfs_icache_init();
 void dfs_icache_deinit(struct icache *icache);
 ino_t dfs_inodeAlloc(struct fs *fs);
-int dfs_readInodes(struct fs *fs);
+int dfs_readInodes(struct gfs *gfs, struct fs *fs);
 uint64_t dfs_destroyInodes(struct fs *fs);
 struct inode *dfs_getInode(struct fs *fs, ino_t ino, struct inode *handle,
                            bool copy, bool exclusive);
@@ -67,6 +68,7 @@ struct inode *dfs_inodeInit(struct fs *fs, mode_t mode,
 void dfs_rootInit(struct fs *fs, ino_t root);
 void dfs_updateInodeTimes(struct inode *inode, bool atime,
                           bool mtime, bool ctime);
+void dfs_syncInodes(struct gfs *gfs, struct fs *fs);
 void dfs_inodeLock(struct inode *inode, bool exclusive);
 void dfs_inodeUnlock(struct inode *inode);
 void dfs_invalidate_pcache(struct gfs *gfs, struct fs *fs);

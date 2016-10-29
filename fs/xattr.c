@@ -59,6 +59,8 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
                     xattr->x_value = NULL;
                 }
                 xattr->x_size = size;
+                dfs_updateInodeTimes(inode, false, false, true);
+                dfs_markInodeDirty(inode, true, false, false, true);
                 dfs_inodeUnlock(inode);
                 fuse_reply_err(req, 0);
                 goto out;
@@ -67,7 +69,7 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
         xattr = xattr->x_next;
     }
 
-    /* Operation fails if XATTR_CREATE is specified and attribute does not
+    /* Operation fails if XATTR_REPLACE is specified and attribute does not
      * exist.
      */
     if (flags == XATTR_REPLACE) {
@@ -90,6 +92,8 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
     inode->i_xsize += len + 1;
     xattr->x_next = inode->i_xattr;
     inode->i_xattr = xattr;
+    dfs_updateInodeTimes(inode, false, false, true);
+    dfs_markInodeDirty(inode, true, false, false, true);
     dfs_inodeUnlock(inode);
     fuse_reply_err(req, 0);
 
@@ -226,6 +230,8 @@ dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
                 free(xattr->x_value);
             }
             free(xattr);
+            dfs_updateInodeTimes(inode, false, false, true);
+            dfs_markInodeDirty(inode, true, false, false, true);
             dfs_inodeUnlock(inode);
             fuse_reply_err(req, 0);
             goto out;

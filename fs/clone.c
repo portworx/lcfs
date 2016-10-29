@@ -70,7 +70,7 @@ dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
         fs->fs_super->sb_flags |= DFS_SUPER_RDWR;
     }
     fs->fs_sblock = dfs_blockAlloc(fs, 1);
-    err = dfs_readInodes(fs);
+    dfs_rootInit(fs, fs->fs_root);
     if (err != 0) {
         dfs_reportError(__func__, __LINE__, root, err);
         goto out;

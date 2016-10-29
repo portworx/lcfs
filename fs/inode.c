@@ -22,9 +22,13 @@ dfs_icache_init() {
 /* Allocate a new inode */
 static struct inode *
 dfs_newInode(struct fs *fs) {
-    struct inode *inode = malloc(sizeof(struct inode));
+    struct inode *inode;
+    void *buf;
 
+    posix_memalign(&buf, DFS_BLOCK_SIZE, sizeof(struct inode));
+    inode = buf;
     memset(inode, 0, sizeof(struct inode));
+    inode->i_block = DFS_INVALID_BLOCK;
     pthread_rwlock_init(&inode->i_rwlock, NULL);
 
     /* XXX This accounting is not correct after restart */
@@ -125,13 +129,53 @@ dfs_rootInit(struct fs *fs, ino_t root) {
     inode->i_parent = root;
     dfs_updateInodeTimes(inode, true, true, true);
     inode->i_fs = fs;
+    dfs_addInode(fs, inode);
     fs->fs_rootInode = inode;
+    dfs_markInodeDirty(inode, true, true, false, false);
 }
 
 /* Initialize inode table of a file system */
 int
-dfs_readInodes(struct fs *fs) {
-    dfs_rootInit(fs, fs->fs_root);
+dfs_readInodes(struct gfs *gfs, struct fs *fs) {
+    uint64_t iblock, block = fs->fs_super->sb_inodeBlock;
+    struct inode *inode;
+    void *ibuf, *buf;
+    int i;
+
+    dfs_printf("Reading inodes for fs %d %ld\n", fs->fs_gindex, fs->fs_root);
+    while (block != DFS_INVALID_BLOCK) {
+        dfs_printf("Reading inode table from block %ld\n", block);
+        fs->fs_inodeBlocks = dfs_readBlock(gfs->gfs_fd, block);
+        for (i = 0; i < DFS_IBLOCK_MAX; i++) {
+            iblock = fs->fs_inodeBlocks->ib_blks[i];
+            if (iblock == 0) {
+                break;
+            }
+            dfs_printf("Reading inode from block %ld\n", iblock);
+            ibuf = dfs_readBlock(gfs->gfs_fd, iblock);
+            inode = ibuf;
+            if (inode->i_stat.st_ino == 0) {
+                dfs_printf("Skipping removed inode\n");
+                free(ibuf);
+                continue;
+            }
+            posix_memalign(&buf, DFS_BLOCK_SIZE, sizeof(struct inode));
+            inode = buf;
+
+            /* XXX zero out just necessary fields */
+            memset(inode, 0, sizeof(struct inode));
+            memcpy(inode, ibuf, sizeof(struct dinode));
+            inode->i_block = iblock;
+            pthread_rwlock_init(&inode->i_rwlock, NULL);
+            dfs_addInode(fs, inode);
+            if (inode->i_stat.st_ino == fs->fs_root) {
+                fs->fs_rootInode = inode;
+            }
+            free(ibuf);
+        }
+        block = fs->fs_inodeBlocks->ib_next;
+        free(fs->fs_inodeBlocks);
+    }
     return 0;
 }
 
@@ -169,6 +213,52 @@ dfs_freeInode(struct inode *inode) {
     dfs_xattrFree(inode);
     free(inode);
     return count;
+}
+
+/* Flush a dirty inode to disk */
+static void
+dfs_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
+
+    /* Write out a dirty inode */
+    if (inode->i_dirty) {
+        if (!inode->i_removed) {
+            if (inode->i_block == DFS_INVALID_BLOCK) {
+                if ((fs->fs_inodeBlocks == NULL) ||
+                    (fs->fs_inodeIndex >= DFS_IBLOCK_MAX)) {
+                    dfs_newInodeBlock(gfs, fs);
+                }
+                inode->i_block = dfs_blockAlloc(fs, 1);
+                fs->fs_inodeBlocks->ib_blks[fs->fs_inodeIndex++] = inode->i_block;
+            }
+            dfs_printf("Writing inode %ld to block %ld\n", inode->i_stat.st_ino, inode->i_block);
+            dfs_writeBlock(gfs->gfs_fd, inode, inode->i_block);
+        } else if (inode->i_block != DFS_INVALID_BLOCK) {
+            inode->i_stat.st_ino = 0;
+            dfs_writeBlock(gfs->gfs_fd, inode, inode->i_block);
+        }
+        inode->i_dirty = false;
+    }
+}
+
+/* Sync all dirty inodes */
+void
+dfs_syncInodes(struct gfs *gfs, struct fs *fs) {
+    struct inode *inode;
+    int i;
+
+    dfs_printf("Syncing inodes for fs %d %ld\n", fs->fs_gindex, fs->fs_root);
+    for (i = 0; i < DFS_ICACHE_SIZE; i++) {
+        inode = fs->fs_icache[i].ic_head;
+        if (inode == NULL) {
+            continue;
+        }
+        while (inode) {
+            if (dfs_inodeDirty(inode)) {
+                dfs_flushInode(gfs, fs, inode);
+            }
+            inode = inode->i_cnext;
+        }
+    }
 }
 
 /* Invalidate kernel page cache for a file system */

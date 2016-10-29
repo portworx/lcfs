@@ -93,6 +93,9 @@ struct fs {
      */
     pthread_rwlock_t *fs_rwlock;
 
+    /* Current list of inode blocks */
+    struct iblock *fs_inodeBlocks;
+
     /* Creation time in seconds since Epoch */
     time_t fs_ctime;
 
@@ -101,6 +104,9 @@ struct fs {
 
     /* Stats for this file system */
     struct stats *fs_stats;
+
+    /* Next index in inode block array */
+    int fs_inodeIndex;
 
     /* Set if readOnly snapshot */
     bool fs_readOnly;

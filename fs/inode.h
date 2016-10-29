@@ -57,8 +57,11 @@ struct xattr {
 /* Inode structure */
 struct inode {
 
-    /* Stat information */
-    struct stat i_stat;
+    /* Disk inode part */
+    struct dinode i_dinode;
+
+    /* Location of the inode */
+    uint64_t i_block;
 
     /* Lock serializing operations on the inode */
     pthread_rwlock_t i_rwlock;
@@ -71,9 +74,6 @@ struct inode {
 
     /* Open count */
     uint64_t i_ocount;
-
-    /* Parent inode number for singly linked inodes */
-    uint64_t i_parent;
 
     union {
 
@@ -105,7 +105,23 @@ struct inode {
     /* Set if pages can be cached in kernel */
     bool i_pcache;
 
+    /* Set if inode is dirty */
+    bool i_dirty;
+
+    /* Set if inode blockmap is dirty */
+    bool i_bmapdirty;
+
+    /* Set if directory is dirty */
+    bool i_dirdirty;
+
+    /* Set if extended attributes are dirty */
+    bool i_xattrdirty;
 }  __attribute__((packed));
+
+#define i_stat          i_dinode.di_stat
+#define i_parent        i_dinode.di_parent
+#define i_bmapBlock     i_dinode.di_bmap
+#define i_xattrBlock    i_dinode.di_xattr
 
 /* XXX Replace ino_t with fuse_ino_t */
 /* XXX Make inode numbers 32 bit */
@@ -134,5 +150,31 @@ dfs_getInodeHandle(uint64_t handle) {
     }
     return handle & 0xFFFFFFFF;
 }
+
+/* Mark inode dirty for flushing to disk */
+static inline void
+dfs_markInodeDirty(struct inode *inode, bool dirty, bool dir, bool bmap,
+                   bool xattr) {
+    if (dirty) {
+        inode->i_dirty = true;
+    }
+    if (dir) {
+        inode->i_dirdirty = true;
+    }
+    if (bmap) {
+        inode->i_bmapdirty = true;
+    }
+    if (xattr) {
+        inode->i_xattrdirty = true;
+    }
+}
+
+/* Check an inode is dirty or not */
+static inline bool
+dfs_inodeDirty(struct inode *inode) {
+    return inode->i_dirty || inode->i_dirdirty || inode->i_bmapdirty ||
+           inode->i_xattrdirty;
+}
+
 
 #endif

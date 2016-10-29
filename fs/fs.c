@@ -21,6 +21,25 @@ dfs_newFs(struct gfs *gfs, bool rw, bool snapshot) {
     return fs;
 }
 
+/* Allocate a new inode block */
+void
+dfs_newInodeBlock(struct gfs *gfs, struct fs *fs) {
+    void *buf;
+
+    if (fs->fs_inodeBlocks != NULL) {
+        assert(fs->fs_super->sb_inodeBlock != DFS_INVALID_BLOCK);
+        dfs_printf("Writing Inode block at %ld\n", fs->fs_super->sb_inodeBlock);
+        dfs_writeBlock(gfs->gfs_fd, fs->fs_inodeBlocks,
+                       fs->fs_super->sb_inodeBlock);
+    }
+    posix_memalign(&buf, DFS_BLOCK_SIZE, DFS_BLOCK_SIZE);
+    memset(buf, 0, DFS_BLOCK_SIZE);
+    fs->fs_inodeBlocks = buf;
+    fs->fs_inodeIndex = 0;
+    fs->fs_inodeBlocks->ib_next = fs->fs_super->sb_inodeBlock;
+    fs->fs_super->sb_inodeBlock = dfs_blockAlloc(fs, 1);
+}
+
 /* Delete a file system */
 void
 dfs_destroyFs(struct fs *fs) {
@@ -321,8 +340,7 @@ dfs_mount(char *device, struct gfs **gfsp) {
     struct fs *fs;
     size_t size;
     int fd, err;
-
-    assert(sizeof(struct super) == DFS_BLOCK_SIZE);
+    int i;
 
     /* Open the device for mounting */
     fd = open(device, O_RDWR | O_SYNC | O_DIRECT | O_EXCL, 0);
@@ -357,12 +375,17 @@ dfs_mount(char *device, struct gfs **gfsp) {
             return EIO;
         }
         gfs->gfs_super->sb_mounts++;
-        err = dfs_readInodes(fs);
-        if (err != 0) {
-            printf("Reading inodes failed, err %d\n", err);
-            return EIO;
-        }
         dfs_initSnapshots(gfs, fs);
+        for (i = 0; i <= gfs->gfs_scount; i++) {
+            fs = gfs->gfs_fs[i];
+            if (fs) {
+                err = dfs_readInodes(gfs, fs);
+                if (err != 0) {
+                    printf("Reading inodes failed, err %d\n", err);
+                    return EIO;
+                }
+            }
+        }
     }
 
     /* Write out the file system super block */
@@ -376,14 +399,36 @@ dfs_mount(char *device, struct gfs **gfsp) {
     return err;
 }
 
+/* Sync a dirty file system */
+static void
+dfs_sync(struct gfs *gfs, struct fs *fs) {
+    int err;
+
+    if (fs && (fs->fs_super->sb_flags & DFS_SUPER_DIRTY)) {
+        dfs_syncInodes(gfs, fs);
+        if (fs->fs_inodeBlocks != NULL) {
+            assert(fs->fs_super->sb_inodeBlock != DFS_INVALID_BLOCK);
+            dfs_printf("Writing Inode block at %ld\n", fs->fs_super->sb_inodeBlock);
+            dfs_writeBlock(gfs->gfs_fd, fs->fs_inodeBlocks,
+                           fs->fs_super->sb_inodeBlock);
+        }
+        fs->fs_super->sb_flags &= ~DFS_SUPER_DIRTY;
+        dfs_printf("Writing out file system superblock for fs %d %ld to block %ld\n", fs->fs_gindex, fs->fs_root, fs->fs_sblock);
+        err = dfs_superWrite(gfs, fs);
+        if (err) {
+            printf("Superblock update error %d for fs index %d root %ld\n",
+                   err, fs->fs_gindex, fs->fs_root);
+        }
+    }
+}
+
 /* Free the global file system as part of unmount */
 void
 dfs_unmount(struct gfs *gfs) {
-    struct fs *fs;
+    struct fs *fs = dfs_getGlobalFs(gfs);
     int i;
 
-    gfs->gfs_super->sb_flags &= ~DFS_SUPER_DIRTY;
-    dfs_superWrite(gfs, dfs_getGlobalFs(gfs));
+    dfs_sync(gfs, fs);
     close(gfs->gfs_fd);
     pthread_mutex_destroy(&gfs->gfs_lock);
     for (i = 0; i <= gfs->gfs_scount; i++) {
@@ -400,20 +445,9 @@ dfs_unmount(struct gfs *gfs) {
 /* Write out superblocks of all file systems */
 void
 dfs_umountAll(struct gfs *gfs) {
-    struct fs *fs;
-    int err;
     int i;
 
     for (i = 1; i <= gfs->gfs_scount; i++) {
-        fs = gfs->gfs_fs[i];
-        if (fs && (fs->fs_super->sb_flags & DFS_SUPER_DIRTY)) {
-            fs->fs_super->sb_flags &= ~DFS_SUPER_DIRTY;
-            printf("Writing out file system superblock for fs %d %ld to block %ld\n", fs->fs_gindex, fs->fs_root, fs->fs_sblock);
-            err = dfs_superWrite(gfs, fs);
-            if (err) {
-                printf("Superblock update error %d for fs index %d root %ld\n",
-                       err, fs->fs_gindex, fs->fs_root);
-            }
-        }
+        dfs_sync(gfs, gfs->gfs_fs[i]);
     }
 }
