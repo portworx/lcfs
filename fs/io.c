@@ -20,6 +20,7 @@ int
 dfs_writeBlock(int fd, void *buf, off_t block) {
     size_t count;
 
+    /* XXX Use async I/O */
     count = pwrite(fd, buf, DFS_BLOCK_SIZE, block * DFS_BLOCK_SIZE);
     if (count != DFS_BLOCK_SIZE) {
         perror("pwrite");

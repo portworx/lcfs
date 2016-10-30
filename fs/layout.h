@@ -81,8 +81,8 @@ struct dinode {
     /* XXX Avoid storing unwanted stat fields */
     struct stat di_stat;
 
-    /* Block tracking block map */
-    uint64_t di_bmap;
+    /* Starting block for bmap or directory */
+    uint64_t di_bmapdir;
 
     /* Block tracking extended attributes */
     uint64_t di_xattr;
@@ -153,7 +153,25 @@ struct ddirent {
     /* Name of entry */
     char di_name[0];
 } __attribute__((packed));
- static_assert(sizeof(struct ddirent) == 11, "ddirent size != 11");
+static_assert(sizeof(struct ddirent) == 11, "ddirent size != 11");
+
+#define DFS_MIN_DIRENT_SIZE (sizeof(uint64_t) + sizeof(uint8_t) + sizeof(uint16_t))
+
+/* Directory block */
+struct dblock {
+    /* Magic number */
+    uint32_t db_magic;
+
+    /* CRC */
+    uint32_t db_crc;
+
+    /* Next block */
+    uint64_t db_next;
+
+    /* Directory entries */
+    struct ddirent db_dirent[0];
+};
+static_assert(sizeof(struct dblock) == 16, "dblock size != 16");
 
 /* Extended attribute entry */
 struct dxattr {

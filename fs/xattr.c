@@ -268,6 +268,13 @@ dfs_xattrCopy(struct inode *inode, struct inode *parent) {
         xattr = xattr->x_next;
     }
     inode->i_xsize = parent->i_xsize;
+    inode->i_xattrdirty = true;
+}
+
+/* Flush extended attributes */
+void
+dfs_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
+    inode->i_xattrdirty = false;
 }
 
 /* Free all the extended attributes of an inode */

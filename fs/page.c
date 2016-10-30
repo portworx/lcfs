@@ -202,6 +202,13 @@ dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,
     bufv->count = i;
 }
 
+/* Flush blockmap of the inode */
+void
+dfs_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
+    assert(S_ISREG(inode->i_stat.st_mode));
+    inode->i_bmapdirty = false;
+}
+
 /* Truncate pages beyond the new size of the file */
 uint64_t
 dfs_truncPages(struct inode *inode, off_t size) {

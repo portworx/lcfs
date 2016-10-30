@@ -42,12 +42,15 @@ dfs_newInodeBlock(struct gfs *gfs, struct fs *fs) {
 
 /* Delete a file system */
 void
-dfs_destroyFs(struct fs *fs) {
+dfs_destroyFs(struct fs *fs, bool remove) {
     uint64_t count;
 
     dfs_displayStats(fs);
-    count = dfs_destroyInodes(fs);
-    if (count) {
+    count = dfs_destroyInodes(fs, remove);
+    if (remove) {
+        if (fs->fs_sblock) {
+            count++;
+        }
         dfs_blockFree(fs->fs_gfs, count);
     }
     if (fs->fs_rwlock) {
@@ -333,6 +336,36 @@ dfs_initSnapshots(struct gfs *gfs, struct fs *pfs) {
     }
 }
 
+/* Set up some special inodes on restart */
+static void
+dfs_setupSpecialInodes(struct gfs *gfs, struct fs *fs) {
+    struct inode *dir = fs->fs_rootInode;
+    ino_t ino;
+
+    ino = dfs_dirLookup(fs, dir, "tmp");
+    if (ino != DFS_INVALID_INODE) {
+        gfs->gfs_tmp_root = ino;
+        printf("tmp root %ld\n", ino);
+    }
+    ino = dfs_dirLookup(fs, dir, "containers");
+    if (ino != DFS_INVALID_INODE) {
+        gfs->gfs_containers_root = ino;
+        printf("containers root %ld\n", ino);
+    }
+    ino = dfs_dirLookup(fs, dir, "dfs");
+    if (ino != DFS_INVALID_INODE) {
+        gfs->gfs_snap_rootInode = dfs_getInode(dfs_getGlobalFs(gfs), ino,
+                                               NULL, false, false);
+        if (gfs->gfs_snap_rootInode) {
+            dfs_inodeUnlock(gfs->gfs_snap_rootInode);
+        }
+        gfs->gfs_snap_root = ino;
+        printf("snapshot root %ld\n", ino);
+    }
+    /* XXX Set up layerdb and others */
+}
+
+
 /* Mount the device */
 int
 dfs_mount(char *device, struct gfs **gfsp) {
@@ -386,6 +419,8 @@ dfs_mount(char *device, struct gfs **gfsp) {
                 }
             }
         }
+        fs = dfs_getGlobalFs(gfs);
+        dfs_setupSpecialInodes(gfs, fs);
     }
 
     /* Write out the file system super block */
@@ -434,7 +469,7 @@ dfs_unmount(struct gfs *gfs) {
     for (i = 0; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
         if (fs) {
-            dfs_destroyFs(fs);
+            dfs_destroyFs(fs, false);
         }
     }
     free(gfs->gfs_fs);

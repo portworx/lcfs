@@ -34,7 +34,7 @@ create(struct fs *fs, ino_t parent, const char *name, mode_t mode,
     assert(S_ISDIR(dir->i_stat.st_mode));
     inode = dfs_inodeInit(fs, mode, uid, gid, rdev, parent, target);
     ino = inode->i_stat.st_ino;
-    dfs_dirAdd(dir, ino, mode, name);
+    dfs_dirAdd(dir, ino, mode, name, strlen(name));
     if (S_ISDIR(mode)) {
         assert(inode->i_stat.st_nlink >= 2);
         assert(dir->i_stat.st_nlink >= 2);
@@ -128,7 +128,7 @@ out:
     dfs_dirRemove(dir, name);
     if (inode) {
         dfs_updateInodeTimes(dir, false, false, true);
-        dfs_markInodeDirty(inode, true, true, true, false);
+        dfs_markInodeDirty(inode, true, rmdir, true, false);
         dfs_inodeUnlock(inode);
     }
     dfs_markInodeDirty(dir, true, true, false, false);
@@ -599,7 +599,7 @@ dfs_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
             err = ENOENT;
             goto out;
         }
-        dfs_dirAdd(tdir, ino, inode->i_stat.st_mode, newname);
+        dfs_dirAdd(tdir, ino, inode->i_stat.st_mode, newname, strlen(newname));
         dfs_dirRemove(sdir, name);
         if (S_ISDIR(inode->i_stat.st_mode)) {
             assert(sdir->i_stat.st_nlink > 2);
@@ -671,7 +671,8 @@ dfs_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
     }
     assert(S_ISREG(inode->i_stat.st_mode));
     assert(dir->i_stat.st_nlink >= 2);
-    dfs_dirAdd(dir, inode->i_stat.st_ino, inode->i_stat.st_mode, newname);
+    dfs_dirAdd(dir, inode->i_stat.st_ino, inode->i_stat.st_mode, newname,
+               strlen(newname));
     dfs_updateInodeTimes(dir, false, true, true);
     dfs_markInodeDirty(dir, true, true, false, false);
     inode->i_stat.st_nlink++;
@@ -822,7 +823,8 @@ dfs_releaseInode(struct fs *fs, fuse_ino_t ino,
     assert(fi);
     inode = (struct inode *)fi->fh;
     if (inode->i_fs != fs) {
-        if (inval) {
+        if (inval && (inode->i_stat.st_size > 0) &&
+            S_ISREG(inode->i_stat.st_mode)) {
             *inval = true;
         }
         return;

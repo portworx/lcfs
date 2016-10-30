@@ -120,7 +120,7 @@ struct inode {
 
 #define i_stat          i_dinode.di_stat
 #define i_parent        i_dinode.di_parent
-#define i_bmapBlock     i_dinode.di_bmap
+#define i_bmapDirBlock  i_dinode.di_bmapdir
 #define i_xattrBlock    i_dinode.di_xattr
 
 /* XXX Replace ino_t with fuse_ino_t */
@@ -159,6 +159,7 @@ dfs_markInodeDirty(struct inode *inode, bool dirty, bool dir, bool bmap,
         inode->i_dirty = true;
     }
     if (dir) {
+        assert(S_ISDIR(inode->i_stat.st_mode));
         inode->i_dirdirty = true;
     }
     if (bmap) {

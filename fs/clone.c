@@ -130,8 +130,9 @@ dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
         dfs_reportError(__func__, __LINE__, gfs->gfs_snap_root, err);
         goto out;
     }
-    dfs_dirAdd(pdir, root, S_IFDIR, name);
+    dfs_dirAdd(pdir, root, S_IFDIR, name, strlen(name));
     pdir->i_stat.st_nlink++;
+    dfs_markInodeDirty(pdir, true, true, false, false);
     dfs_updateInodeTimes(pdir, false, true, true);
     dfs_inodeUnlock(pdir);
 
@@ -149,7 +150,7 @@ out:
     if (fs) {
         dfs_unlock(fs);
         if (err) {
-            dfs_destroyFs(fs);
+            dfs_destroyFs(fs, true);
         }
     }
 }
@@ -210,6 +211,7 @@ dfs_removeClone(fuse_req_t req, struct gfs *gfs, ino_t ino, const char *name) {
     dfs_dirRemoveInode(pdir, fs->fs_root);
     assert(pdir->i_stat.st_nlink > 2);
     pdir->i_stat.st_nlink--;
+    dfs_markInodeDirty(pdir, true, true, false, false);
     dfs_updateInodeTimes(pdir, false, true, true);
     dfs_inodeUnlock(pdir);
 
@@ -231,7 +233,7 @@ out:
         }
         dfs_unlock(fs);
         if (!err) {
-            dfs_destroyFs(fs);
+            dfs_destroyFs(fs, true);
         }
     }
 }
@@ -265,6 +267,7 @@ dfs_snap(struct gfs *gfs, const char *name, enum ioctl_cmd cmd) {
     case SNAP_UMOUNT:
         if (err == 0) {
             fs = dfs_getfs(root, false);
+            //dfs_syncInodes(gfs, fs);
             dfs_displayStats(fs);
             dfs_unlock(fs);
         }

@@ -29,6 +29,8 @@ dfs_newInode(struct fs *fs) {
     inode = buf;
     memset(inode, 0, sizeof(struct inode));
     inode->i_block = DFS_INVALID_BLOCK;
+    inode->i_bmapDirBlock = DFS_INVALID_BLOCK;
+    inode->i_xattrBlock = DFS_INVALID_BLOCK;
     pthread_rwlock_init(&inode->i_rwlock, NULL);
 
     /* XXX This accounting is not correct after restart */
@@ -139,23 +141,31 @@ int
 dfs_readInodes(struct gfs *gfs, struct fs *fs) {
     uint64_t iblock, block = fs->fs_super->sb_inodeBlock;
     struct inode *inode;
+    bool flush = false;
     void *ibuf, *buf;
+    char *target;
     int i;
 
     dfs_printf("Reading inodes for fs %d %ld\n", fs->fs_gindex, fs->fs_root);
     while (block != DFS_INVALID_BLOCK) {
-        dfs_printf("Reading inode table from block %ld\n", block);
+        //dfs_printf("Reading inode table from block %ld\n", block);
         fs->fs_inodeBlocks = dfs_readBlock(gfs->gfs_fd, block);
         for (i = 0; i < DFS_IBLOCK_MAX; i++) {
             iblock = fs->fs_inodeBlocks->ib_blks[i];
             if (iblock == 0) {
                 break;
             }
-            dfs_printf("Reading inode from block %ld\n", iblock);
+            if (iblock == DFS_INVALID_BLOCK) {
+                dfs_printf("Skipping removed inode, iblock is DFS_INVALID_BLOCK\n");
+                continue;
+            }
+            //dfs_printf("Reading inode from block %ld\n", iblock);
             ibuf = dfs_readBlock(gfs->gfs_fd, iblock);
             inode = ibuf;
             if (inode->i_stat.st_ino == 0) {
                 dfs_printf("Skipping removed inode\n");
+                fs->fs_inodeBlocks->ib_blks[i] = DFS_INVALID_BLOCK;
+                flush = true;
                 free(ibuf);
                 continue;
             }
@@ -168,10 +178,23 @@ dfs_readInodes(struct gfs *gfs, struct fs *fs) {
             inode->i_block = iblock;
             pthread_rwlock_init(&inode->i_rwlock, NULL);
             dfs_addInode(fs, inode);
+            if (S_ISDIR(inode->i_stat.st_mode)) {
+                dfs_dirRead(gfs, fs, inode);
+            } else if (S_ISLNK(inode->i_stat.st_mode)) {
+                inode->i_target = malloc(inode->i_stat.st_size + 1);
+                target = ibuf;
+                target += sizeof(struct dinode);
+                memcpy(inode->i_target, target, inode->i_stat.st_size);
+                inode->i_target[inode->i_stat.st_size] = 0;
+            }
             if (inode->i_stat.st_ino == fs->fs_root) {
                 fs->fs_rootInode = inode;
             }
             free(ibuf);
+        }
+        if (flush) {
+            dfs_writeBlock(gfs->gfs_fd, fs->fs_inodeBlocks, block);
+            flush = false;
         }
         block = fs->fs_inodeBlocks->ib_next;
         free(fs->fs_inodeBlocks);
@@ -218,6 +241,29 @@ dfs_freeInode(struct inode *inode) {
 /* Flush a dirty inode to disk */
 static void
 dfs_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
+    char *buf;
+
+    /*
+    if (inode->i_stat.st_ino == gfs->gfs_snap_root) {
+        dfs_printf("Flushing inode %ld to block %ld\n", inode->i_stat.st_ino, inode->i_block);
+    }
+    */
+    if (inode->i_removed) {
+        inode->i_xattrdirty = false;
+        inode->i_bmapdirty = false;
+        inode->i_dirdirty = false;
+    }
+    if (inode->i_xattrdirty) {
+        dfs_xattrFlush(gfs, fs, inode);
+    }
+
+    if (inode->i_bmapdirty) {
+        dfs_bmapFlush(gfs, fs, inode);
+    }
+
+    if (inode->i_dirdirty) {
+        dfs_dirFlush(gfs, fs, inode);
+    }
 
     /* Write out a dirty inode */
     if (inode->i_dirty) {
@@ -230,8 +276,21 @@ dfs_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
                 inode->i_block = dfs_blockAlloc(fs, 1);
                 fs->fs_inodeBlocks->ib_blks[fs->fs_inodeIndex++] = inode->i_block;
             }
-            dfs_printf("Writing inode %ld to block %ld\n", inode->i_stat.st_ino, inode->i_block);
-            dfs_writeBlock(gfs->gfs_fd, inode, inode->i_block);
+            /*
+            if (inode->i_stat.st_ino == gfs->gfs_snap_root) {
+                dfs_printf("Writing inode %ld to block %ld\n", inode->i_stat.st_ino, inode->i_block);
+            }
+            */
+            if (S_ISLNK(inode->i_stat.st_mode)) {
+                posix_memalign((void **)&buf, DFS_BLOCK_SIZE, sizeof(struct inode));
+                memcpy(buf, &inode->i_dinode, sizeof(struct dinode));
+                memcpy(&buf[sizeof(struct dinode)], inode->i_target,
+                       inode->i_stat.st_size);
+                dfs_writeBlock(gfs->gfs_fd, buf, inode->i_block);
+                free(buf);
+            } else {
+                dfs_writeBlock(gfs->gfs_fd, inode, inode->i_block);
+            }
         } else if (inode->i_block != DFS_INVALID_BLOCK) {
             inode->i_stat.st_ino = 0;
             dfs_writeBlock(gfs->gfs_fd, inode, inode->i_block);
@@ -292,7 +351,7 @@ dfs_invalidate_pcache(struct gfs *gfs, struct fs *fs) {
 
 /* Destroy inodes belong to a file system */
 uint64_t
-dfs_destroyInodes(struct fs *fs) {
+dfs_destroyInodes(struct fs *fs, bool remove) {
     uint64_t count = 0, icount = 0;
     struct inode *inode, *tmp;
     int i;
@@ -309,10 +368,10 @@ dfs_destroyInodes(struct fs *fs) {
     }
     /* XXX reuse this cache for another file system */
     free(fs->fs_icache);
-    if (icount) {
+    if (remove && icount) {
         __sync_sub_and_fetch(&fs->fs_gfs->gfs_super->sb_inodes, icount);
     }
-    return count;
+    return remove ? count : 0;
 }
 
 /* Clone an inode from a parent layer */
@@ -332,6 +391,7 @@ dfs_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
             inode->i_page = parent->i_page;
             inode->i_pcount = parent->i_pcount;
             inode->i_shared = true;
+            inode->i_bmapdirty = true;
         } else {
             inode->i_pcache = true;
         }
@@ -352,6 +412,7 @@ dfs_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
                       fs->fs_root : parent->i_parent;
     dfs_xattrCopy(inode, parent);
     dfs_addInode(fs, inode);
+    inode->i_dirty = true;
     return inode;
 }
 

@@ -24,9 +24,9 @@ dfs_dirLookup(struct fs *fs, struct inode *dir, const char *name) {
 
 /* Add a new directory entry to the given directory */
 void
-dfs_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name) {
+dfs_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,
+           int nsize) {
     struct dirent *dirent = malloc(sizeof(struct dirent));
-    int nsize = strlen(name);
 
     assert(S_ISDIR(dir->i_stat.st_mode));
     assert(ino > DFS_ROOT_INODE);
@@ -49,10 +49,12 @@ dfs_dirCopy(struct inode *inode, struct inode *dir) {
     assert(S_ISDIR(dir->i_stat.st_mode));
     assert(dir->i_stat.st_nlink >= 2);
     while (dirent) {
-        dfs_dirAdd(inode, dirent->di_ino, dirent->di_mode, dirent->di_name);
+        dfs_dirAdd(inode, dirent->di_ino, dirent->di_mode,
+                   dirent->di_name, dirent->di_size);
         dirent = dirent->di_next;
     }
     inode->i_stat.st_nlink = dir->i_stat.st_nlink;
+    inode->i_dirdirty = true;
 }
 
 
@@ -131,6 +133,117 @@ dfs_dirRename(struct inode *dir, ino_t ino,
         dirent = dirent->di_next;
     }
     assert(false);
+}
+
+/* Read a directory from disk */
+void
+dfs_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir) {
+    uint64_t block = dir->i_bmapDirBlock;
+    struct ddirent *ddirent;
+    struct dblock *dblock;
+    int remain, dsize;
+    char *dbuf;
+
+    /*
+    if (dir->i_stat.st_ino == gfs->gfs_snap_root) {
+        dfs_printf("Reading directory %ld\n", dir->i_stat.st_ino);
+    }
+    */
+    assert(S_ISDIR(dir->i_stat.st_mode));
+    while (block != DFS_INVALID_BLOCK) {
+        /*
+        if (dir->i_stat.st_ino == gfs->gfs_snap_root) {
+            dfs_printf("Reading directory block %ld\n", block);
+        }
+        */
+        dblock = dfs_readBlock(gfs->gfs_fd, block);
+        dbuf = (char *)&dblock->db_dirent[0];
+        remain = DFS_BLOCK_SIZE - sizeof(struct dblock);
+        while (remain > DFS_MIN_DIRENT_SIZE) {
+            ddirent = (struct ddirent *)dbuf;
+            if (ddirent->di_inum == 0) {
+                break;
+            }
+            dsize = DFS_MIN_DIRENT_SIZE + ddirent->di_len;
+            dfs_dirAdd(dir, ddirent->di_inum, ddirent->di_type,
+                       ddirent->di_name, ddirent->di_len);
+            dbuf += dsize;
+            remain -= dsize;
+        }
+        block = dblock->db_next;
+        free(dblock);
+    }
+}
+
+/* Flush a directory block */
+static uint64_t
+dfs_dirFlushBlock(struct gfs *gfs, struct fs *fs, struct dblock *dblock,
+                  int remain) {
+    uint64_t block = dfs_blockAlloc(fs, 1);
+    char *buf;
+
+    //dfs_printf("Flushing directory block %ld\n", block);
+    if (remain) {
+        buf = (char *)dblock;
+        memset(&buf[DFS_BLOCK_SIZE - remain], 0, remain);
+    }
+    dfs_writeBlock(gfs->gfs_fd, dblock, block);
+    return block;
+}
+
+/* Flush directory entries */
+void
+dfs_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
+    uint64_t block = DFS_INVALID_BLOCK, count = 0;
+    struct dirent *dirent = dir->i_dirent;
+    struct dblock *dblock = NULL;
+    struct ddirent *ddirent;
+    int remain = 0, dsize;
+    char *dbuf = NULL;
+    void *buf;
+
+    /*
+    if (dir->i_stat.st_ino == gfs->gfs_snap_root) {
+        dfs_printf("Flushing directory %ld\n", dir->i_stat.st_ino);
+    }
+    */
+    assert(S_ISDIR(dir->i_stat.st_mode));
+    while (dirent) {
+        dsize = DFS_MIN_DIRENT_SIZE + dirent->di_size;
+        if (remain < dsize) {
+            if (dblock) {
+                block = dfs_dirFlushBlock(gfs, fs, dblock, remain);
+            }
+            posix_memalign(&buf, DFS_BLOCK_SIZE, DFS_BLOCK_SIZE);
+            dblock = buf;
+            dblock->db_next = block;
+            dbuf = (char *)&dblock->db_dirent[0];
+            remain = DFS_BLOCK_SIZE - sizeof(struct dblock);
+            count++;
+        }
+
+        /* Copy directory entry */
+        ddirent = (struct ddirent *)dbuf;
+        ddirent->di_inum = dirent->di_ino;
+        ddirent->di_type = dirent->di_mode;
+        ddirent->di_len = dirent->di_size;
+        memcpy(ddirent->di_name, dirent->di_name, ddirent->di_len);
+        dbuf += dsize;
+        remain -= dsize;
+        dirent = dirent->di_next;
+    }
+    if (dblock) {
+        block = dfs_dirFlushBlock(gfs, fs, dblock, remain);
+    }
+    dir->i_bmapDirBlock = block;
+    if (dir->i_stat.st_blocks) {
+        /* XXX Free these blocks */
+        dfs_blockFree(gfs, dir->i_stat.st_blocks);
+    }
+    dir->i_stat.st_blocks = count;
+    dir->i_stat.st_size = count * DFS_BLOCK_SIZE;
+    dir->i_dirdirty = false;
+    dir->i_dirty = true;
 }
 
 /* Free directory entries */
