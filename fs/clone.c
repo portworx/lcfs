@@ -55,7 +55,7 @@ dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     }
 
     /* Create a new file system structure */
-    fs = dfs_newFs(gfs, rw, true);
+    fs = dfs_newFs(gfs, rw);
     posix_memalign(&super, DFS_BLOCK_SIZE, DFS_BLOCK_SIZE);
     dfs_superInit(super, 0, false);
     fs->fs_super = super;
@@ -267,8 +267,8 @@ dfs_snap(struct gfs *gfs, const char *name, enum ioctl_cmd cmd) {
 
     case SNAP_UMOUNT:
         if (err == 0) {
-            fs = dfs_getfs(root, false);
-            //dfs_syncInodes(gfs, fs);
+            fs = dfs_getfs(root, true);
+            dfs_syncInodes(gfs, fs);
             dfs_displayStats(fs);
             dfs_unlock(fs);
         }

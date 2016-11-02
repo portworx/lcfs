@@ -1,7 +1,8 @@
 #include "includes.h"
 
 static char dfs_zPage[DFS_BLOCK_SIZE];
-#define DFS_PAGECACHE_SIZE 128
+#define DFS_PAGECACHE_SIZE  128
+#define DFS_CLUSTER_SIZE    256
 
 /* Page structure used for caching a file system block */
 struct page {
@@ -241,11 +242,51 @@ dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,
     bufv->count = i;
 }
 
+/* Flush a cluster of pages */
+static void
+dfs_flushPageCluster(struct gfs *gfs, struct fs *fs,
+                     struct page **pages, int count) {
+    struct iovec iovec[DFS_CLUSTER_SIZE];
+    uint64_t block;
+    struct page *page;
+    int i;
+
+    //dfs_printf("Flushing %d pages\n", count);
+    if (count == 1) {
+        page = pages[0];
+        block = page->p_block;
+        if (block == 0) {
+            block = dfs_blockAlloc(fs, 1);
+            page->p_block = block;
+        }
+        dfs_writeBlock(gfs->gfs_fd, page->p_data,  block);
+        page->p_dirty = false;
+    } else {
+        block = pages[0]->p_block;
+        if (block == 0) {
+            block = dfs_blockAlloc(fs, count);
+        }
+        for (i = 0; i < count; i++) {
+            page = pages[i];
+            if (page->p_block == 0) {
+                page->p_block = block + i;
+            } else {
+                assert(page->p_block == (block + i));
+            }
+            page->p_dirty = false;
+            iovec[i].iov_base = page->p_data;
+            iovec[i].iov_len = DFS_BLOCK_SIZE;
+        }
+        dfs_writeBlocks(gfs->gfs_fd, iovec, count, block);
+    }
+}
+
 /* Flush dirty pages of an inode */
 void
 dfs_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
-    uint64_t i, block, lpage;
-    struct page *page;
+    uint64_t i, lpage;
+    struct page *page, *pages[DFS_CLUSTER_SIZE];
+    int count = 0;
 
     assert(S_ISREG(inode->i_stat.st_mode));
     //dfs_printf("Flushing pages of inode %ld\n", inode->i_stat.st_ino);
@@ -255,15 +296,15 @@ dfs_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         page = &inode->i_page[i];
         if (page->p_dirty) {
             assert(!page->p_shared);
-            block = page->p_block;
-            if (block == 0) {
-                block = dfs_blockAlloc(fs, 1);
-                page->p_block = block;
+            if (count >= DFS_CLUSTER_SIZE) {
+                dfs_flushPageCluster(gfs, fs, pages, DFS_CLUSTER_SIZE);
+                count = 0;
             }
-            //dfs_printf("Flushing page %ld to block %ld\n", i, block);
-            dfs_writeBlock(gfs->gfs_fd, page->p_data, block);
-            page->p_dirty = false;
+            pages[count++] = page;
         }
+    }
+    if (count) {
+        dfs_flushPageCluster(gfs, fs, pages, count);
     }
 }
 
@@ -317,7 +358,7 @@ dfs_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         bmap = &bblock->bb_bmap[count++];
         bmap->b_off = i;
         bmap->b_block = page->p_block;
-        if (page->p_shared) {
+        if (page->p_shared || inode->i_shared) {
             bmap->b_block |= DFS_BLOCK_SHARED;
         }
         bcount++;
@@ -345,9 +386,12 @@ dfs_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode) {
 
     //dfs_printf("Reading bmap of inode %ld\n", inode->i_stat.st_ino);
     assert(S_ISREG(inode->i_stat.st_mode));
-    if (inode->i_stat.st_size > 0) {
-        dfs_inodeAllocPages(inode);
+    if (inode->i_stat.st_size == 0) {
+        assert(inode->i_stat.st_blocks == 0);
+        inode->i_pcache = true;
+        return;
     }
+    dfs_inodeAllocPages(inode);
     while (block != DFS_INVALID_BLOCK) {
         //dfs_printf("Reading bmap block %ld\n", block);
         bblock = dfs_readBlock(gfs->gfs_fd, block);

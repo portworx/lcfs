@@ -2,7 +2,7 @@
 
 /* Allocate a new file system structure */
 struct fs *
-dfs_newFs(struct gfs *gfs, bool rw, bool snapshot) {
+dfs_newFs(struct gfs *gfs, bool rw) {
     struct fs *fs = malloc(sizeof(struct fs));
     time_t t;
 
@@ -12,12 +12,10 @@ dfs_newFs(struct gfs *gfs, bool rw, bool snapshot) {
     fs->fs_readOnly = !rw;
     fs->fs_ctime = t;
     fs->fs_atime = t;
-    if (snapshot) {
-        fs->fs_rwlock = malloc(sizeof(pthread_rwlock_t));
-        pthread_rwlock_init(fs->fs_rwlock, NULL);
-    }
+    pthread_rwlock_init(&fs->fs_rwlock, NULL);
     fs->fs_icache = dfs_icache_init();
     fs->fs_stats = dfs_statsNew();
+    __sync_add_and_fetch(&gfs->gfs_count, 1);
     return fs;
 }
 
@@ -53,18 +51,16 @@ dfs_destroyFs(struct fs *fs, bool remove) {
         }
         dfs_blockFree(fs->fs_gfs, count);
     }
-    if (fs->fs_rwlock) {
-        pthread_rwlock_destroy(fs->fs_rwlock);
-        free(fs->fs_rwlock);
-    }
     if (fs->fs_ilock && (fs->fs_parent == NULL)) {
         pthread_mutex_destroy(fs->fs_ilock);
         free(fs->fs_ilock);
     }
+    pthread_rwlock_destroy(&fs->fs_rwlock);
     dfs_statsDeinit(fs);
     free(fs->fs_super);
     assert(fs->fs_icount == 0);
     assert(fs->fs_pcount == 0);
+    __sync_sub_and_fetch(&fs->fs_gfs->gfs_count, 1);
     free(fs);
 }
 
@@ -73,21 +69,17 @@ dfs_destroyFs(struct fs *fs, bool remove) {
  */
 void
 dfs_lock(struct fs *fs, bool exclusive) {
-    if (fs->fs_rwlock) {
-        if (exclusive) {
-            pthread_rwlock_wrlock(fs->fs_rwlock);
-        } else {
-            pthread_rwlock_rdlock(fs->fs_rwlock);
-        }
+    if (exclusive) {
+        pthread_rwlock_wrlock(&fs->fs_rwlock);
+    } else {
+        pthread_rwlock_rdlock(&fs->fs_rwlock);
     }
 }
 
 /* Unlock the file system */
 void
 dfs_unlock(struct fs *fs) {
-    if (fs->fs_rwlock) {
-        pthread_rwlock_unlock(fs->fs_rwlock);
-    }
+    pthread_rwlock_unlock(&fs->fs_rwlock);
 }
 
 /* Check if the specified inode is a root of a file system and if so, return
@@ -282,7 +274,7 @@ dfs_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
     struct fs *fs;
     int i;
 
-    fs = dfs_newFs(gfs, super->sb_flags & DFS_SUPER_RDWR, true);
+    fs = dfs_newFs(gfs, super->sb_flags & DFS_SUPER_RDWR);
     fs->fs_sblock = block;
     fs->fs_super = super;
     fs->fs_root = fs->fs_super->sb_root;
@@ -383,7 +375,7 @@ dfs_mount(char *device, struct gfs **gfsp) {
     int i;
 
     /* Open the device for mounting */
-    fd = open(device, O_RDWR | O_SYNC | O_DIRECT | O_EXCL, 0);
+    fd = open(device, O_RDWR | O_DIRECT | O_EXCL | O_NOATIME, 0);
     if (fd == -1) {
         perror("open");
         return errno;
@@ -398,7 +390,8 @@ dfs_mount(char *device, struct gfs **gfsp) {
     gfs = dfs_gfsAlloc(fd);
 
     /* Initialize a file system structure in memory */
-    fs = dfs_newFs(gfs, true, false);
+    /* XXX Recreate file system after abnormal shutdown for now */
+    fs = dfs_newFs(gfs, true);
     fs->fs_root = DFS_ROOT_INODE;
     fs->fs_sblock = DFS_SUPER_BLOCK;
     gfs->gfs_fs[0] = fs;
@@ -407,7 +400,9 @@ dfs_mount(char *device, struct gfs **gfsp) {
     /* Try to find a valid superblock, if not found, format the device */
     fs->fs_super = dfs_superRead(gfs, fs->fs_sblock);
     gfs->gfs_super = fs->fs_super;
-    if (gfs->gfs_super->sb_version != DFS_VERSION) {
+    if ((gfs->gfs_super->sb_magic != DFS_SUPER_MAGIC) ||
+        (gfs->gfs_super->sb_version != DFS_VERSION) ||
+        (gfs->gfs_super->sb_flags & DFS_SUPER_DIRTY)) {
         dfs_format(gfs, fs, size);
     } else {
         if (gfs->gfs_super->sb_flags & DFS_SUPER_DIRTY) {
@@ -447,6 +442,7 @@ dfs_sync(struct gfs *gfs, struct fs *fs) {
     int err;
 
     if (fs && (fs->fs_super->sb_flags & DFS_SUPER_DIRTY)) {
+        dfs_lock(fs, true);
         dfs_syncInodes(gfs, fs);
         if (fs->fs_inodeBlocks != NULL) {
             assert(fs->fs_super->sb_inodeBlock != DFS_INVALID_BLOCK);
@@ -456,6 +452,10 @@ dfs_sync(struct gfs *gfs, struct fs *fs) {
             free(fs->fs_inodeBlocks);
             fs->fs_inodeBlocks = NULL;
         }
+
+        /* Flush everything to disk before marking file system clean */
+        syncfs(gfs->gfs_fd);
+        fsync(gfs->gfs_fd);
         fs->fs_super->sb_flags &= ~DFS_SUPER_DIRTY;
         dfs_printf("Writing out file system superblock for fs %d %ld to block %ld\n", fs->fs_gindex, fs->fs_root, fs->fs_sblock);
         err = dfs_superWrite(gfs, fs);
@@ -463,6 +463,7 @@ dfs_sync(struct gfs *gfs, struct fs *fs) {
             printf("Superblock update error %d for fs index %d root %ld\n",
                    err, fs->fs_gindex, fs->fs_root);
         }
+        dfs_unlock(fs);
     }
 }
 
@@ -488,18 +489,27 @@ dfs_unmount(struct gfs *gfs) {
     struct fs *fs;
     int i;
 
-    /* XXX Get exclusive locks */
     pthread_mutex_destroy(&gfs->gfs_lock);
-    for (i = 0; i <= gfs->gfs_scount; i++) {
+    for (i = 1; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
         if (fs) {
             dfs_sync(gfs, fs);
             dfs_destroyFs(fs, false);
         }
     }
-    close(gfs->gfs_fd);
+    fs = dfs_getGlobalFs(gfs);
+    if (fs) {
+        dfs_sync(gfs, fs);
+        dfs_destroyFs(fs, false);
+    }
+    if (gfs->gfs_fd) {
+        syncfs(gfs->gfs_fd);
+        fsync(gfs->gfs_fd);
+        close(gfs->gfs_fd);
+    }
     free(gfs->gfs_fs);
     free(gfs->gfs_roots);
+    assert(gfs->gfs_count == 0);
     free(gfs);
 }
 
@@ -508,7 +518,6 @@ void
 dfs_umountAll(struct gfs *gfs) {
     int i;
 
-    /* XXX Get exclusive locks */
     for (i = 1; i <= gfs->gfs_scount; i++) {
         dfs_sync(gfs, gfs->gfs_fs[i]);
     }

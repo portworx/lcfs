@@ -53,7 +53,7 @@ int dfs_mount(char *device, struct gfs **gfsp);
 void dfs_newInodeBlock(struct gfs *gfs, struct fs *fs);
 void dfs_unmount(struct gfs *gfs);
 void dfs_umountAll(struct gfs *gfs);
-struct fs *dfs_newFs(struct gfs *gfs, bool rw, bool snapshot);
+struct fs *dfs_newFs(struct gfs *gfs, bool rw);
 void dfs_destroyFs(struct fs *fs, bool remove);
 
 struct icache *dfs_icache_init();

@@ -21,7 +21,7 @@ dfs_writeBlock(int fd, void *buf, off_t block) {
 
     /* XXX Use async I/O */
     /* XXX assert block is within file system */
-    //dfs_printf("Writing block %ld\n", block);
+    //dfs_printf("dfs_writeBlock: Writing block %ld\n", block);
     count = pwrite(fd, buf, DFS_BLOCK_SIZE, block * DFS_BLOCK_SIZE);
     assert(count == DFS_BLOCK_SIZE);
     return 0;
@@ -33,6 +33,7 @@ dfs_writeBlocks(int fd, struct iovec *iov, int iovcnt, off_t block) {
     ssize_t count;
 
     /* XXX assert block is within file system */
+    //dfs_printf("dfs_writeBlocks: Writing %d block %ld\n", iovcnt, block);
     count = pwritev(fd, iov, iovcnt, block * DFS_BLOCK_SIZE);
     assert(count != -1);
     return 0;

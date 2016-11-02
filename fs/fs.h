@@ -45,7 +45,10 @@ struct gfs {
     /* fuse channel */
     struct fuse_chan *gfs_ch;
 
-    /* Last used index in gfs_fs */
+    /* Count of file systems in use */
+    uint64_t gfs_count;
+
+    /* Last index in use in gfs_fs/gfs_roots */
     int gfs_scount;
 
     /* Set if extended attributes are enabled */
@@ -91,7 +94,7 @@ struct fs {
     /* Lock taken in shared mode by all file system operations.
      * This lock is taken in exclusive mode when snapshots are created/deleted.
      */
-    pthread_rwlock_t *fs_rwlock;
+    pthread_rwlock_t fs_rwlock;
 
     /* Current list of inode blocks */
     struct iblock *fs_inodeBlocks;
