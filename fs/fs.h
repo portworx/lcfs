@@ -105,6 +105,12 @@ struct fs {
     /* Stats for this file system */
     struct stats *fs_stats;
 
+    /* Count of inodes */
+    uint64_t fs_icount;
+
+    /* Count of pages */
+    uint64_t fs_pcount;
+
     /* Next index in inode block array */
     int fs_inodeIndex;
 

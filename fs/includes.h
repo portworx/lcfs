@@ -18,6 +18,7 @@
 #include <sys/xattr.h>
 #include <pthread.h>
 #include <assert.h>
+#include <malloc.h>
 #include <linux/ioctl.h>
 
 #include "dfs.h"
@@ -90,8 +91,10 @@ int dfs_addPages(struct inode *inode, off_t off, size_t size,
                  struct fuse_bufvec *bufv, struct fuse_bufvec *dst);
 void dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,
                    struct fuse_bufvec *bufv);
-uint64_t dfs_truncPages(struct inode *inode, off_t size);
+void dfs_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void dfs_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode);
+void dfs_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode);
+uint64_t dfs_truncPages(struct inode *inode, off_t size, bool remove);
 void dfs_inodeAllocPages(struct inode *inode);
 
 int dremove(struct fs *fs, struct inode *dir, const char *name,
@@ -104,6 +107,7 @@ void dfs_xattrList(fuse_req_t req, ino_t ino, size_t size);
 void dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name);
 void dfs_xattrCopy(struct inode *inode, struct inode *parent);
 void dfs_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode);
+void dfs_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void dfs_xattrFree(struct inode *inode);
 
 ino_t dfs_getRootIno(struct fs *fs, ino_t parent, const char *name);

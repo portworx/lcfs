@@ -62,13 +62,16 @@ dfs_truncate(struct inode *inode, off_t size) {
 
     assert(S_ISREG(inode->i_stat.st_mode));
     if (size < inode->i_stat.st_size) {
-        count = dfs_truncPages(inode, size);
+        count = dfs_truncPages(inode, size, true);
         if (count) {
             dfs_blockFree(getfs(), count);
         }
     }
+    assert(!inode->i_shared);
     inode->i_stat.st_size = size;
-    dfs_inodeAllocPages(inode);
+    if (size > 0) {
+        dfs_inodeAllocPages(inode);
+    }
 }
 
 /* Remove a directory entry */
@@ -117,10 +120,10 @@ dremove(struct fs *fs, struct inode *dir, const char *name,
 
         /* Flag a file as removed on last unlink */
         if (inode->i_stat.st_nlink == 0) {
-            inode->i_removed = true;
             if ((inode->i_ocount == 0) && S_ISREG(inode->i_stat.st_mode)) {
                 dfs_truncate(inode, 0);
             }
+            inode->i_removed = true;
         }
     }
 
@@ -816,7 +819,7 @@ dfs_flush(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
 
 /* Decrement open count on an inode */
 static void
-dfs_releaseInode(struct fs *fs, fuse_ino_t ino,
+dfs_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
                  struct fuse_file_info *fi, bool *inval) {
     struct inode *inode;
 
@@ -827,6 +830,7 @@ dfs_releaseInode(struct fs *fs, fuse_ino_t ino,
             S_ISREG(inode->i_stat.st_mode)) {
             *inval = true;
         }
+        fuse_reply_err(req, 0);
         return;
     }
     dfs_inodeLock(inode, true);
@@ -845,6 +849,11 @@ dfs_releaseInode(struct fs *fs, fuse_ino_t ino,
                  (!inode->i_pcache || fs->fs_readOnly ||
                   (fs->fs_snap != NULL));
     }
+    fuse_reply_err(req, 0);
+    if (fs->fs_readOnly && (inode->i_ocount == 0) &&
+        S_ISREG(inode->i_stat.st_mode) && inode->i_bmapdirty) {
+        dfs_bmapFlush(fs->fs_gfs, fs, inode);
+    }
     dfs_inodeUnlock(inode);
 }
 
@@ -859,8 +868,7 @@ dfs_release(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     dfs_statsBegin(&start);
     dfs_displayEntry(__func__, ino, 0, NULL);
     fs = dfs_getfs(ino, false);
-    dfs_releaseInode(fs, ino, fi, &inval);
-    fuse_reply_err(req, 0);
+    dfs_releaseInode(req, fs, ino, fi, &inval);
     if (inval) {
         fuse_lowlevel_notify_inval_inode(gfs->gfs_ch, ino, 0, -1);
     }
@@ -971,8 +979,7 @@ dfs_releasedir(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     dfs_statsBegin(&start);
     dfs_displayEntry(__func__, ino, 0, NULL);
     fs = dfs_getfs(ino, false);
-    dfs_releaseInode(fs, ino, fi, NULL);
-    fuse_reply_err(req, 0);
+    dfs_releaseInode(req, fs, ino, fi, NULL);
     dfs_statsAdd(fs, DFS_RELEASEDIR, false, &start);
     dfs_unlock(fs);
 }

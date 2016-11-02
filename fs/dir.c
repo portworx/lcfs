@@ -139,23 +139,15 @@ dfs_dirRename(struct inode *dir, ino_t ino,
 void
 dfs_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir) {
     uint64_t block = dir->i_bmapDirBlock;
+    int remain, dsize, count = 2;
     struct ddirent *ddirent;
     struct dblock *dblock;
-    int remain, dsize;
     char *dbuf;
 
-    /*
-    if (dir->i_stat.st_ino == gfs->gfs_snap_root) {
-        dfs_printf("Reading directory %ld\n", dir->i_stat.st_ino);
-    }
-    */
+    //dfs_printf("Reading directory %ld\n", dir->i_stat.st_ino);
     assert(S_ISDIR(dir->i_stat.st_mode));
     while (block != DFS_INVALID_BLOCK) {
-        /*
-        if (dir->i_stat.st_ino == gfs->gfs_snap_root) {
-            dfs_printf("Reading directory block %ld\n", block);
-        }
-        */
+        //dfs_printf("Reading directory block %ld\n", block);
         dblock = dfs_readBlock(gfs->gfs_fd, block);
         dbuf = (char *)&dblock->db_dirent[0];
         remain = DFS_BLOCK_SIZE - sizeof(struct dblock);
@@ -167,12 +159,16 @@ dfs_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir) {
             dsize = DFS_MIN_DIRENT_SIZE + ddirent->di_len;
             dfs_dirAdd(dir, ddirent->di_inum, ddirent->di_type,
                        ddirent->di_name, ddirent->di_len);
+            if (S_ISDIR(ddirent->di_type)) {
+                count++;
+            }
             dbuf += dsize;
             remain -= dsize;
         }
         block = dblock->db_next;
         free(dblock);
     }
+    assert(dir->i_stat.st_nlink == count);
 }
 
 /* Flush a directory block */
@@ -196,17 +192,12 @@ void
 dfs_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
     uint64_t block = DFS_INVALID_BLOCK, count = 0;
     struct dirent *dirent = dir->i_dirent;
+    int remain = 0, dsize, subdir = 2;
     struct dblock *dblock = NULL;
     struct ddirent *ddirent;
-    int remain = 0, dsize;
     char *dbuf = NULL;
-    void *buf;
 
-    /*
-    if (dir->i_stat.st_ino == gfs->gfs_snap_root) {
-        dfs_printf("Flushing directory %ld\n", dir->i_stat.st_ino);
-    }
-    */
+    //dfs_printf("Flushing directory %ld\n", dir->i_stat.st_ino);
     assert(S_ISDIR(dir->i_stat.st_mode));
     while (dirent) {
         dsize = DFS_MIN_DIRENT_SIZE + dirent->di_size;
@@ -214,8 +205,10 @@ dfs_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
             if (dblock) {
                 block = dfs_dirFlushBlock(gfs, fs, dblock, remain);
             }
-            posix_memalign(&buf, DFS_BLOCK_SIZE, DFS_BLOCK_SIZE);
-            dblock = buf;
+            if (dblock == NULL) {
+                posix_memalign((void **)&dblock, DFS_BLOCK_SIZE,
+                               DFS_BLOCK_SIZE);
+            }
             dblock->db_next = block;
             dbuf = (char *)&dblock->db_dirent[0];
             remain = DFS_BLOCK_SIZE - sizeof(struct dblock);
@@ -228,18 +221,23 @@ dfs_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
         ddirent->di_type = dirent->di_mode;
         ddirent->di_len = dirent->di_size;
         memcpy(ddirent->di_name, dirent->di_name, ddirent->di_len);
+        if (S_ISDIR(dirent->di_mode)) {
+            subdir++;
+        }
         dbuf += dsize;
         remain -= dsize;
         dirent = dirent->di_next;
     }
     if (dblock) {
         block = dfs_dirFlushBlock(gfs, fs, dblock, remain);
+        free(dblock);
     }
     dir->i_bmapDirBlock = block;
     if (dir->i_stat.st_blocks) {
         /* XXX Free these blocks */
         dfs_blockFree(gfs, dir->i_stat.st_blocks);
     }
+    assert(dir->i_stat.st_nlink == subdir);
     dir->i_stat.st_blocks = count;
     dir->i_stat.st_size = count * DFS_BLOCK_SIZE;
     dir->i_dirdirty = false;
@@ -254,8 +252,10 @@ dfs_dirFree(struct inode *dir) {
     while (dirent != NULL) {
         tmp = dirent;
         dirent = dirent->di_next;
+        free(tmp->di_name);
         free(tmp);
     }
+    dir->i_dirent = NULL;
 }
 
 /* Remove a directory tree */

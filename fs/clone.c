@@ -112,6 +112,7 @@ dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
         if (nfs == NULL) {
             pfs->fs_snap = fs;
             pfs->fs_super->sb_childSnap = fs->fs_sblock;
+            pfs->fs_super->sb_flags |= DFS_SUPER_DIRTY;
         }
         fs->fs_parent = pfs;
         fs->fs_ilock = pfs->fs_ilock;

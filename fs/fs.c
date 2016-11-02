@@ -24,17 +24,16 @@ dfs_newFs(struct gfs *gfs, bool rw, bool snapshot) {
 /* Allocate a new inode block */
 void
 dfs_newInodeBlock(struct gfs *gfs, struct fs *fs) {
-    void *buf;
-
     if (fs->fs_inodeBlocks != NULL) {
         assert(fs->fs_super->sb_inodeBlock != DFS_INVALID_BLOCK);
-        dfs_printf("Writing Inode block at %ld\n", fs->fs_super->sb_inodeBlock);
+        //dfs_printf("Writing Inode block at %ld\n", fs->fs_super->sb_inodeBlock);
         dfs_writeBlock(gfs->gfs_fd, fs->fs_inodeBlocks,
                        fs->fs_super->sb_inodeBlock);
+    } else {
+        posix_memalign((void **)&fs->fs_inodeBlocks, DFS_BLOCK_SIZE,
+                       DFS_BLOCK_SIZE);
     }
-    posix_memalign(&buf, DFS_BLOCK_SIZE, DFS_BLOCK_SIZE);
-    memset(buf, 0, DFS_BLOCK_SIZE);
-    fs->fs_inodeBlocks = buf;
+    memset(fs->fs_inodeBlocks, 0, DFS_BLOCK_SIZE);
     fs->fs_inodeIndex = 0;
     fs->fs_inodeBlocks->ib_next = fs->fs_super->sb_inodeBlock;
     fs->fs_super->sb_inodeBlock = dfs_blockAlloc(fs, 1);
@@ -46,6 +45,7 @@ dfs_destroyFs(struct fs *fs, bool remove) {
     uint64_t count;
 
     dfs_displayStats(fs);
+    dfs_printf("fs %p fs->fs_pcount %ld fs->fs_icount %ld\n", fs, fs->fs_pcount, fs->fs_icount);
     count = dfs_destroyInodes(fs, remove);
     if (remove) {
         if (fs->fs_sblock) {
@@ -63,6 +63,8 @@ dfs_destroyFs(struct fs *fs, bool remove) {
     }
     dfs_statsDeinit(fs);
     free(fs->fs_super);
+    assert(fs->fs_icount == 0);
+    assert(fs->fs_pcount == 0);
     free(fs);
 }
 
@@ -153,6 +155,7 @@ dfs_addfs(struct fs *fs, struct fs *snap) {
         snap->fs_next = fs;
         fs->fs_super->sb_nextSnap = snap->fs_super->sb_nextSnap;
         snap->fs_super->sb_nextSnap = fs->fs_sblock;
+        snap->fs_super->sb_flags |= DFS_SUPER_DIRTY;
     }
     pthread_mutex_unlock(&gfs->gfs_lock);
 }
@@ -185,11 +188,15 @@ dfs_removeSnap(struct gfs *gfs, struct fs *fs) {
     pfs = fs->fs_parent;
     if (pfs && (pfs->fs_snap == fs)) {
         pfs->fs_snap = fs->fs_next;
+        pfs->fs_super->sb_childSnap = fs->fs_super->sb_nextSnap;
+        pfs->fs_super->sb_flags |= DFS_SUPER_DIRTY;
     } else {
         nfs = pfs ? pfs->fs_snap : dfs_getGlobalFs(gfs);
         while (nfs) {
             if (nfs->fs_next == fs) {
                 nfs->fs_next = fs->fs_next;
+                nfs->fs_super->sb_nextSnap = fs->fs_super->sb_nextSnap;
+                nfs->fs_super->sb_flags |= DFS_SUPER_DIRTY;
                 break;
             }
             nfs = nfs->fs_next;
@@ -446,6 +453,8 @@ dfs_sync(struct gfs *gfs, struct fs *fs) {
             dfs_printf("Writing Inode block at %ld\n", fs->fs_super->sb_inodeBlock);
             dfs_writeBlock(gfs->gfs_fd, fs->fs_inodeBlocks,
                            fs->fs_super->sb_inodeBlock);
+            free(fs->fs_inodeBlocks);
+            fs->fs_inodeBlocks = NULL;
         }
         fs->fs_super->sb_flags &= ~DFS_SUPER_DIRTY;
         dfs_printf("Writing out file system superblock for fs %d %ld to block %ld\n", fs->fs_gindex, fs->fs_root, fs->fs_sblock);
@@ -457,21 +466,38 @@ dfs_sync(struct gfs *gfs, struct fs *fs) {
     }
 }
 
+#if 0
+/* Sync all snapshots in chain order */
+static void
+dfs_syncSnapshots(struct gfs *gfs, struct fs *fs) {
+    struct fs *nfs = fs;
+
+    while (nfs) {
+        dfs_sync(gfs, nfs);
+        if (fs->fs_snap) {
+            dfs_syncSnapshots(gfs, nfs->fs_snap);
+        }
+        nfs = nfs->fs_next;
+    }
+}
+#endif
+
 /* Free the global file system as part of unmount */
 void
 dfs_unmount(struct gfs *gfs) {
-    struct fs *fs = dfs_getGlobalFs(gfs);
+    struct fs *fs;
     int i;
 
-    dfs_sync(gfs, fs);
-    close(gfs->gfs_fd);
+    /* XXX Get exclusive locks */
     pthread_mutex_destroy(&gfs->gfs_lock);
     for (i = 0; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
         if (fs) {
+            dfs_sync(gfs, fs);
             dfs_destroyFs(fs, false);
         }
     }
+    close(gfs->gfs_fd);
     free(gfs->gfs_fs);
     free(gfs->gfs_roots);
     free(gfs);
@@ -482,6 +508,7 @@ void
 dfs_umountAll(struct gfs *gfs) {
     int i;
 
+    /* XXX Get exclusive locks */
     for (i = 1; i <= gfs->gfs_scount; i++) {
         dfs_sync(gfs, gfs->gfs_fs[i]);
     }

@@ -109,12 +109,13 @@ struct iblock {
 };
 static_assert(sizeof(struct iblock) == DFS_BLOCK_SIZE, "iblock size != DFS_BLOCK_SIZE");
 
+#define DFS_BLOCK_SHARED    (1ULL << 63)
 /* Bmap block entry */
 struct bmap {
     /* Offset */
     uint64_t b_off;
 
-    /* Block number */
+    /* Block number and shared bit */
     uint64_t b_block;
 };
 static_assert(sizeof(struct bmap) == 16, "bmap size != 16");
@@ -145,7 +146,7 @@ struct ddirent {
     uint64_t di_inum;
 
     /* Type of entry */
-    uint8_t di_type;
+    uint16_t di_type;
 
     /* Length of name */
     uint16_t di_len;
@@ -153,9 +154,8 @@ struct ddirent {
     /* Name of entry */
     char di_name[0];
 } __attribute__((packed));
-static_assert(sizeof(struct ddirent) == 11, "ddirent size != 11");
-
-#define DFS_MIN_DIRENT_SIZE (sizeof(uint64_t) + sizeof(uint8_t) + sizeof(uint16_t))
+#define DFS_MIN_DIRENT_SIZE (sizeof(uint64_t) + (2 * sizeof(uint16_t)))
+static_assert(sizeof(struct ddirent) == DFS_MIN_DIRENT_SIZE, "ddirent size != 12");
 
 /* Directory block */
 struct dblock {
@@ -170,7 +170,7 @@ struct dblock {
 
     /* Directory entries */
     struct ddirent db_dirent[0];
-};
+} __attribute__((packed));
 static_assert(sizeof(struct dblock) == 16, "dblock size != 16");
 
 /* Extended attribute entry */
@@ -181,12 +181,25 @@ struct dxattr {
     /* Length of value */
     uint16_t dx_nvalue;
 
-    /* Name of the attribute */
-    char dx_name[0];
-
-    /* Name of the value */
-    char dx_value[0];
+    /* Name of the attribute and optional value */
+    char dx_nameValue[0];
 } __attribute__((packed));
- static_assert(sizeof(struct dxattr) == 4, "dxattr size != 4");
+static_assert(sizeof(struct dxattr) == 4, "dxattr size != 4");
+
+/* Extended attribute block */
+struct xblock {
+    /* Magic number */
+    uint32_t xb_magic;
+
+    /* CRC */
+    uint32_t xb_crc;
+
+    /* Next block */
+    uint64_t xb_next;
+
+    /* Attributes */
+    struct dxattr xb_attr[0];
+} __attribute__((packed));
+static_assert(sizeof(struct xblock) == 16, "xblock size != 16");
 
 #endif

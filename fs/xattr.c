@@ -1,5 +1,26 @@
 #include "includes.h"
 
+/* Link a new attribute to the inode */
+static void
+dfs_xattrLink(struct inode *inode, const char *name, int len,
+              const char *value, size_t size) {
+    struct xattr *xattr = malloc(sizeof(struct xattr));
+
+    xattr->x_name = malloc(len + 1);
+    memcpy(xattr->x_name, name, len);
+    xattr->x_name[len] = 0;
+    if (size) {
+        xattr->x_value = malloc(size);
+        memcpy(xattr->x_value, value, size);
+    } else {
+        xattr->x_value = NULL;
+    }
+    xattr->x_size = size;
+    xattr->x_next = inode->i_xattr;
+    inode->i_xattr = xattr;
+    inode->i_xsize += len + 1;
+}
+
 /* Add the specified extended attribute to the inode */
 void
 dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
@@ -79,19 +100,7 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
         err = ENODATA;
         goto out;
     }
-    xattr = malloc(sizeof(struct xattr));
-    xattr->x_name = malloc(len + 1);
-    strcpy(xattr->x_name, name);
-    if (size) {
-        xattr->x_value = malloc(size);
-        memcpy(xattr->x_value, value, size);
-    } else {
-        xattr->x_value = NULL;
-    }
-    xattr->x_size = size;
-    inode->i_xsize += len + 1;
-    xattr->x_next = inode->i_xattr;
-    inode->i_xattr = xattr;
+    dfs_xattrLink(inode, name, len, value, size);
     dfs_updateInodeTimes(inode, false, false, true);
     dfs_markInodeDirty(inode, true, false, false, true);
     dfs_inodeUnlock(inode);
@@ -186,6 +195,7 @@ dfs_xattrList(fuse_req_t req, ino_t ino, size_t size) {
     assert(i == inode->i_xsize);
     dfs_inodeUnlock(inode);
     fuse_reply_buf(req, buf, inode->i_xsize);
+    free(buf);
 
 out:
     dfs_statsAdd(fs, DFS_LISTXATTR, err, &start);
@@ -271,10 +281,103 @@ dfs_xattrCopy(struct inode *inode, struct inode *parent) {
     inode->i_xattrdirty = true;
 }
 
+/* Flush extended attribute block */
+static uint64_t
+dfs_xattrFlushBlock(struct gfs *gfs, struct fs *fs, struct xblock *xblock,
+                    int remain) {
+    uint64_t block = dfs_blockAlloc(fs, 1);
+    char *buf;
+
+    dfs_printf("Writing out extended attr block %ld\n", block);
+    if (remain) {
+        buf = (char *)xblock;
+        memset(&buf[DFS_BLOCK_SIZE - remain], 0, remain);
+    }
+    dfs_writeBlock(gfs->gfs_fd, xblock, block);
+    return block;
+}
+
+
 /* Flush extended attributes */
 void
 dfs_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
+    struct xattr *xattr = inode->i_xattr;
+    uint64_t block = DFS_INVALID_BLOCK;
+    struct xblock *xblock = NULL;
+    int remain = 0, dsize, nsize;
+    size_t size = inode->i_xsize;
+    struct dxattr *dxattr;
+    char *xbuf = NULL;
+
+    //dfs_printf("Flushing extended attributes of inode %ld xsize %ld\n", inode->i_stat.st_ino, inode->i_xsize);
+    while (xattr) {
+        nsize = strlen(xattr->x_name);
+        dsize = (2 * sizeof(uint16_t)) + nsize + xattr->x_size;
+        if (remain < dsize) {
+            if (xblock) {
+                block = dfs_xattrFlushBlock(gfs, fs, xblock, remain);
+            } else {
+                posix_memalign((void **)&xblock, DFS_BLOCK_SIZE,
+                               DFS_BLOCK_SIZE);
+            }
+            xblock->xb_next = block;
+            xbuf = (char *)&xblock->xb_attr[0];
+            remain = DFS_BLOCK_SIZE - sizeof(struct xblock);
+        }
+        dxattr = (struct dxattr *)xbuf;
+        dxattr->dx_nsize = nsize;
+        dxattr->dx_nvalue = xattr->x_size;
+        memcpy(dxattr->dx_nameValue, xattr->x_name, nsize);
+        if (xattr->x_size) {
+            memcpy(&dxattr->dx_nameValue[nsize], xattr->x_value,
+                   xattr->x_size);
+        }
+        xbuf += dsize;
+        remain -= dsize;
+        xattr = xattr->x_next;
+        size -= nsize + 1;
+    }
+    if (xblock) {
+        block = dfs_xattrFlushBlock(gfs, fs, xblock, remain);
+        free(xblock);
+    }
+    assert(size == 0);
+
+    /* XXX Free previously used blocks */
+    inode->i_xattrBlock = block;
     inode->i_xattrdirty = false;
+    inode->i_dirty = true;
+}
+
+/* Read extended attributes */
+void
+dfs_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode) {
+    uint64_t block = inode->i_xattrBlock;
+    int remain, dsize, nsize;
+    struct xblock *xblock;
+    struct dxattr *dxattr;
+    char *xbuf;
+
+    while (block != DFS_INVALID_BLOCK) {
+        //dfs_printf("Reading extended attr block %ld\n", block);
+        xblock = dfs_readBlock(gfs->gfs_fd, block);
+        xbuf = (char *)&xblock->xb_attr[0];
+        remain = DFS_BLOCK_SIZE - sizeof(struct xblock);
+        while (remain > (2 * sizeof(uint16_t))) {
+            dxattr = (struct dxattr *)xbuf;
+            nsize = dxattr->dx_nsize;
+            if (nsize == 0) {
+                break;
+            }
+            dfs_xattrLink(inode, dxattr->dx_nameValue, nsize,
+                          &dxattr->dx_nameValue[nsize], dxattr->dx_nvalue);
+            dsize = (2 * sizeof(uint16_t)) + nsize + dxattr->dx_nvalue;
+            xbuf += dsize;
+            remain -= dsize;
+        }
+        block = xblock->xb_next;
+        free(xblock);
+    }
 }
 
 /* Free all the extended attributes of an inode */

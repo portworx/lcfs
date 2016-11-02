@@ -23,10 +23,8 @@ dfs_icache_init() {
 static struct inode *
 dfs_newInode(struct fs *fs) {
     struct inode *inode;
-    void *buf;
 
-    posix_memalign(&buf, DFS_BLOCK_SIZE, sizeof(struct inode));
-    inode = buf;
+    inode = malloc(sizeof(struct inode));
     memset(inode, 0, sizeof(struct inode));
     inode->i_block = DFS_INVALID_BLOCK;
     inode->i_bmapDirBlock = DFS_INVALID_BLOCK;
@@ -35,6 +33,7 @@ dfs_newInode(struct fs *fs) {
 
     /* XXX This accounting is not correct after restart */
     __sync_add_and_fetch(&fs->fs_gfs->gfs_super->sb_inodes, 1);
+    __sync_add_and_fetch(&fs->fs_icount, 1);
     return inode;
 }
 
@@ -142,8 +141,8 @@ dfs_readInodes(struct gfs *gfs, struct fs *fs) {
     uint64_t iblock, block = fs->fs_super->sb_inodeBlock;
     struct inode *inode;
     bool flush = false;
-    void *ibuf, *buf;
     char *target;
+    void *ibuf;
     int i;
 
     dfs_printf("Reading inodes for fs %d %ld\n", fs->fs_gindex, fs->fs_root);
@@ -156,21 +155,21 @@ dfs_readInodes(struct gfs *gfs, struct fs *fs) {
                 break;
             }
             if (iblock == DFS_INVALID_BLOCK) {
-                dfs_printf("Skipping removed inode, iblock is DFS_INVALID_BLOCK\n");
+                //dfs_printf("Skipping removed inode, iblock is DFS_INVALID_BLOCK\n");
                 continue;
             }
             //dfs_printf("Reading inode from block %ld\n", iblock);
             ibuf = dfs_readBlock(gfs->gfs_fd, iblock);
             inode = ibuf;
             if (inode->i_stat.st_ino == 0) {
-                dfs_printf("Skipping removed inode\n");
+                //dfs_printf("Skipping removed inode\n");
                 fs->fs_inodeBlocks->ib_blks[i] = DFS_INVALID_BLOCK;
                 flush = true;
                 free(ibuf);
                 continue;
             }
-            posix_memalign(&buf, DFS_BLOCK_SIZE, sizeof(struct inode));
-            inode = buf;
+            inode = malloc(sizeof(struct inode));
+            __sync_add_and_fetch(&fs->fs_icount, 1);
 
             /* XXX zero out just necessary fields */
             memset(inode, 0, sizeof(struct inode));
@@ -178,7 +177,10 @@ dfs_readInodes(struct gfs *gfs, struct fs *fs) {
             inode->i_block = iblock;
             pthread_rwlock_init(&inode->i_rwlock, NULL);
             dfs_addInode(fs, inode);
-            if (S_ISDIR(inode->i_stat.st_mode)) {
+            dfs_xattrRead(gfs, fs, inode);
+            if (S_ISREG(inode->i_stat.st_mode)) {
+                dfs_bmapRead(gfs, fs, inode);
+            } else if (S_ISDIR(inode->i_stat.st_mode)) {
                 dfs_dirRead(gfs, fs, inode);
             } else if (S_ISLNK(inode->i_stat.st_mode)) {
                 inode->i_target = malloc(inode->i_stat.st_size + 1);
@@ -188,6 +190,7 @@ dfs_readInodes(struct gfs *gfs, struct fs *fs) {
                 inode->i_target[inode->i_stat.st_size] = 0;
             }
             if (inode->i_stat.st_ino == fs->fs_root) {
+                assert(S_ISDIR(inode->i_stat.st_mode));
                 fs->fs_rootInode = inode;
             }
             free(ibuf);
@@ -199,40 +202,25 @@ dfs_readInodes(struct gfs *gfs, struct fs *fs) {
         block = fs->fs_inodeBlocks->ib_next;
         free(fs->fs_inodeBlocks);
     }
+    assert(fs->fs_rootInode != NULL);
+    fs->fs_inodeBlocks = NULL;
     return 0;
 }
 
 /* Free an inode and associated resources */
 static uint64_t
-dfs_freeInode(struct inode *inode) {
-    int hash = dfs_inodeHash(inode->i_stat.st_ino);
-    struct fs *fs = inode->i_fs;
-    struct inode *pinode;
+dfs_freeInode(struct inode *inode, bool remove) {
     uint64_t count = 0;
 
-    /* Take the inode off the hash list */
-    /* XXX Lock is not needed as the file system is locked for exclusive access
-     */
-    //pthread_mutex_lock(&fs->fs_icache[hash].ic_lock);
-    pinode = fs->fs_icache[hash].ic_head;
-    if (pinode == inode) {
-        fs->fs_icache[hash].ic_head = inode->i_cnext;
-    } else while (pinode) {
-        if (pinode->i_cnext == inode) {
-            pinode->i_cnext = inode->i_cnext;
-            break;
-        }
-        pinode = pinode->i_cnext;
-    }
-    //pthread_mutex_unlock(&fs->fs_icache[hash].ic_lock);
-
     if (S_ISREG(inode->i_stat.st_mode)) {
-        count = dfs_truncPages(inode, 0);
+        count = dfs_truncPages(inode, 0, remove);
     } else if (S_ISDIR(inode->i_stat.st_mode)) {
         dfs_dirFree(inode);
     } else if (S_ISLNK(inode->i_stat.st_mode)) {
         free(inode->i_target);
+        inode->i_target = NULL;
     }
+    assert(inode->i_page == NULL);
     dfs_xattrFree(inode);
     free(inode);
     return count;
@@ -243,11 +231,6 @@ static void
 dfs_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     char *buf;
 
-    /*
-    if (inode->i_stat.st_ino == gfs->gfs_snap_root) {
-        dfs_printf("Flushing inode %ld to block %ld\n", inode->i_stat.st_ino, inode->i_block);
-    }
-    */
     if (inode->i_removed) {
         inode->i_xattrdirty = false;
         inode->i_bmapdirty = false;
@@ -276,24 +259,21 @@ dfs_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
                 inode->i_block = dfs_blockAlloc(fs, 1);
                 fs->fs_inodeBlocks->ib_blks[fs->fs_inodeIndex++] = inode->i_block;
             }
-            /*
-            if (inode->i_stat.st_ino == gfs->gfs_snap_root) {
-                dfs_printf("Writing inode %ld to block %ld\n", inode->i_stat.st_ino, inode->i_block);
-            }
-            */
+            //dfs_printf("Writing inode %ld to block %ld\n", inode->i_stat.st_ino, inode->i_block);
+            posix_memalign((void **)&buf, DFS_BLOCK_SIZE, DFS_BLOCK_SIZE);
+            memcpy(buf, &inode->i_dinode, sizeof(struct dinode));
             if (S_ISLNK(inode->i_stat.st_mode)) {
-                posix_memalign((void **)&buf, DFS_BLOCK_SIZE, sizeof(struct inode));
-                memcpy(buf, &inode->i_dinode, sizeof(struct dinode));
                 memcpy(&buf[sizeof(struct dinode)], inode->i_target,
                        inode->i_stat.st_size);
-                dfs_writeBlock(gfs->gfs_fd, buf, inode->i_block);
-                free(buf);
-            } else {
-                dfs_writeBlock(gfs->gfs_fd, inode, inode->i_block);
             }
+            dfs_writeBlock(gfs->gfs_fd, buf, inode->i_block);
+            free(buf);
         } else if (inode->i_block != DFS_INVALID_BLOCK) {
             inode->i_stat.st_ino = 0;
-            dfs_writeBlock(gfs->gfs_fd, inode, inode->i_block);
+            posix_memalign((void **)&buf, DFS_BLOCK_SIZE, DFS_BLOCK_SIZE);
+            memcpy(buf, &inode->i_dinode, sizeof(struct dinode));
+            dfs_writeBlock(gfs->gfs_fd, buf, inode->i_block);
+            free(buf);
         }
         inode->i_dirty = false;
     }
@@ -353,23 +333,32 @@ dfs_invalidate_pcache(struct gfs *gfs, struct fs *fs) {
 uint64_t
 dfs_destroyInodes(struct fs *fs, bool remove) {
     uint64_t count = 0, icount = 0;
-    struct inode *inode, *tmp;
+    struct inode *inode;
     int i;
 
+    /* Take the inode off the hash list */
+
     for (i = 0; i < DFS_ICACHE_SIZE; i++) {
-        inode = fs->fs_icache[i].ic_head;
-        while (inode) {
-            tmp = inode;
-            inode = inode->i_cnext;
-            count += dfs_freeInode(tmp);
+        /* XXX Lock is not needed as the file system is locked for exclusive
+         * access
+         * */
+        //pthread_mutex_lock(&fs->fs_icache[i].ic_lock);
+        while ((inode = fs->fs_icache[i].ic_head)) {
+            fs->fs_icache[i].ic_head = inode->i_cnext;
+            count += dfs_freeInode(inode, remove);
             icount++;
         }
+        assert(fs->fs_icache[i].ic_head == NULL);
+        //pthread_mutex_unlock(&fs->fs_icache[i].ic_lock);
         pthread_mutex_destroy(&fs->fs_icache[i].ic_lock);
     }
     /* XXX reuse this cache for another file system */
     free(fs->fs_icache);
     if (remove && icount) {
         __sync_sub_and_fetch(&fs->fs_gfs->gfs_super->sb_inodes, icount);
+    }
+    if (icount) {
+        __sync_sub_and_fetch(&fs->fs_icount, icount);
     }
     return remove ? count : 0;
 }
@@ -387,7 +376,7 @@ dfs_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
     if (S_ISREG(inode->i_stat.st_mode)) {
 
         /* Share pages initially */
-        if (parent->i_page) {
+        if (parent->i_stat.st_blocks) {
             inode->i_page = parent->i_page;
             inode->i_pcount = parent->i_pcount;
             inode->i_shared = true;
@@ -403,7 +392,7 @@ dfs_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
 
         /* XXX New inode may share target */
         target = parent->i_target;
-        len = strlen(target);
+        len = parent->i_stat.st_size;
         inode->i_target = malloc(len + 1);
         memcpy(inode->i_target, target, len);
         inode->i_target[len] = 0;

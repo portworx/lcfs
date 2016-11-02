@@ -6,12 +6,11 @@ dfs_readBlock(int fd, off_t block) {
     size_t size;
     void *buf;
 
+    /* XXX assert block is within file system */
+    //dfs_printf("Reading block %ld\n", block);
     posix_memalign(&buf, DFS_BLOCK_SIZE, DFS_BLOCK_SIZE);
     size = pread(fd, buf, DFS_BLOCK_SIZE, block * DFS_BLOCK_SIZE);
-    if (size != DFS_BLOCK_SIZE) {
-        perror("pread");
-        exit(errno);
-    }
+    assert(size == DFS_BLOCK_SIZE);
     return buf;
 }
 
@@ -21,11 +20,10 @@ dfs_writeBlock(int fd, void *buf, off_t block) {
     size_t count;
 
     /* XXX Use async I/O */
+    /* XXX assert block is within file system */
+    //dfs_printf("Writing block %ld\n", block);
     count = pwrite(fd, buf, DFS_BLOCK_SIZE, block * DFS_BLOCK_SIZE);
-    if (count != DFS_BLOCK_SIZE) {
-        perror("pwrite");
-        exit(errno);
-    }
+    assert(count == DFS_BLOCK_SIZE);
     return 0;
 }
 
@@ -34,10 +32,8 @@ int
 dfs_writeBlocks(int fd, struct iovec *iov, int iovcnt, off_t block) {
     ssize_t count;
 
+    /* XXX assert block is within file system */
     count = pwritev(fd, iov, iovcnt, block * DFS_BLOCK_SIZE);
-    if (count == -1) {
-        perror("pwritev");
-        exit(errno);
-    }
+    assert(count != -1);
     return 0;
 }
