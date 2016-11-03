@@ -30,6 +30,7 @@ dfs_newInode(struct fs *fs) {
     inode->i_bmapDirBlock = DFS_INVALID_BLOCK;
     inode->i_xattrBlock = DFS_INVALID_BLOCK;
     pthread_rwlock_init(&inode->i_rwlock, NULL);
+    pthread_rwlock_init(&inode->i_pglock, NULL);
 
     /* XXX This accounting is not correct after restart */
     __sync_add_and_fetch(&fs->fs_gfs->gfs_super->sb_inodes, 1);
@@ -176,6 +177,7 @@ dfs_readInodes(struct gfs *gfs, struct fs *fs) {
             memcpy(inode, ibuf, sizeof(struct dinode));
             inode->i_block = iblock;
             pthread_rwlock_init(&inode->i_rwlock, NULL);
+            pthread_rwlock_init(&inode->i_pglock, NULL);
             dfs_addInode(fs, inode);
             dfs_xattrRead(gfs, fs, inode);
             if (S_ISREG(inode->i_stat.st_mode)) {
@@ -222,6 +224,8 @@ dfs_freeInode(struct inode *inode, bool remove) {
     }
     assert(inode->i_page == NULL);
     dfs_xattrFree(inode);
+    pthread_rwlock_destroy(&inode->i_pglock);
+    pthread_rwlock_destroy(&inode->i_rwlock);
     free(inode);
     return count;
 }
@@ -231,11 +235,7 @@ static void
 dfs_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     char *buf;
 
-    if (inode->i_removed) {
-        inode->i_xattrdirty = false;
-        inode->i_bmapdirty = false;
-        inode->i_dirdirty = false;
-    }
+    assert(inode->i_fs == fs);
     if (inode->i_xattrdirty) {
         dfs_xattrFlush(gfs, fs, inode);
     }
@@ -297,6 +297,15 @@ dfs_syncInodes(struct gfs *gfs, struct fs *fs) {
             }
             inode = inode->i_cnext;
         }
+    }
+    if (fs->fs_inodeBlocks != NULL) {
+        assert(fs->fs_super->sb_inodeBlock != DFS_INVALID_BLOCK);
+        //dfs_printf("Writing Inode block at %ld\n", fs->fs_super->sb_inodeBlock);
+        dfs_writeBlock(gfs->gfs_fd, fs->fs_inodeBlocks,
+                       fs->fs_super->sb_inodeBlock);
+        free(fs->fs_inodeBlocks);
+        fs->fs_inodeBlocks = NULL;
+        fs->fs_inodeIndex = 0;
     }
 }
 

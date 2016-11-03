@@ -61,8 +61,6 @@ main(int argc, char *argv[]) {
         arg[i + 1] = argv[i];
     }
 
-    mallopt(M_MMAP_THRESHOLD, 4096);
-    mallopt(M_TRIM_THRESHOLD, 4096);
     struct fuse_args args = FUSE_ARGS_INIT(argc + 1, arg);
     if ((fuse_parse_cmdline(&args, &mountpoint, NULL, &foreground) != -1) &&
         ((gfs->gfs_ch = fuse_mount(mountpoint, &args)) != NULL)) {
@@ -84,5 +82,7 @@ main(int argc, char *argv[]) {
         dfs_unmount(gfs);
     }
     fuse_opt_free_args(&args);
+    free(mountpoint);
+    free(gfs);
     return err ? 1 : 0;
 }

@@ -66,6 +66,9 @@ struct inode {
     /* Lock serializing operations on the inode */
     pthread_rwlock_t i_rwlock;
 
+    /* Lock serializing operations on the pages of the inode */
+    pthread_rwlock_t i_pglock;
+
     /* Filesystem inode belongs to */
     struct fs *i_fs;
 
@@ -166,6 +169,7 @@ dfs_markInodeDirty(struct inode *inode, bool dirty, bool dir, bool bmap,
         inode->i_dirdirty = true;
     }
     if (bmap) {
+        assert(S_ISREG(inode->i_stat.st_mode));
         inode->i_bmapdirty = true;
     }
     if (xattr) {

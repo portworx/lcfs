@@ -18,7 +18,6 @@
 #include <sys/xattr.h>
 #include <pthread.h>
 #include <assert.h>
-#include <malloc.h>
 #include <linux/ioctl.h>
 
 #include "dfs.h"

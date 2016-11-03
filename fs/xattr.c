@@ -310,6 +310,10 @@ dfs_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     char *xbuf = NULL;
 
     //dfs_printf("Flushing extended attributes of inode %ld xsize %ld\n", inode->i_stat.st_ino, inode->i_xsize);
+    if (inode->i_removed) {
+        inode->i_xattrdirty = false;
+        return;
+    }
     while (xattr) {
         nsize = strlen(xattr->x_name);
         dsize = (2 * sizeof(uint16_t)) + nsize + xattr->x_size;

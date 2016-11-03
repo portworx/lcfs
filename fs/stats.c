@@ -1,6 +1,6 @@
 #include "includes.h"
 
-static bool stats_enabled = false;
+static bool stats_enabled = true;
 
 /* Type of requests tracked in stats */
 static const char *requests[] = {
@@ -42,7 +42,7 @@ static const char *requests[] = {
 /* Allocate a new stats structure */
 struct stats *
 dfs_statsNew() {
-    struct stats *stats = malloc(sizeof(struct stats));
+    struct stats *stats;
     struct timeval min;
     enum dfs_stats i;
 
@@ -50,6 +50,7 @@ dfs_statsNew() {
         return NULL;
     }
     gettimeofday(&min, NULL);
+    stats = malloc(sizeof(struct stats));
     memset(&stats->s_count, 0, sizeof(uint64_t) * DFS_REQUEST_MAX);
     memset(&stats->s_err, 0, sizeof(uint64_t) * DFS_REQUEST_MAX);
     memset(&stats->s_max, 0, sizeof(struct timeval) * DFS_REQUEST_MAX);

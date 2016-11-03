@@ -57,6 +57,9 @@ dfs_destroyFs(struct fs *fs, bool remove) {
     }
     pthread_rwlock_destroy(&fs->fs_rwlock);
     dfs_statsDeinit(fs);
+    if (fs->fs_inodeBlocks) {
+        free(fs->fs_inodeBlocks);
+    }
     free(fs->fs_super);
     assert(fs->fs_icount == 0);
     assert(fs->fs_pcount == 0);
@@ -444,17 +447,8 @@ dfs_sync(struct gfs *gfs, struct fs *fs) {
     if (fs && (fs->fs_super->sb_flags & DFS_SUPER_DIRTY)) {
         dfs_lock(fs, true);
         dfs_syncInodes(gfs, fs);
-        if (fs->fs_inodeBlocks != NULL) {
-            assert(fs->fs_super->sb_inodeBlock != DFS_INVALID_BLOCK);
-            dfs_printf("Writing Inode block at %ld\n", fs->fs_super->sb_inodeBlock);
-            dfs_writeBlock(gfs->gfs_fd, fs->fs_inodeBlocks,
-                           fs->fs_super->sb_inodeBlock);
-            free(fs->fs_inodeBlocks);
-            fs->fs_inodeBlocks = NULL;
-        }
 
         /* Flush everything to disk before marking file system clean */
-        syncfs(gfs->gfs_fd);
         fsync(gfs->gfs_fd);
         fs->fs_super->sb_flags &= ~DFS_SUPER_DIRTY;
         dfs_printf("Writing out file system superblock for fs %d %ld to block %ld\n", fs->fs_gindex, fs->fs_root, fs->fs_sblock);
@@ -503,14 +497,12 @@ dfs_unmount(struct gfs *gfs) {
         dfs_destroyFs(fs, false);
     }
     if (gfs->gfs_fd) {
-        syncfs(gfs->gfs_fd);
         fsync(gfs->gfs_fd);
         close(gfs->gfs_fd);
     }
     free(gfs->gfs_fs);
     free(gfs->gfs_roots);
     assert(gfs->gfs_count == 0);
-    free(gfs);
 }
 
 /* Write out superblocks of all file systems */

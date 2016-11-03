@@ -199,6 +199,10 @@ dfs_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
 
     //dfs_printf("Flushing directory %ld\n", dir->i_stat.st_ino);
     assert(S_ISDIR(dir->i_stat.st_mode));
+    if (dir->i_removed) {
+        dir->i_dirdirty = false;
+        return;
+    }
     while (dirent) {
         dsize = DFS_MIN_DIRENT_SIZE + dirent->di_size;
         if (remain < dsize) {

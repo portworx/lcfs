@@ -131,7 +131,8 @@ out:
     dfs_dirRemove(dir, name);
     if (inode) {
         dfs_updateInodeTimes(dir, false, false, true);
-        dfs_markInodeDirty(inode, true, rmdir, true, false);
+        dfs_markInodeDirty(inode, true, rmdir, S_ISREG(inode->i_stat.st_mode),
+                           false);
         dfs_inodeUnlock(inode);
     }
     dfs_markInodeDirty(dir, true, true, false, false);
@@ -769,7 +770,7 @@ dfs_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     }
     fsize = sizeof(struct fuse_bufvec) +
             (sizeof(struct fuse_buf) * ((size / DFS_BLOCK_SIZE) + 2));
-    bufv = malloc(fsize);
+    bufv = alloca(fsize);
     memset(bufv, 0, fsize);
     fs = dfs_getfs(ino, false);
     inode = dfs_getInode(fs, ino, (struct inode *)fi->fh, false, false);
@@ -799,7 +800,6 @@ dfs_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 out:
     dfs_statsAdd(fs, DFS_READ, err, &start);
     dfs_unlock(fs);
-    free(bufv);
 }
 
 /* Flush a file */
@@ -852,7 +852,7 @@ dfs_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
     fuse_reply_err(req, 0);
     if (fs->fs_readOnly && (inode->i_ocount == 0) &&
         S_ISREG(inode->i_stat.st_mode) && inode->i_bmapdirty) {
-        dfs_bmapFlush(fs->fs_gfs, fs, inode);
+        dfs_bmapFlush(fs->fs_gfs, inode->i_fs, inode);
     }
     dfs_inodeUnlock(inode);
 }
@@ -1194,7 +1194,7 @@ dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
     size = bufv->buf[bufv->idx].size;
     wsize = sizeof(struct fuse_bufvec) +
            (sizeof(struct fuse_buf) * ((size / DFS_BLOCK_SIZE) + 2));
-    dst = malloc(wsize);
+    dst = alloca(wsize);
     memset(dst, 0, wsize);
     endoffset = off + size;
     fs = dfs_getfs(ino, false);
@@ -1229,7 +1229,6 @@ dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
 out:
     dfs_statsAdd(fs, DFS_WRITE_BUF, err, &start);
     dfs_unlock(fs);
-    free(dst);
 }
 
 #if 0
