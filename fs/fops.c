@@ -32,6 +32,9 @@ create(struct fs *fs, ino_t parent, const char *name, mode_t mode,
         return ENOENT;
     }
     assert(S_ISDIR(dir->i_stat.st_mode));
+    if (dir->i_shared) {
+        dfs_dirCopy(dir);
+    }
     inode = dfs_inodeInit(fs, mode, uid, gid, rdev, parent, target);
     ino = inode->i_stat.st_ino;
     dfs_dirAdd(dir, ino, mode, name, strlen(name));
@@ -83,6 +86,7 @@ dremove(struct fs *fs, struct inode *dir, const char *name,
     ino_t parent;
     int err = 0;
 
+    assert(S_ISDIR(dir->i_stat.st_mode));
     if (inode == NULL) {
         dfs_reportError(__func__, __LINE__, ino, ESTALE);
         err = ESTALE;
@@ -156,6 +160,9 @@ dfs_remove(struct fs *fs, ino_t parent, const char *name, bool rmdir) {
         return ENOENT;
     }
     assert(S_ISDIR(dir->i_stat.st_mode));
+    if (dir->i_shared) {
+        dfs_dirCopy(dir);
+    }
     /* XXX Combine lookup and removal */
     ino = dfs_dirLookup(fs, dir, name);
     if (ino == DFS_INVALID_INODE) {
@@ -587,10 +594,16 @@ dfs_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
         err = ENOENT;
         goto out;
     }
+    if (sdir->i_shared) {
+        dfs_dirCopy(sdir);
+    }
     target = dfs_dirLookup(fs, tdir ? tdir : sdir, newname);
 
     /* Renaming to another directory */
     if (parent != newparent) {
+        if (tdir->i_shared) {
+            dfs_dirCopy(tdir);
+        }
         if (target != DFS_INVALID_INODE) {
             dremove(fs, tdir, newname, target, false);
         }
@@ -665,6 +678,10 @@ dfs_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
         goto out;
     }
     assert(S_ISDIR(dir->i_stat.st_mode));
+    assert(dir->i_stat.st_nlink >= 2);
+    if (dir->i_shared) {
+        dfs_dirCopy(dir);
+    }
     inode = dfs_getInode(fs, ino, NULL, true, true);
     if (inode == NULL) {
         dfs_inodeUnlock(dir);
@@ -674,7 +691,6 @@ dfs_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
         goto out;
     }
     assert(S_ISREG(inode->i_stat.st_mode));
-    assert(dir->i_stat.st_nlink >= 2);
     dfs_dirAdd(dir, inode->i_stat.st_ino, inode->i_stat.st_mode, newname,
                strlen(newname));
     dfs_updateInodeTimes(dir, false, true, true);

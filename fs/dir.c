@@ -29,6 +29,7 @@ dfs_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,
     struct dirent *dirent = malloc(sizeof(struct dirent));
 
     assert(S_ISDIR(dir->i_stat.st_mode));
+    assert(!dir->i_shared);
     assert(ino > DFS_ROOT_INODE);
     dirent->di_ino = ino;
     dirent->di_name = malloc(nsize + 1);
@@ -42,19 +43,20 @@ dfs_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,
 
 /* Copy directory entries from one directory to another */
 void
-dfs_dirCopy(struct inode *inode, struct inode *dir) {
+dfs_dirCopy(struct inode *dir) {
     struct dirent *dirent = dir->i_dirent;
 
-    assert(S_ISDIR(inode->i_stat.st_mode));
+    assert(dir->i_shared);
     assert(S_ISDIR(dir->i_stat.st_mode));
     assert(dir->i_stat.st_nlink >= 2);
+    dir->i_dirent = NULL;
+    dir->i_shared = false;
     while (dirent) {
-        dfs_dirAdd(inode, dirent->di_ino, dirent->di_mode,
+        dfs_dirAdd(dir, dirent->di_ino, dirent->di_mode,
                    dirent->di_name, dirent->di_size);
         dirent = dirent->di_next;
     }
-    inode->i_stat.st_nlink = dir->i_stat.st_nlink;
-    inode->i_dirdirty = true;
+    dir->i_dirdirty = true;
 }
 
 
@@ -66,6 +68,7 @@ dfs_dirRemove(struct inode *dir, const char *name) {
     int len = strlen(name);
 
     assert(S_ISDIR(dir->i_stat.st_mode));
+    assert(!dir->i_shared);
     while (dirent != NULL) {
         if ((len == dirent->di_size) &&
             (strcmp(name, dirent->di_name) == 0)) {
@@ -91,6 +94,7 @@ dfs_dirRemoveInode(struct inode *dir, ino_t ino) {
     struct dirent *pdirent = NULL;
 
     assert(S_ISDIR(dir->i_stat.st_mode));
+    assert(!dir->i_shared);
     while (dirent != NULL) {
         if (dirent->di_ino == ino) {
             if (pdirent == NULL) {
@@ -115,6 +119,7 @@ dfs_dirRename(struct inode *dir, ino_t ino,
     int len = strlen(name);
 
     assert(S_ISDIR(dir->i_stat.st_mode));
+    assert(!dir->i_shared);
     while (dirent != NULL) {
         if ((dirent->di_ino == ino) &&(len == dirent->di_size) &&
             (strcmp(name, dirent->di_name) == 0)) {
@@ -253,6 +258,10 @@ void
 dfs_dirFree(struct inode *dir) {
     struct dirent *dirent = dir->i_dirent, *tmp;
 
+    if (dir->i_shared) {
+        dir->i_dirent = NULL;
+        return;
+    }
     while (dirent != NULL) {
         tmp = dirent;
         dirent = dirent->di_next;

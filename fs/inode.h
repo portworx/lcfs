@@ -120,9 +120,7 @@ struct inode {
     /* Set if extended attributes are dirty */
     bool i_xattrdirty;
 
-    //uint8_t i_pad[512 - 295];
 }  __attribute__((packed));
-//static_assert(sizeof(struct inode) == 512, "inode size != 512");
 
 #define i_stat          i_dinode.di_stat
 #define i_parent        i_dinode.di_parent

@@ -1,8 +1,10 @@
 #include "includes.h"
 
 static char dfs_zPage[DFS_BLOCK_SIZE];
-#define DFS_PAGECACHE_SIZE  128
+#define DFS_PAGECACHE_SIZE  1
 #define DFS_CLUSTER_SIZE    256
+
+static bool dfs_page_invalidate = true;
 
 /* Page structure used for caching a file system block */
 struct page {
@@ -68,8 +70,9 @@ dfs_inodeAllocPages(struct inode *inode) {
     assert(!inode->i_shared);
     lpage = (inode->i_stat.st_size + DFS_BLOCK_SIZE - 1) / DFS_BLOCK_SIZE;
     if (inode->i_pcount <= lpage) {
-        count = inode->i_pcount ?  (inode->i_pcount * 2) : DFS_PAGECACHE_SIZE;
-        while (count < lpage) {
+        count = inode->i_pcount ? (inode->i_pcount * 2) :
+                                  (lpage ? (lpage + 1) : DFS_PAGECACHE_SIZE);
+        while (count <= lpage) {
             count *= 2;
         }
         tsize = count * sizeof(struct page);
@@ -80,6 +83,7 @@ dfs_inodeAllocPages(struct inode *inode) {
             memset(&page[inode->i_pcount], 0, tsize - size);
             free(inode->i_page);
         } else {
+            assert(inode->i_page == NULL);
             memset(page, 0, tsize);
         }
         inode->i_pcount = count;
@@ -91,7 +95,7 @@ dfs_inodeAllocPages(struct inode *inode) {
 /* Add or update existing page of the inode with new data provided */
 static int
 dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
-            struct fuse_bufvec *bufv) {
+            int *incr, struct fuse_bufvec *bufv) {
     struct page *page;
     bool read = false;
     bool newblock;
@@ -114,7 +118,7 @@ dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
             }
             posix_memalign((void **)&page->p_data, DFS_BLOCK_SIZE,
                            DFS_BLOCK_SIZE);
-            __sync_add_and_fetch(&inode->i_fs->fs_pcount, 1);
+            *incr = (*incr) + 1;
             if (poffset != 0) {
                 memcpy(page->p_data, data, poffset);
             }
@@ -140,7 +144,7 @@ dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
     /* Allocate a new page */
     assert(!page->p_shared);
     posix_memalign((void **)&page->p_data, DFS_BLOCK_SIZE, DFS_BLOCK_SIZE);
-    __sync_add_and_fetch(&inode->i_fs->fs_pcount, 1);
+    *incr = (*incr) + 1;
     if (poffset != 0) {
         memset(page->p_data, 0, poffset);
     }
@@ -159,9 +163,9 @@ int
 dfs_addPages(struct inode *inode, off_t off, size_t size,
              struct fuse_bufvec *bufv, struct fuse_bufvec *dst) {
     size_t wsize = size, psize;
+    int count = 0, added = 0;
     uint64_t page, spage;
     off_t poffset;
-    int count = 0;
 
     assert(S_ISREG(inode->i_stat.st_mode));
 
@@ -185,12 +189,15 @@ dfs_addPages(struct inode *inode, off_t off, size_t size,
         if (psize > wsize) {
             psize = wsize;
         }
-        count += dfs_addPage(inode, page, poffset, psize, dst);
+        count += dfs_addPage(inode, page, poffset, psize, &added, dst);
         page++;
         wsize -= psize;
     }
     wsize = fuse_buf_copy(dst, bufv, FUSE_BUF_SPLICE_NONBLOCK);
     assert(wsize == size);
+    if (added) {
+        __sync_add_and_fetch(&inode->i_fs->fs_pcount, added);
+    }
     return count;
 }
 
@@ -202,8 +209,8 @@ dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,
     off_t poffset, off = soffset, roff = 0;
     size_t psize, rsize = endoffset - off;
     struct page *page = NULL;
+    int i = 0, saved = 0;
     char *data;
-    int i = 0;
 
     assert(S_ISREG(inode->i_stat.st_mode));
     while (rsize) {
@@ -225,9 +232,10 @@ dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,
                 if (page->p_data == NULL) {
                     data = dfs_readBlock(inode->i_fs->fs_gfs->gfs_fd,
                                          page->p_block);
-                    if (!page->p_shared && !inode->i_shared) {
+                    if (!inode->i_shared) {
                         page->p_data = data;
-                        __sync_add_and_fetch(&inode->i_fs->fs_pcount, 1);
+                        page->p_shared = false;
+                        saved++;
                     }
                 } else {
                     data = page->p_data;
@@ -247,6 +255,9 @@ dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,
         rsize -= psize;
     }
     bufv->count = i;
+    if (saved) {
+        __sync_add_and_fetch(&inode->i_fs->fs_pcount, saved);
+    }
 }
 
 /* Flush a cluster of pages */
@@ -268,8 +279,12 @@ dfs_flushPageCluster(struct gfs *gfs, struct fs *fs,
         }
         dfs_writeBlock(gfs->gfs_fd, page->p_data,  block);
         page->p_dirty = false;
-        free(page->p_data);
-        page->p_data = NULL;
+        if (dfs_page_invalidate) {
+            free(page->p_data);
+            page->p_data = NULL;
+        } else {
+            count = 0;
+        }
     } else {
         iovec = alloca(count * sizeof(struct iovec));
         block = pages[0]->p_block;
@@ -278,20 +293,24 @@ dfs_flushPageCluster(struct gfs *gfs, struct fs *fs,
         }
         for (i = 0; i < count; i++) {
             page = pages[i];
-            iovec[i].iov_base = page->p_data;
-            iovec[i].iov_len = DFS_BLOCK_SIZE;
-        }
-        dfs_writeBlocks(gfs->gfs_fd, iovec, count, block);
-        for (i = 0; i < count; i++) {
-            page = pages[i];
             if (page->p_block != 0) {
                 assert(page->p_block == (block + i));
                 /* XXX May need to free the old block */
             }
             page->p_block = block + i;
             page->p_dirty = false;
-            free(page->p_data);
-            page->p_data = NULL;
+            iovec[i].iov_base = page->p_data;
+            iovec[i].iov_len = DFS_BLOCK_SIZE;
+        }
+        dfs_writeBlocks(gfs->gfs_fd, iovec, count, block);
+        if (dfs_page_invalidate) {
+            for (i = 0; i < count; i++) {
+                page = pages[i];
+                free(page->p_data);
+                page->p_data = NULL;
+            }
+        } else {
+            count = 0;
         }
     }
     return count;
@@ -327,7 +346,7 @@ dfs_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
                 count = 0;
             }
             pages[count++] = page;
-        } else if (!page->p_shared && page->p_data) {
+        } else if (dfs_page_invalidate && !page->p_shared && page->p_data) {
             free(page->p_data);
             page->p_data = NULL;
             freed++;

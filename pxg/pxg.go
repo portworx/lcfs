@@ -22,19 +22,19 @@ var _ graphdriver.ProtoDriver = &pDriver{}
 
 func (p *pDriver) String() string {
     logrus.Infof("Graphdriver String\n")
-	return "pxg"
+    return "pxg"
 }
 func (p *pDriver) CreateReadWrite(id, parent, mountLabel string, storageOpt map[string]string) error {
     logrus.Infof("Graphdriver CreateReadWrite - id %s parent %s mountLabel %s\n", id, parent, mountLabel)
-	return nil
+    return nil
 }
 func (p *pDriver) Create(id, parent, mountLabel string, storageOpt map[string]string) error {
     logrus.Infof("Graphdriver Create - id %s parent %s mountLabel %s\n", id, parent, mountLabel)
-	return nil
+    return nil
 }
 func (p *pDriver) Remove(id string) error {
     logrus.Infof("Graphdriver Remove id %s\n", id)
-	return nil
+    return nil
 }
 func (p *pDriver) Get(id, mountLabel string) (dir string, err error) {
     logrus.Infof("Graphdriver Get - id %s mountLabel %s\n", id, mountLabel)
@@ -44,29 +44,29 @@ func (p *pDriver) Get(id, mountLabel string) (dir string, err error) {
 }
 func (p *pDriver) Put(id string) error {
     logrus.Infof("Graphdriver Put id %s\n", id)
-	return nil
+    return nil
 }
 func (p *pDriver) Exists(id string) bool {
     logrus.Infof("Graphdriver Exists id %s\n", id)
-	return false
+    return false
 }
 func (p *pDriver) Status() [][2]string {
     logrus.Infof("Graphdriver Status\n")
-	return nil
+    return nil
 }
 func (p *pDriver) GetMetadata(id string) (map[string]string, error) {
     logrus.Infof("Graphdriver GetMetadata id %s\n", id)
-	return nil, nil
+    return nil, nil
 }
 func (p *pDriver) Cleanup() error {
     logrus.Infof("Graphdriver Cleanup\n")
-	return nil
+    return nil
 }
 
 func Init(root string, options []string, uidMaps, gidMaps []idtools.IDMap) (graphdriver.Driver, error) {
     logrus.Infof("Graphdriver Init - root %s options %+v\n", root, options)
-	d := graphdriver.NewNaiveDiffDriver(&pDriver{home: path.Join(root, "dfs")}, uidMaps, gidMaps)
-	return d, nil
+    d := graphdriver.NewNaiveDiffDriver(&pDriver{home: path.Join(root, "dfs")}, uidMaps, gidMaps)
+    return d, nil
 }
 
 type Driver struct {
@@ -102,7 +102,7 @@ func (d *Driver) Init(home string, options []string) error {
         logrus.Errorf("err %v\n", err)
         return err
     }
-	return nil
+    return nil
 }
 
 // Issue ioctl for various operations
@@ -211,41 +211,42 @@ func (d *Driver) Diff(id, parent string) io.ReadCloser {
     if err != nil {
         logrus.Errorf("Diff: error in stream %v\n", err)
     }
-	return archive
+    return archive
 }
 
 func changeKind(c archive.ChangeType) graphPlugin.ChangeKind {
-	switch c {
-	case archive.ChangeModify:
-		return graphPlugin.Modified
-	case archive.ChangeAdd:
-		return graphPlugin.Added
-	case archive.ChangeDelete:
-		return graphPlugin.Deleted
-	}
-	return 0
+    switch c {
+    case archive.ChangeModify:
+        return graphPlugin.Modified
+    case archive.ChangeAdd:
+        return graphPlugin.Added
+    case archive.ChangeDelete:
+        return graphPlugin.Deleted
+    }
+    return 0
 }
 
 func (d *Driver) Changes(id, parent string) ([]graphPlugin.Change, error) {
     logrus.Infof("Changes - id %s parent %s\n", id, parent)
     cs, err := d.driver.Changes(id, parent)
-	if err != nil {
+    if err != nil {
         logrus.Errorf("Changes: err %v\n", err)
-		return nil, err
-	}
-	changes := make([]graphPlugin.Change, len(cs))
-	for _, c := range cs {
-		change := graphPlugin.Change{
-			Path: c.Path,
-			Kind: changeKind(c.Kind),
-		}
-		changes = append(changes, change)
-	}
-	return changes, nil
+        return nil, err
+    }
+    changes := make([]graphPlugin.Change, len(cs))
+    for _, c := range cs {
+        change := graphPlugin.Change{
+            Path: c.Path,
+            Kind: changeKind(c.Kind),
+        }
+        changes = append(changes, change)
+    }
+    return changes, nil
 }
 
+// XXX This is somehow broken with docker
 func (d *Driver) ApplyDiff(id, parent string, archive io.Reader) (int64, error) {
-    logrus.Infof("ApplyDiff - id %s parent %s\n", id, parent)
+    logrus.Infof("ApplyDiff - id %s parent %s archive %+v\n", id, parent, archive)
     return d.driver.ApplyDiff(id, parent, archive)
 }
 
@@ -258,7 +259,8 @@ func main() {
     logrus.Infof("Starting to serve requests\n")
     handler := graphPlugin.NewHandler(&Driver{driver: nil, init: Init,
                                       home: "", options: nil})
-    if err := handler.ServeUnix("root", "pxg"); err != nil {
+    //if err := handler.ServeUnix("root", "pxg"); err != nil {
+    if err := handler.ServeTCP("pxg", ":32456", nil); err != nil {
         log.Fatalf("Error %v", err)
     }
     for {

@@ -219,7 +219,9 @@ dfs_freeInode(struct inode *inode, bool remove) {
     } else if (S_ISDIR(inode->i_stat.st_mode)) {
         dfs_dirFree(inode);
     } else if (S_ISLNK(inode->i_stat.st_mode)) {
-        free(inode->i_target);
+        if (!inode->i_shared) {
+            free(inode->i_target);
+        }
         inode->i_target = NULL;
     }
     assert(inode->i_page == NULL);
@@ -376,8 +378,6 @@ dfs_destroyInodes(struct fs *fs, bool remove) {
 struct inode *
 dfs_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
     struct inode *inode;
-    char *target;
-    int len;
 
     inode = dfs_newInode(fs);
     memcpy(&inode->i_stat, &parent->i_stat, sizeof(struct stat));
@@ -394,17 +394,14 @@ dfs_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
             inode->i_pcache = true;
         }
     } else if (S_ISDIR(inode->i_stat.st_mode)) {
-
-        /* Copy directory entries */
-        dfs_dirCopy(inode, parent);
+        if (parent->i_dirent) {
+            inode->i_dirent = parent->i_dirent;
+            inode->i_shared = true;
+            inode->i_dirdirty = true;
+        }
     } else if (S_ISLNK(inode->i_stat.st_mode)) {
-
-        /* XXX New inode may share target */
-        target = parent->i_target;
-        len = parent->i_stat.st_size;
-        inode->i_target = malloc(len + 1);
-        memcpy(inode->i_target, target, len);
-        inode->i_target[len] = 0;
+        inode->i_target = parent->i_target;
+        inode->i_shared = true;
     }
     inode->i_parent = (parent->i_parent == parent->i_fs->fs_root) ?
                       fs->fs_root : parent->i_parent;

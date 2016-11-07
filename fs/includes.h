@@ -80,7 +80,7 @@ void dfs_dirRemove(struct inode *dir, const char *name);
 void dfs_dirRemoveInode(struct inode *dir, ino_t ino);
 void dfs_dirRename(struct inode *dir, ino_t ino,
                    const char *name, const char *newname);
-void dfs_dirCopy(struct inode *inode, struct inode *dir);
+void dfs_dirCopy(struct inode *dir);
 void dfs_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir);
 void dfs_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir);
 void dfs_removeTree(struct fs *fs, struct inode *dir);

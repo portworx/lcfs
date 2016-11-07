@@ -1,6 +1,6 @@
 #include "includes.h"
 
-static bool stats_enabled = true;
+static bool stats_enabled = false;
 
 /* Type of requests tracked in stats */
 static const char *requests[] = {
@@ -101,19 +101,21 @@ dfs_statsAdd(struct fs *fs, enum dfs_stats type, bool err, struct timeval *start
 void
 dfs_displayStats(struct fs *fs) {
     struct stats *stats = fs->fs_stats;
+    struct timeval now;
     enum dfs_stats i;
 
     if (!stats_enabled) {
         return;
     }
-    printf("\n\nStats for file system %p with root %ld index %d\n",
-           fs, fs->fs_root, fs->fs_gindex);
-    printf("Creation time %s", ctime(&fs->fs_ctime));
-    printf("Access   time %s\n", ctime(&fs->fs_atime));
+    gettimeofday(&now, NULL);
+    printf("\n\nStats for file system %p with root %ld index %d at %s\n",
+           fs, fs->fs_root, fs->fs_gindex, ctime(&now.tv_sec));
+    printf("Layer  created at %s", ctime(&fs->fs_ctime));
+    printf("Last acccessed at %s\n", ctime(&fs->fs_atime));
     printf("\tRequest:\tTotal\t\tFailed\tAverage\t\tMax\t\tMin\n\n");
     for (i = 0; i < DFS_REQUEST_MAX; i++) {
         if (stats->s_count[i]) {
-            printf("%15s: %10ld\t%10ld\t%2lds %6ldu\t%2lds %6ldu\t%2lds %6ldu\n",
+            printf("%15s: %10ld\t%10ld\t%2lds.%06ldu\t%2lds.%06ldu\t%2lds.%06ldu\n",
                    requests[i], stats->s_count[i], stats->s_err[i],
                    stats->s_total[i].tv_sec / stats->s_count[i],
                    stats->s_total[i].tv_usec / stats->s_count[i],

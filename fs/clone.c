@@ -103,7 +103,10 @@ dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
             goto out;
         }
 
-        dfs_dirCopy(dir, pdir);
+        dir->i_stat.st_nlink = pdir->i_stat.st_nlink;
+        dir->i_dirent = pdir->i_dirent;
+        dir->i_shared = true;
+        dfs_dirCopy(dir);
         dfs_inodeUnlock(pdir);
         dfs_inodeUnlock(dir);
 
