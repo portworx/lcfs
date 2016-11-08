@@ -89,8 +89,11 @@ struct dinode {
 
     /* Parent inode number of singly linked inodes */
     uint64_t di_parent;
+
+    /* Set if blocks are newly allocated and not inherited */
+    uint8_t di_pcache;
 } __attribute__((packed));
-static_assert(sizeof(struct dinode) == 168, "dinode size != 168");
+static_assert(sizeof(struct dinode) == 169, "dinode size != 169");
 
 #define DFS_IBLOCK_MAX  ((DFS_BLOCK_SIZE / sizeof(uint64_t)) - 2)
 /* Inode block table */
@@ -109,13 +112,12 @@ struct iblock {
 };
 static_assert(sizeof(struct iblock) == DFS_BLOCK_SIZE, "iblock size != DFS_BLOCK_SIZE");
 
-#define DFS_BLOCK_SHARED    (1ULL << 63)
 /* Bmap block entry */
 struct bmap {
     /* Offset */
     uint64_t b_off;
 
-    /* Block number and shared bit */
+    /* Block number */
     uint64_t b_block;
 };
 static_assert(sizeof(struct bmap) == 16, "bmap size != 16");

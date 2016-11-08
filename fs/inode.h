@@ -90,6 +90,15 @@ struct inode {
         char *i_target;
     };
 
+    /* Block map */
+    uint64_t *i_bmap;
+
+    /* Blocks allocated to this inode and not inherited */
+    uint64_t i_blks;
+
+    /* Size of bmap array */
+    uint64_t i_bcount;
+
     /* Size of page array */
     uint64_t i_pcount;
 
@@ -104,9 +113,6 @@ struct inode {
 
     /* Set if page list if shared between inodes in a snapshot chain */
     bool i_shared;
-
-    /* Set if pages can be cached in kernel */
-    bool i_pcache;
 
     /* Set if inode is dirty */
     bool i_dirty;
@@ -126,6 +132,7 @@ struct inode {
 #define i_parent        i_dinode.di_parent
 #define i_bmapDirBlock  i_dinode.di_bmapdir
 #define i_xattrBlock    i_dinode.di_xattr
+#define i_pcache        i_dinode.di_pcache
 
 /* XXX Replace ino_t with fuse_ino_t */
 /* XXX Make inode numbers 32 bit */

@@ -51,6 +51,9 @@ dfs_destroyFs(struct fs *fs, bool remove) {
         }
         dfs_blockFree(fs->fs_gfs, count);
     }
+    if (fs->fs_pcache && (fs->fs_parent == NULL)) {
+        dfs_destroy_pages(fs->fs_pcache);
+    }
     if (fs->fs_ilock && (fs->fs_parent == NULL)) {
         pthread_mutex_destroy(fs->fs_ilock);
         free(fs->fs_ilock);
@@ -285,15 +288,18 @@ dfs_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
         assert(pfs->fs_snap == NULL);
         pfs->fs_snap = fs;
         fs->fs_parent = pfs;
+        fs->fs_pcache = pfs->fs_pcache;
         fs->fs_ilock = pfs->fs_ilock;
     } else if (pfs->fs_parent == NULL) {
         assert(pfs->fs_next == NULL);
         pfs->fs_next = fs;
+        fs->fs_pcache = dfs_pcache_init();
         fs->fs_ilock = malloc(sizeof(pthread_mutex_t));
         pthread_mutex_init(fs->fs_ilock, NULL);
     } else {
         assert(pfs->fs_next == NULL);
         pfs->fs_next = fs;
+        fs->fs_pcache = pfs->fs_pcache;
         fs->fs_parent = pfs->fs_parent;
         fs->fs_ilock = pfs->fs_ilock;
     }
@@ -397,6 +403,7 @@ dfs_mount(char *device, struct gfs **gfsp) {
     fs = dfs_newFs(gfs, true);
     fs->fs_root = DFS_ROOT_INODE;
     fs->fs_sblock = DFS_SUPER_BLOCK;
+    fs->fs_pcache = dfs_pcache_init();
     gfs->gfs_fs[0] = fs;
     gfs->gfs_roots[0] = DFS_ROOT_INODE;
 
@@ -406,13 +413,17 @@ dfs_mount(char *device, struct gfs **gfsp) {
     if ((gfs->gfs_super->sb_magic != DFS_SUPER_MAGIC) ||
         (gfs->gfs_super->sb_version != DFS_VERSION) ||
         (gfs->gfs_super->sb_flags & DFS_SUPER_DIRTY)) {
+        printf("Formating %s, size %ld\n", device, size);
         dfs_format(gfs, fs, size);
     } else {
         if (gfs->gfs_super->sb_flags & DFS_SUPER_DIRTY) {
             printf("Filesystem is dirty\n");
             return EIO;
         }
+        assert(size == (gfs->gfs_super->sb_tblocks * DFS_BLOCK_SIZE));
         gfs->gfs_super->sb_mounts++;
+        printf("Mounting %s, size %ld nmounts %ld\n",
+               device, size, gfs->gfs_super->sb_mounts);
         dfs_initSnapshots(gfs, fs);
         for (i = 0; i <= gfs->gfs_scount; i++) {
             fs = gfs->gfs_fs[i];

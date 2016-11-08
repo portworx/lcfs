@@ -79,6 +79,9 @@ struct fs {
     /* Inode hash table */
     struct icache *fs_icache;
 
+    /* Page block hash table */
+    struct pcache *fs_pcache;
+
     /* Lock protecting layer inode chains */
     pthread_mutex_t *fs_ilock;
 

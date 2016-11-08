@@ -225,6 +225,7 @@ dfs_freeInode(struct inode *inode, bool remove) {
         inode->i_target = NULL;
     }
     assert(inode->i_page == NULL);
+    assert(inode->i_bmap == NULL);
     dfs_xattrFree(inode);
     pthread_rwlock_destroy(&inode->i_pglock);
     pthread_rwlock_destroy(&inode->i_rwlock);
@@ -383,11 +384,12 @@ dfs_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
     memcpy(&inode->i_stat, &parent->i_stat, sizeof(struct stat));
 
     if (S_ISREG(inode->i_stat.st_mode)) {
+        assert(parent->i_page == NULL);
 
         /* Share pages initially */
         if (parent->i_stat.st_blocks) {
-            inode->i_page = parent->i_page;
-            inode->i_pcount = parent->i_pcount;
+            inode->i_bmap = parent->i_bmap;
+            inode->i_bcount = parent->i_bcount;
             inode->i_shared = true;
             inode->i_bmapdirty = true;
         } else {

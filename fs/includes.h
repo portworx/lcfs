@@ -25,6 +25,7 @@
 #include "layout.h"
 #include "fs.h"
 #include "inode.h"
+#include "page.h"
 #include "stats.h"
 
 struct gfs *getfs();
@@ -86,6 +87,8 @@ void dfs_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir);
 void dfs_removeTree(struct fs *fs, struct inode *dir);
 void dfs_dirFree(struct inode *dir);
 
+struct pcache *dfs_pcache_init();
+void dfs_destroy_pages(struct pcache *pcache);
 int dfs_addPages(struct inode *inode, off_t off, size_t size,
                  struct fuse_bufvec *bufv, struct fuse_bufvec *dst);
 void dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,

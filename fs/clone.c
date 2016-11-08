@@ -76,6 +76,7 @@ dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
         goto out;
     }
     if (base) {
+        fs->fs_pcache = dfs_pcache_init();
         fs->fs_ilock = malloc(sizeof(pthread_mutex_t));
         pthread_mutex_init(fs->fs_ilock, NULL);
         nfs = dfs_getGlobalFs(gfs);
@@ -118,6 +119,7 @@ dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
             pfs->fs_super->sb_flags |= DFS_SUPER_DIRTY;
         }
         fs->fs_parent = pfs;
+        fs->fs_pcache = pfs->fs_pcache;
         fs->fs_ilock = pfs->fs_ilock;
     }
 
