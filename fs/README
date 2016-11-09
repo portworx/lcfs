@@ -11,6 +11,8 @@ Untar it and build/install using following commands:
 make -j8
 make install
 
+*  Install tcmalloc or remove that from Makefile.
+    On ubuntu, run "sudo apt-get install libgoogle-perftools-dev"
 *  Build this directory by running make.
 *  Download docker sources and add files for this driver.  Build docker and install that.
 *  Mount a device/file - "sudo ./dfs <device> <mnt>".

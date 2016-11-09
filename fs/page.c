@@ -113,11 +113,27 @@ dfs_destroy_pages(struct pcache *pcache) {
     free(pcache);
 }
 
+/* Add a new dirty page */
+static inline void
+dfs_insertDirtyPage(struct inode *inode, uint64_t pg, char *pdata) {
+    assert(pg < inode->i_pcount);
+    assert(inode->i_page[pg] == NULL);
+    inode->i_page[pg] = pdata;
+}
 
 /* Return the requested page if allocated already */
-static char *
+static inline char *
 dfs_findDirtyPage(struct inode *inode, uint64_t pg) {
     return (pg < inode->i_pcount) ? inode->i_page[pg] : NULL;
+}
+
+/* Remove a dirty page */
+static inline void
+dfs_removeDirtyPage(struct inode *inode, uint64_t pg) {
+    char *pdata = inode->i_page[pg];
+
+    free(pdata);
+    inode->i_page[pg] = NULL;
 }
 
 /* Allocate a bmap list for the inode */
@@ -286,7 +302,7 @@ dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
                     DFS_BLOCK_SIZE - (poffset + psize));
             }
         }
-        inode->i_page[pg] = pdata;
+        dfs_insertDirtyPage(inode, pg, pdata);
     }
     dfs_updateVec(pdata, bufv, poffset, psize);
     return new;
@@ -698,7 +714,7 @@ dfs_truncPages(struct inode *inode, off_t size, bool remove) {
                     __sync_add_and_fetch(&inode->i_fs->fs_pcount, 1);
                     bpage = dfs_lookupPage(inode->i_fs, inode->i_bmap[i]);
                     memcpy(pdata, bpage->p_data, poffset);
-                    inode->i_page[pg] = pdata;
+                    dfs_insertDirtyPage(inode, pg, pdata);
                 }
                 memset(&pdata[poffset], 0, DFS_BLOCK_SIZE - poffset);
                 inode->i_blks++;
@@ -727,8 +743,7 @@ dfs_truncPages(struct inode *inode, off_t size, bool remove) {
                            DFS_BLOCK_SIZE - poffset);
                 }
             } else {
-                free(pdata);
-                inode->i_page[i] = NULL;
+                dfs_removeDirtyPage(inode, i);
                 freed++;
             }
         }
