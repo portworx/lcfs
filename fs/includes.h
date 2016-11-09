@@ -93,11 +93,10 @@ int dfs_addPages(struct inode *inode, off_t off, size_t size,
                  struct fuse_bufvec *bufv, struct fuse_bufvec *dst);
 void dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,
                    struct fuse_bufvec *bufv);
-void dfs_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode);
+bool dfs_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void dfs_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void dfs_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode);
 uint64_t dfs_truncPages(struct inode *inode, off_t size, bool remove);
-void dfs_inodeAllocPages(struct inode *inode);
 
 int dremove(struct fs *fs, struct inode *dir, const char *name,
             ino_t ino, bool rmdir);

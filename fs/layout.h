@@ -84,6 +84,9 @@ struct dinode {
     /* Starting block for bmap or directory */
     uint64_t di_bmapdir;
 
+    /* Length of extent if directly pointed by di_bmapdir */
+    uint64_t di_extentLength;
+
     /* Block tracking extended attributes */
     uint64_t di_xattr;
 
@@ -93,7 +96,7 @@ struct dinode {
     /* Set if blocks are newly allocated and not inherited */
     uint8_t di_pcache;
 } __attribute__((packed));
-static_assert(sizeof(struct dinode) == 169, "dinode size != 169");
+static_assert(sizeof(struct dinode) == 177, "dinode size != 177");
 
 #define DFS_IBLOCK_MAX  ((DFS_BLOCK_SIZE / sizeof(uint64_t)) - 2)
 /* Inode block table */

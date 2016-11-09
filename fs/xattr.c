@@ -288,7 +288,7 @@ dfs_xattrFlushBlock(struct gfs *gfs, struct fs *fs, struct xblock *xblock,
     uint64_t block = dfs_blockAlloc(fs, 1);
     char *buf;
 
-    dfs_printf("Writing out extended attr block %ld\n", block);
+    //dfs_printf("Writing out extended attr block %ld\n", block);
     if (remain) {
         buf = (char *)xblock;
         memset(&buf[DFS_BLOCK_SIZE - remain], 0, remain);

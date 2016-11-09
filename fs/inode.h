@@ -80,8 +80,8 @@ struct inode {
 
     union {
 
-        /* Page list of regular file */
-        struct page *i_page;
+        /* Dirty pages */
+        char **i_page;
 
         /* Directory entries of a directory */
         struct dirent *i_dirent;
@@ -133,6 +133,8 @@ struct inode {
 #define i_bmapDirBlock  i_dinode.di_bmapdir
 #define i_xattrBlock    i_dinode.di_xattr
 #define i_pcache        i_dinode.di_pcache
+#define i_extentBlock   i_dinode.di_bmapdir
+#define i_extentLength  i_dinode.di_extentLength
 
 /* XXX Replace ino_t with fuse_ino_t */
 /* XXX Make inode numbers 32 bit */

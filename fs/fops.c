@@ -72,9 +72,6 @@ dfs_truncate(struct inode *inode, off_t size) {
     }
     assert(!inode->i_shared);
     inode->i_stat.st_size = size;
-    if (size > 0) {
-        dfs_inodeAllocPages(inode);
-    }
 }
 
 /* Remove a directory entry */

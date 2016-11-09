@@ -388,10 +388,15 @@ dfs_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
 
         /* Share pages initially */
         if (parent->i_stat.st_blocks) {
-            inode->i_bmap = parent->i_bmap;
-            inode->i_bcount = parent->i_bcount;
+            if (parent->i_extentLength) {
+                inode->i_extentBlock = parent->i_extentBlock;
+                inode->i_extentLength = parent->i_extentLength;
+            } else {
+                inode->i_bmap = parent->i_bmap;
+                inode->i_bcount = parent->i_bcount;
+                inode->i_bmapdirty = true;
+            }
             inode->i_shared = true;
-            inode->i_bmapdirty = true;
         } else {
             inode->i_pcache = true;
         }

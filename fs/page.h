@@ -4,7 +4,6 @@
 #include "includes.h"
 
 #define DFS_PAGE_HOLE       ((uint64_t)-1)
-#define DFS_PAGE_NOBLOCK    ((uint64_t)-2)
 
 /* Initial size of the page hash table */
 /* XXX This needs to consider available memory */
