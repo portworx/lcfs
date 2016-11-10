@@ -15,13 +15,16 @@ static inline ino_t dfs_getInodeHandle(uint64_t fh);
 static inline void
 dfs_displayEntry(const char *func, ino_t dir, ino_t ino, const char *name) {
     /*
-    if (strstr(func, "xattr") == NULL) {
+    if (strstr(func, "xattr") != NULL) {
         return;
     }
     if (strstr(func, "flush") != NULL) {
         return;
     }
     if (strstr(func, "release") != NULL) {
+        return;
+    }
+    if (strstr(func, "read") != NULL) {
         return;
     }
     if (strstr(func, "write") != NULL) {

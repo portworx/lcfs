@@ -444,11 +444,7 @@ dfs_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
         gfs = getfs();
         global = dfs_getInodeHandle(parent) == DFS_ROOT_INODE;
         if (global && (strcmp(name, "dfs") == 0)) {
-            gfs->gfs_snap_rootInode = dfs_getInode(dfs_getGlobalFs(gfs), e.ino,
-                                                   NULL, false, false);
-            dfs_inodeUnlock(gfs->gfs_snap_rootInode);
-            gfs->gfs_snap_root = e.ino;
-            printf("snapshot root inode %ld\n", e.ino);
+            dfs_setSnapshotRoot(gfs, e.ino);
         } else if (global && (strcmp(name, "containers") == 0)) {
             gfs->gfs_containers_root = e.ino;
             printf("containers root %ld\n", e.ino);
@@ -1138,8 +1134,15 @@ dfs_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
     int len, op, err = ENOSYS;
 
     dfs_displayEntry(__func__, ino, cmd, NULL);
+    op = _IOC_NR(cmd);
+
+    /* XXX For allowing tests to run */
+    if ((op == SNAP_CREATE) && (gfs->gfs_snap_root != ino)) {
+        dfs_setSnapshotRoot(gfs, ino);
+    }
     if (ino != gfs->gfs_snap_root) {
-        //dfs_reportError(__func__, __LINE__, ino, ENOSYS);
+        printf("gfs->gfs_snap_root %ld\n", gfs->gfs_snap_root);
+        dfs_reportError(__func__, __LINE__, ino, ENOSYS);
         fuse_reply_err(req, ENOSYS);
         return;
     }
@@ -1147,7 +1150,6 @@ dfs_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
         memcpy(name, in_buf, in_bufsz);
     }
     name[in_bufsz] = 0;
-    op = _IOC_NR(cmd);
     switch (op) {
     case SNAP_CREATE:
     case CLONE_CREATE:

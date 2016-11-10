@@ -467,7 +467,7 @@ dfs_sync(struct gfs *gfs, struct fs *fs) {
         /* Flush everything to disk before marking file system clean */
         fsync(gfs->gfs_fd);
         fs->fs_super->sb_flags &= ~DFS_SUPER_DIRTY;
-        dfs_printf("Writing out file system superblock for fs %d %ld to block %ld\n", fs->fs_gindex, fs->fs_root, fs->fs_sblock);
+        //dfs_printf("Writing out file system superblock for fs %d %ld to block %ld\n", fs->fs_gindex, fs->fs_root, fs->fs_sblock);
         err = dfs_superWrite(gfs, fs);
         if (err) {
             printf("Superblock update error %d for fs index %d root %ld\n",

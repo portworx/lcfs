@@ -67,6 +67,7 @@ struct inode *dfs_inodeInit(struct fs *fs, mode_t mode,
                             uid_t uid, gid_t gid, dev_t rdev, ino_t parent,
                             const char *target);
 void dfs_rootInit(struct fs *fs, ino_t root);
+void dfs_setSnapshotRoot(struct gfs *gfs, ino_t ino);
 void dfs_updateInodeTimes(struct inode *inode, bool atime,
                           bool mtime, bool ctime);
 void dfs_syncInodes(struct gfs *gfs, struct fs *fs);

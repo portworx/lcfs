@@ -125,7 +125,7 @@ dfs_rootInit(struct fs *fs, ino_t root) {
     struct inode *inode = dfs_newInode(fs);
 
     inode->i_stat.st_ino = root;
-    inode->i_stat.st_mode = S_IFDIR | 0777;
+    inode->i_stat.st_mode = S_IFDIR | 0755;
     inode->i_stat.st_nlink = 2;
     inode->i_stat.st_blksize = DFS_BLOCK_SIZE;
     inode->i_parent = root;
@@ -134,6 +134,23 @@ dfs_rootInit(struct fs *fs, ino_t root) {
     dfs_addInode(fs, inode);
     fs->fs_rootInode = inode;
     dfs_markInodeDirty(inode, true, true, false, false);
+}
+
+/* Set up snapshot root inode */
+void
+dfs_setSnapshotRoot(struct gfs *gfs, ino_t ino) {
+    if (gfs->gfs_snap_root) {
+        if (gfs->gfs_scount) {
+            printf("Warning: Snapshot root changed when snapshots are present\n");
+        }
+        printf("Switching snapshot root from %ld to %ld\n", gfs->gfs_snap_root, ino);
+        gfs->gfs_snap_root = 0;
+    }
+    gfs->gfs_snap_rootInode = dfs_getInode(dfs_getGlobalFs(gfs), ino,
+                                           NULL, false, false);
+    dfs_inodeUnlock(gfs->gfs_snap_rootInode);
+    gfs->gfs_snap_root = ino;
+    printf("snapshot root inode %ld\n", ino);
 }
 
 /* Initialize inode table of a file system */
