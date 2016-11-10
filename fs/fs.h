@@ -108,6 +108,21 @@ struct fs {
     /* Last accessed time in seconds since Epoch */
     time_t fs_atime;
 
+    /* Dirty pages pending write */
+    struct page *fs_dpages;
+
+    /* Dirty page count */
+    uint64_t fs_dpcount;
+
+    /* Lock protecting dirty page list */
+    pthread_mutex_t fs_plock;
+
+    /* Blocks reserved for metadata */
+    uint64_t fs_meta_next;
+
+    /* Blocks reserved for metadata */
+    uint64_t fs_meta_count;
+
     /* Stats for this file system */
     struct stats *fs_stats;
 

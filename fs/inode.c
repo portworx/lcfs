@@ -259,7 +259,7 @@ dfs_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
                     (fs->fs_inodeIndex >= DFS_IBLOCK_MAX)) {
                     dfs_newInodeBlock(gfs, fs);
                 }
-                inode->i_block = dfs_blockAlloc(fs, 1);
+                inode->i_block = dfs_blockAlloc(fs, 1, true);
                 fs->fs_inodeBlocks->ib_blks[fs->fs_inodeIndex++] = inode->i_block;
             }
             //dfs_printf("Writing inode %ld to block %ld\n", inode->i_stat.st_ino, inode->i_block);

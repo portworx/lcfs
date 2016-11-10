@@ -12,6 +12,7 @@ dfs_newFs(struct gfs *gfs, bool rw) {
     fs->fs_readOnly = !rw;
     fs->fs_ctime = t;
     fs->fs_atime = t;
+    pthread_mutex_init(&fs->fs_plock, NULL);
     pthread_rwlock_init(&fs->fs_rwlock, NULL);
     fs->fs_icache = dfs_icache_init();
     fs->fs_stats = dfs_statsNew();
@@ -34,7 +35,7 @@ dfs_newInodeBlock(struct gfs *gfs, struct fs *fs) {
     memset(fs->fs_inodeBlocks, 0, DFS_BLOCK_SIZE);
     fs->fs_inodeIndex = 0;
     fs->fs_inodeBlocks->ib_next = fs->fs_super->sb_inodeBlock;
-    fs->fs_super->sb_inodeBlock = dfs_blockAlloc(fs, 1);
+    fs->fs_super->sb_inodeBlock = dfs_blockAlloc(fs, 1, true);
 }
 
 /* Delete a file system */
@@ -44,6 +45,8 @@ dfs_destroyFs(struct fs *fs, bool remove) {
 
     dfs_displayStats(fs);
     dfs_printf("fs %p fs->fs_pcount %ld fs->fs_icount %ld\n", fs, fs->fs_pcount, fs->fs_icount);
+    assert(fs->fs_dpcount == 0);
+    assert(fs->fs_dpages == NULL);
     count = dfs_destroyInodes(fs, remove);
     if (remove) {
         if (fs->fs_sblock) {
@@ -58,6 +61,7 @@ dfs_destroyFs(struct fs *fs, bool remove) {
         pthread_mutex_destroy(fs->fs_ilock);
         free(fs->fs_ilock);
     }
+    pthread_mutex_destroy(&fs->fs_plock);
     pthread_rwlock_destroy(&fs->fs_rwlock);
     dfs_statsDeinit(fs);
     if (fs->fs_inodeBlocks) {
@@ -458,6 +462,7 @@ dfs_sync(struct gfs *gfs, struct fs *fs) {
     if (fs && (fs->fs_super->sb_flags & DFS_SUPER_DIRTY)) {
         dfs_lock(fs, true);
         dfs_syncInodes(gfs, fs);
+        dfs_flushDirtyPages(gfs, fs);
 
         /* Flush everything to disk before marking file system clean */
         fsync(gfs->gfs_fd);

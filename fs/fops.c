@@ -1235,7 +1235,7 @@ dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
     dfs_markInodeDirty(inode, true, false, true, false);
     dfs_inodeUnlock(inode);
     if (count) {
-        dfs_blockAlloc(fs, count);
+        dfs_blockAlloc(fs, count, true);
     }
     fuse_reply_write(req, size);
 

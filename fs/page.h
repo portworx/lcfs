@@ -35,6 +35,9 @@ struct page {
     /* Next page in block hash table */
     struct page *p_cnext;
 
+    /* Next page in file system dirty list */
+    struct page *p_dnext;
+
     /* Lock protecting operations on the page */
     pthread_rwlock_t p_lock;
 } __attribute__((packed));

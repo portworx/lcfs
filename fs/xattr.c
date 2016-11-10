@@ -285,7 +285,7 @@ dfs_xattrCopy(struct inode *inode, struct inode *parent) {
 static uint64_t
 dfs_xattrFlushBlock(struct gfs *gfs, struct fs *fs, struct xblock *xblock,
                     int remain) {
-    uint64_t block = dfs_blockAlloc(fs, 1);
+    uint64_t block = dfs_blockAlloc(fs, 1, true);
     char *buf;
 
     //dfs_printf("Writing out extended attr block %ld\n", block);

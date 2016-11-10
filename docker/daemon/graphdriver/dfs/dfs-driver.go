@@ -10,18 +10,17 @@ import (
 
     "github.com/docker/docker/daemon/graphdriver"
     "github.com/docker/docker/pkg/idtools"
-    "github.com/opencontainers/runc/libcontainer/label"
 )
 
 // Copied from dfs.h
 const (
-    SNAP_CREATE = 1
-    CLONE_CREATE = 2
-    SNAP_REMOVE = 3
-    SNAP_MOUNT = 4
-    SNAP_UMOUNT = 5
-    SNAP_STAT = 6
-    UMOUNT_ALL = 7
+    SnapCreate = 1
+    CloneCreate = 2
+    SnapRemove = 3
+    SnapMount = 4
+    SnapUmount = 5
+    SnapStat = 6
+    UmountAll = 7
 )
 
 func init() {
@@ -116,46 +115,29 @@ func (d *Driver) ioctl(cmd int, parent, id string) error {
 
 // Cleanup unmounts the home directory.
 func (d *Driver) Cleanup() error {
-    return d.ioctl(UMOUNT_ALL, "", "")
-}
-
-// Create a file system with the given id
-func (d *Driver) create(id, parent, mountLabel string, rw bool,
-                        storageOpt map[string]string) error {
-    var err error
-
-    if rw {
-        err = d.ioctl(CLONE_CREATE, parent, id)
-    } else {
-        err = d.ioctl(SNAP_CREATE, parent, id)
-    }
-    if err != nil {
-        return err
-    }
-    file := path.Join(d.home, id)
-    return label.Relabel(file, mountLabel, false)
+    return d.ioctl(UmountAll, "", "")
 }
 
 // CreateReadWrite creates a layer that is writable for use as a container
 // file system.
-func (d *Driver) CreateReadWrite(id, parent, mountLabel string, storageOpt map[string]string) error {
-    return d.create(id, parent, mountLabel, true, storageOpt)
+func (d *Driver) CreateReadWrite(id, parent string, opts *graphdriver.CreateOpts) error {
+    return d.ioctl(CloneCreate, parent, id)
 }
 
 // Create the filesystem with given id.
-func (d *Driver) Create(id, parent, mountLabel string, storageOpt map[string]string) error {
-    return d.create(id, parent, mountLabel, false, storageOpt)
+func (d *Driver) Create(id, parent string, opts *graphdriver.CreateOpts) error {
+    return d.ioctl(SnapCreate, parent, id)
 }
 
 // Remove the filesystem with given id.
 func (d *Driver) Remove(id string) error {
-    return d.ioctl(SNAP_REMOVE, "", id)
+    return d.ioctl(SnapRemove, "", id)
 }
 
 // Get the requested filesystem id.
 func (d *Driver) Get(id, mountLabel string) (string, error) {
     dir := path.Join(d.home, id)
-    err := d.ioctl(SNAP_MOUNT, "", id)
+    err := d.ioctl(SnapMount, "", id)
     if err != nil {
         return "", err
     }
@@ -164,11 +146,11 @@ func (d *Driver) Get(id, mountLabel string) (string, error) {
 
 // Put is kind of unmounting the file system.
 func (d *Driver) Put(id string) error {
-    return d.ioctl(SNAP_UMOUNT, "", id)
+    return d.ioctl(SnapUmount, "", id)
 }
 
 // Exists checks if the id exists in the filesystem.
 func (d *Driver) Exists(id string) bool {
-    err := d.ioctl(SNAP_STAT, "", id)
+    err := d.ioctl(SnapStat, "", id)
     return err == nil
 }

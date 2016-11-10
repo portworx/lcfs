@@ -69,7 +69,7 @@ dfs_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     if (rw) {
         fs->fs_super->sb_flags |= DFS_SUPER_RDWR;
     }
-    fs->fs_sblock = dfs_blockAlloc(fs, 1);
+    fs->fs_sblock = dfs_blockAlloc(fs, 1, true);
     dfs_rootInit(fs, fs->fs_root);
     if (err != 0) {
         dfs_reportError(__func__, __LINE__, root, err);
@@ -274,6 +274,7 @@ dfs_snap(struct gfs *gfs, const char *name, enum ioctl_cmd cmd) {
         if (err == 0) {
             fs = dfs_getfs(root, true);
             dfs_syncInodes(gfs, fs);
+            dfs_flushDirtyPages(gfs, fs);
             dfs_displayStats(fs);
             dfs_unlock(fs);
         }

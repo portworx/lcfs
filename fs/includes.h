@@ -34,7 +34,7 @@ void *dfs_readBlock(int fd, off_t block);
 int dfs_writeBlock(int fd, void *buf, off_t block);
 int dfs_writeBlocks(int fd, struct iovec *iov, int iovcnt, off_t block);
 
-uint64_t dfs_blockAlloc(struct fs *fs, int count);
+uint64_t dfs_blockAlloc(struct fs *fs, int count, bool meta);
 void dfs_blockFree(struct gfs *gfs, uint64_t count);
 
 struct super *dfs_superRead(struct gfs *gfs, uint64_t block);
@@ -93,10 +93,11 @@ int dfs_addPages(struct inode *inode, off_t off, size_t size,
                  struct fuse_bufvec *bufv, struct fuse_bufvec *dst);
 void dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,
                    struct fuse_bufvec *bufv);
-bool dfs_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode);
+void dfs_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void dfs_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void dfs_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode);
 uint64_t dfs_truncPages(struct inode *inode, off_t size, bool remove);
+void dfs_flushDirtyPages(struct gfs *gfs, struct fs *fs);
 
 int dremove(struct fs *fs, struct inode *dir, const char *name,
             ino_t ino, bool rmdir);
