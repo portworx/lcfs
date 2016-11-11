@@ -766,6 +766,8 @@ dfs_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     struct fuse_bufvec *bufv;
     struct timeval start;
     struct inode *inode;
+    struct page **pages;
+    uint64_t pcount, i;
     off_t endoffset;
     struct fs *fs;
     size_t fsize;
@@ -780,6 +782,7 @@ dfs_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     fsize = sizeof(struct fuse_bufvec) +
             (sizeof(struct fuse_buf) * ((size / DFS_BLOCK_SIZE) + 2));
     bufv = alloca(fsize);
+    pages = alloca(sizeof(struct page *) * ((size / DFS_BLOCK_SIZE) + 2));
     memset(bufv, 0, fsize);
     fs = dfs_getfs(ino, false);
     inode = dfs_getInode(fs, ino, (struct inode *)fi->fh, false, false);
@@ -802,8 +805,11 @@ dfs_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     if (endoffset > fsize) {
         endoffset = fsize;
     }
-    dfs_readPages(inode, off, endoffset, bufv);
+    pcount = dfs_readPages(inode, off, endoffset, pages, bufv);
     fuse_reply_data(req, bufv, FUSE_BUF_SPLICE_MOVE);
+    for (i = 0; i < pcount; i++) {
+        dfs_releasePage(fs->fs_gfs, pages[i]);
+    }
     dfs_inodeUnlock(inode);
 
 out:
@@ -1137,12 +1143,11 @@ dfs_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
     op = _IOC_NR(cmd);
 
     /* XXX For allowing tests to run */
-    if ((op == SNAP_CREATE) && (gfs->gfs_snap_root != ino)) {
+    if (0 && (op == SNAP_CREATE) && (gfs->gfs_snap_root != ino)) {
         dfs_setSnapshotRoot(gfs, ino);
     }
     if (ino != gfs->gfs_snap_root) {
-        printf("gfs->gfs_snap_root %ld\n", gfs->gfs_snap_root);
-        dfs_reportError(__func__, __LINE__, ino, ENOSYS);
+        //dfs_reportError(__func__, __LINE__, ino, ENOSYS);
         fuse_reply_err(req, ENOSYS);
         return;
     }

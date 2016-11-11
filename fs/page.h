@@ -32,14 +32,26 @@ struct page {
     /* Block mapping to */
     uint64_t p_block;
 
+    /* Page cache the page belongs to */
+    struct pcache *p_pcache;
+
+    /* Reference count on this page */
+    uint64_t p_refCount;
+
     /* Next page in block hash table */
     struct page *p_cnext;
 
     /* Next page in file system dirty list */
     struct page *p_dnext;
 
+    /* Next page in free list */
+    struct page *p_fnext;
+
+    /* Previous page in free list */
+    struct page *p_fprev;
+
     /* Lock protecting operations on the page */
-    pthread_rwlock_t p_lock;
+    pthread_mutex_t p_lock;
 } __attribute__((packed));
 
 #endif

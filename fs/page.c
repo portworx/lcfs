@@ -4,10 +4,13 @@ static char dfs_zPage[DFS_BLOCK_SIZE];
 
 #define DFS_PAGECACHE_SIZE  1
 #define DFS_CLUSTER_SIZE    256
+#define DFS_PAGE_MAX        200000
 
 /* Return the hash number for the block number provided */
 static inline int
 dfs_pageBlockHash(uint64_t block) {
+    assert(block);
+    assert(block != DFS_INVALID_BLOCK);
     return block % DFS_PCACHE_SIZE;
 }
 
@@ -25,35 +28,213 @@ dfs_pcache_init() {
     return pcache;
 }
 
-/* Insert a page into page hash */
+/* Allocate a new page */
 static struct page *
-dfs_insertPage(struct fs *fs, uint64_t block, char *pdata) {
-    struct pcache *pcache = fs->fs_pcache;
-    int hash = dfs_pageBlockHash(block);
+dfs_newPage(struct gfs *gfs) {
+    struct page *page = malloc(sizeof(struct page));
+
+    //dfs_printf("Allocated new page %p\n", page);
+    page->p_data = NULL;
+    page->p_pcache = NULL;
+    page->p_block = DFS_INVALID_BLOCK;
+    page->p_refCount = 0;
+    page->p_fprev = NULL;
+    page->p_fnext = NULL;
+    page->p_cnext = NULL;
+    page->p_dnext = NULL;
+    pthread_mutex_init(&page->p_lock, NULL);
+    __sync_add_and_fetch(&gfs->gfs_pcount, 1);
+    return page;
+}
+
+/* Free a page */
+static void
+dfs_freePage(struct page *page) {
+    assert(page->p_refCount == 0);
+    assert(page->p_block == DFS_INVALID_BLOCK);
+    assert(page->p_cnext == NULL);
+    assert(page->p_fnext == NULL);
+    assert(page->p_fprev == NULL);
+    assert(page->p_dnext == NULL);
+
+    if (page->p_data) {
+        free(page->p_data);
+    }
+    pthread_mutex_destroy(&page->p_lock);
+    free(page);
+}
+
+/* Remove a page from the free list */
+static void
+dfs_pageRemoveFreelist(struct gfs *gfs, struct page *page) {
+    if (page->p_fprev) {
+        page->p_fprev->p_fnext = page->p_fnext;
+    }
+    if (page->p_fnext) {
+        page->p_fnext->p_fprev = page->p_fprev;
+    }
+    if (gfs->gfs_pfirst == page) {
+        gfs->gfs_pfirst = page->p_fnext;
+    }
+    if (gfs->gfs_plast == page) {
+        gfs->gfs_plast = page->p_fprev;
+    }
+    page->p_fprev = NULL;
+    page->p_fnext = NULL;
+}
+
+/* Release a page */
+void
+dfs_releasePage(struct gfs *gfs, struct page *page) {
+    assert(page->p_fprev == NULL);
+    assert(page->p_fnext == NULL);
+    assert(page->p_data);
+
+    pthread_mutex_lock(&page->p_lock);
+    assert(page->p_refCount > 0);
+    if (page->p_refCount > 1) {
+        page->p_refCount--;
+        pthread_mutex_unlock(&page->p_lock);
+        return;
+    }
+    if (pthread_mutex_trylock(&gfs->gfs_plock)) {
+        pthread_mutex_unlock(&page->p_lock);
+        pthread_mutex_lock(&gfs->gfs_plock);
+        pthread_mutex_lock(&page->p_lock);
+    }
+    assert(page->p_refCount > 0);
+    page->p_refCount--;
+
+    /* Insert to the freelist on last release */
+    if (page->p_refCount == 0) {
+        assert(page->p_fnext == NULL);
+        assert(page->p_fprev == NULL);
+        page->p_fnext = gfs->gfs_pfirst;
+        if (page->p_fnext != NULL) {
+            page->p_fnext->p_fprev = page;
+        }
+        gfs->gfs_pfirst = page;
+        if (gfs->gfs_plast == NULL) {
+            gfs->gfs_plast = page;
+        }
+    }
+    pthread_mutex_unlock(&gfs->gfs_plock);
+    pthread_mutex_unlock(&page->p_lock);
+}
+
+/* Free pages in free list */
+void
+dfs_destroyFreePages(struct gfs *gfs) {
+    uint64_t count = 0, pcount;
     struct page *page;
 
-    page = malloc(sizeof(struct page));
-    page->p_data = pdata;
-    page->p_block = block;
-    page->p_dnext = NULL;
-    pthread_rwlock_init(&page->p_lock, NULL);
-    pthread_mutex_lock(&pcache[hash].pc_lock);
-    page->p_cnext = pcache[hash].pc_head;
-    pcache[hash].pc_head = page;
-    pthread_mutex_unlock(&pcache[hash].pc_lock);
+    pthread_mutex_lock(&gfs->gfs_plock);
+    page = gfs->gfs_pfirst;
+    while (page) {
+        gfs->gfs_pfirst = page->p_fnext;
+        page->p_fnext = NULL;
+        page->p_fprev = NULL;
+        dfs_freePage(page);
+        count++;
+        page = gfs->gfs_pfirst;
+    }
+    gfs->gfs_pfirst = NULL;
+    gfs->gfs_plast = NULL;
+    pthread_mutex_unlock(&gfs->gfs_plock);
+    if (count) {
+        pcount = __sync_fetch_and_sub(&gfs->gfs_pcount, count);
+        assert(pcount >= count);
+    }
+    assert(gfs->gfs_pcount == 0);
+}
+
+/* Return a page from the free list or allocated new */
+static struct page *
+dfs_findFreePage(struct gfs *gfs, struct fs *fs) {
+    struct page *page = NULL, *cpage, *prev;
+    struct pcache *pcache;
+    int hash;
+
+    if ((gfs->gfs_pcount > DFS_PAGE_MAX) && gfs->gfs_plast) {
+        pthread_mutex_lock(&gfs->gfs_plock);
+        page = gfs->gfs_plast;
+        while (page) {
+            pthread_mutex_lock(&page->p_lock);
+            if (page->p_refCount) {
+                page = page->p_fprev;
+                pthread_mutex_lock(&page->p_lock);
+                continue;
+            }
+
+            //dfs_printf("Reusing page with block %ld\n", page->p_block);
+            /* Take the page out of the block hash */
+            if (page->p_block != DFS_INVALID_BLOCK) {
+                prev = NULL;
+                pcache = page->p_pcache;
+                hash = dfs_pageBlockHash(page->p_block);
+
+                /* XXX Avoid skipping this page due to cache lock */
+                if (pthread_mutex_trylock(&pcache[hash].pc_lock)) {
+                    page = page->p_fprev;
+                    pthread_mutex_lock(&page->p_lock);
+                    continue;
+                }
+                cpage = pcache[hash].pc_head;
+                while (cpage) {
+                    if (cpage == page) {
+                        if (prev == NULL) {
+                            pcache[hash].pc_head = page->p_cnext;
+                        } else {
+                            prev->p_cnext = page->p_cnext;
+                        }
+                        page->p_pcache = NULL;
+                        page->p_block = DFS_INVALID_BLOCK;
+                        page->p_cnext = NULL;
+                        if (page->p_data) {
+                            __sync_sub_and_fetch(&pcache->pc_pcount, 1);
+                        }
+                        break;
+                    }
+                    prev = cpage;
+                    cpage = cpage->p_cnext;
+                }
+                pthread_mutex_unlock(&pcache[hash].pc_lock);
+            }
+
+            /* Take the page out of the free list */
+            dfs_pageRemoveFreelist(gfs, page);
+            pthread_mutex_unlock(&page->p_lock);
+            assert(page->p_refCount == 0);
+            assert(page->p_block == DFS_INVALID_BLOCK);
+            assert(page->p_cnext == NULL);
+            assert(page->p_dnext == NULL);
+            break;
+        }
+        pthread_mutex_unlock(&gfs->gfs_plock);
+        /* XXX reuse this memory */
+        if (page && page->p_data) {
+            free(page->p_data);
+            page->p_data = NULL;
+        }
+    }
+    if (page == NULL) {
+        page = dfs_newPage(gfs);
+    }
     return page;
 }
 
 /* Lookup a page in the block hash */
 static struct page *
-dfs_lookupPage(struct fs *fs, uint64_t block) {
+dfs_getPage(struct fs *fs, uint64_t block, bool read) {
     int hash = dfs_pageBlockHash(block);
     struct pcache *pcache = fs->fs_pcache;
-    struct page *page;
-    bool incr;
+    struct page *page, *new = NULL;
+    struct gfs *gfs = fs->fs_gfs;
 
     assert(block);
     assert(block != DFS_PAGE_HOLE);
+
+retry:
     pthread_mutex_lock(&pcache[hash].pc_lock);
     page = pcache[hash].pc_head;
     while (page) {
@@ -62,28 +243,69 @@ dfs_lookupPage(struct fs *fs, uint64_t block) {
         }
         page = page->p_cnext;
     }
-    if (page == NULL) {
-        page = malloc(sizeof(struct page));
-        page->p_data = NULL;
+    if ((page == NULL) && new) {
+        page = new;
+        page->p_pcache = pcache;
         page->p_block = block;
-        page->p_dnext = NULL;
-        pthread_rwlock_init(&page->p_lock, NULL);
         page->p_cnext = pcache[hash].pc_head;
         pcache[hash].pc_head = page;
-    }
-    pthread_mutex_unlock(&pcache[hash].pc_lock);
-    if (page->p_data == NULL) {
-        incr = false;
-        pthread_rwlock_wrlock(&page->p_lock);
-        if (page->p_data == NULL) {
-            page->p_data = dfs_readBlock(fs->fs_gfs->gfs_fd, block);
-            incr = true;
-        }
-        pthread_rwlock_unlock(&page->p_lock);
-        if (incr) {
+        if (page->p_data) {
             __sync_add_and_fetch(&pcache->pc_pcount, 1);
         }
+        new = NULL;
     }
+    if (page) {
+        pthread_mutex_lock(&page->p_lock);
+        page->p_refCount++;
+    }
+    pthread_mutex_unlock(&pcache[hash].pc_lock);
+
+    if (page == NULL) {
+        new = dfs_findFreePage(gfs, fs);
+        goto retry;
+    }
+
+    if (page->p_refCount == 1) {
+        /* Take the page out of the free list */
+        if (page->p_fprev || page->p_fnext) {
+            pthread_mutex_lock(&gfs->gfs_plock);
+            dfs_pageRemoveFreelist(gfs, page);
+            pthread_mutex_unlock(&gfs->gfs_plock);
+        }
+
+        /* If page is missing data, read from disk */
+        if (read && (page->p_data == NULL)) {
+            page->p_data = dfs_readBlock(fs->fs_gfs->gfs_fd, block);
+            pthread_mutex_unlock(&page->p_lock);
+            __sync_add_and_fetch(&pcache->pc_pcount, 1);
+        } else {
+            pthread_mutex_unlock(&page->p_lock);
+        }
+    } else {
+        assert(page->p_fprev == NULL);
+        assert(page->p_fnext == NULL);
+        assert(page->p_data);
+        pthread_mutex_unlock(&page->p_lock);
+    }
+    if (new) {
+        dfs_freePage(new);
+        __sync_sub_and_fetch(&gfs->gfs_pcount, 1);
+    }
+    assert(page->p_block == block);
+    return page;
+}
+
+/* Insert a page into page hash */
+static struct page *
+dfs_getPageNew(struct gfs *gfs, struct fs *fs, uint64_t block, char *data) {
+    struct page *page = dfs_getPage(fs, block, false);
+
+    if (page->p_data) {
+        free(page->p_data);
+        page->p_data = NULL;
+        __sync_sub_and_fetch(&page->p_pcache->pc_pcount, 1);
+    }
+    page->p_data = data;
     return page;
 }
 
@@ -95,18 +317,21 @@ dfs_destroy_pages(struct pcache *pcache) {
     int i;
 
     for (i = 0; i < DFS_PCACHE_SIZE; i++) {
+        pthread_mutex_lock(&pcache[i].pc_lock);
         while ((page = pcache[i].pc_head)) {
-            pcache[i].pc_head = page->p_cnext;
-            page->p_block = DFS_INVALID_BLOCK;
-            page->p_cnext = NULL;
-            pthread_rwlock_destroy(&page->p_lock);
+            pthread_mutex_lock(&page->p_lock);
+            assert(page->p_refCount == 0);
             if (page->p_data) {
-                free(page->p_data);
                 count++;
             }
-            free(page);
+            pcache[i].pc_head = page->p_cnext;
+            page->p_pcache = NULL;
+            page->p_block = DFS_INVALID_BLOCK;
+            page->p_cnext = NULL;
+            pthread_mutex_unlock(&page->p_lock);
         }
         assert(pcache[i].pc_head == NULL);
+        pthread_mutex_unlock(&pcache[i].pc_lock);
         pthread_mutex_destroy(&pcache[i].pc_lock);
     }
     if (count) {
@@ -279,7 +504,7 @@ dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
         if ((poffset != 0) || ((poffset + psize) != DFS_BLOCK_SIZE)) {
             block = dfs_inodeBmapLookup(inode, pg);
             if (block != DFS_PAGE_HOLE) {
-                bpage = dfs_lookupPage(inode->i_fs, block);
+                bpage = dfs_getPage(inode->i_fs, block, true);
                 data = bpage->p_data;
             } else {
                 data = NULL;
@@ -304,6 +529,9 @@ dfs_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
                 memset(&pdata[(poffset + psize)], 0,
                     DFS_BLOCK_SIZE - (poffset + psize));
             }
+        }
+        if (data) {
+            dfs_releasePage(inode->i_fs->fs_gfs, bpage);
         }
         dfs_insertDirtyPage(inode, pg, pdata);
     }
@@ -359,16 +587,15 @@ dfs_addPages(struct inode *inode, off_t off, size_t size,
 }
 
 /* Read specified pages of a file */
-void
+int
 dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,
-              struct fuse_bufvec *bufv) {
-    uint64_t block, pg = soffset / DFS_BLOCK_SIZE;
+              struct page **pages, struct fuse_bufvec *bufv) {
+    uint64_t block, pg = soffset / DFS_BLOCK_SIZE, pcount = 0, i = 0;
     off_t poffset, off = soffset, roff = 0;
     size_t psize, rsize = endoffset - off;
     struct fs *fs = inode->i_fs;
     struct page *page = NULL;
     char *data;
-    int i = 0;
 
     assert(S_ISREG(inode->i_stat.st_mode));
     while (rsize) {
@@ -389,8 +616,9 @@ dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,
             if (block == DFS_PAGE_HOLE) {
                 bufv->buf[i].mem = dfs_zPage;
             } else {
-                page = dfs_lookupPage(fs, block);
+                page = dfs_getPage(fs, block, true);
                 bufv->buf[i].mem = &page->p_data[poffset];
+                pages[pcount++] = page;
             }
         } else {
             bufv->buf[i].mem = &data[poffset];
@@ -402,15 +630,17 @@ dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,
         rsize -= psize;
     }
     bufv->count = i;
+    return pcount;
 }
 
 /* Flush a cluster of pages */
 static int
 dfs_flushPageCluster(struct gfs *gfs, struct fs *fs,
-                     struct page *page, uint64_t count) {
-    uint64_t i, j;
+                     struct page *head, uint64_t count) {
+    struct page *page = head;
     struct iovec *iovec;
     uint64_t block = 0;
+    uint64_t i, j;
 
     if (count == 1) {
         block = page->p_block;
@@ -427,6 +657,13 @@ dfs_flushPageCluster(struct gfs *gfs, struct fs *fs,
         assert(page == NULL);
         assert(block != 0);
         dfs_writeBlocks(gfs->gfs_fd, iovec, count, block);
+    }
+    page = head;
+    while (page) {
+        dfs_releasePage(gfs, page);
+        head = page->p_dnext;
+        page->p_dnext = NULL;
+        page = head;
     }
     //dfs_printf("Flushed %ld pages to block %ld\n", count, block);
     return count;
@@ -540,7 +777,7 @@ dfs_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     for (i = start; i <= end; i++) {
         pdata = inode->i_page[i];
         if (pdata) {
-            page = dfs_insertPage(fs, block + count, pdata);
+            page = dfs_getPageNew(gfs, fs, block + count, pdata);
             if (tpage == NULL) {
                 tpage = page;
             }
@@ -770,8 +1007,9 @@ dfs_truncPages(struct inode *inode, off_t size, bool remove) {
                     posix_memalign((void **)&pdata,
                                    DFS_BLOCK_SIZE, DFS_BLOCK_SIZE);
                     __sync_add_and_fetch(&inode->i_fs->fs_pcount, 1);
-                    bpage = dfs_lookupPage(inode->i_fs, inode->i_bmap[i]);
+                    bpage = dfs_getPage(inode->i_fs, inode->i_bmap[i], true);
                     memcpy(pdata, bpage->p_data, poffset);
+                    dfs_releasePage(inode->i_fs->fs_gfs, bpage);
                     dfs_insertDirtyPage(inode, pg, pdata);
                 }
                 memset(&pdata[poffset], 0, DFS_BLOCK_SIZE - poffset);

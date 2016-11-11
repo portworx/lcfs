@@ -92,13 +92,15 @@ struct pcache *dfs_pcache_init();
 void dfs_destroy_pages(struct pcache *pcache);
 int dfs_addPages(struct inode *inode, off_t off, size_t size,
                  struct fuse_bufvec *bufv, struct fuse_bufvec *dst);
-void dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,
-                   struct fuse_bufvec *bufv);
+int dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,
+                  struct page **pages, struct fuse_bufvec *bufv);
 void dfs_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void dfs_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void dfs_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode);
 uint64_t dfs_truncPages(struct inode *inode, off_t size, bool remove);
 void dfs_flushDirtyPages(struct gfs *gfs, struct fs *fs);
+void dfs_releasePage(struct gfs *gfs, struct page *page);
+void dfs_destroyFreePages(struct gfs *gfs);
 
 int dremove(struct fs *fs, struct inode *dir, const char *name,
             ino_t ino, bool rmdir);

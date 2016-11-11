@@ -148,6 +148,7 @@ dfs_setSnapshotRoot(struct gfs *gfs, ino_t ino) {
     }
     gfs->gfs_snap_rootInode = dfs_getInode(dfs_getGlobalFs(gfs), ino,
                                            NULL, false, false);
+    assert(S_ISDIR(gfs->gfs_snap_rootInode->i_stat.st_mode));
     dfs_inodeUnlock(gfs->gfs_snap_rootInode);
     gfs->gfs_snap_root = ino;
     printf("snapshot root inode %ld\n", ino);
