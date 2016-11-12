@@ -3,13 +3,13 @@
 
 /* Supported ioctls */
 enum ioctl_cmd {
-    SNAP_CREATE = 1,
-    CLONE_CREATE = 2,
-    SNAP_REMOVE = 3,
-    SNAP_MOUNT = 4,
-    SNAP_UMOUNT = 5,
-    SNAP_STAT = 6,
-    UMOUNT_ALL = 7,
+    SNAP_CREATE = 101,
+    CLONE_CREATE = 102,
+    SNAP_REMOVE = 103,
+    SNAP_MOUNT = 104,
+    SNAP_UMOUNT = 105,
+    SNAP_STAT = 106,
+    UMOUNT_ALL = 107,
 };
 
 #endif

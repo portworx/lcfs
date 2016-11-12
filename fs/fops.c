@@ -1143,7 +1143,7 @@ dfs_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
     op = _IOC_NR(cmd);
 
     /* XXX For allowing tests to run */
-    if (0 && (op == SNAP_CREATE) && (gfs->gfs_snap_root != ino)) {
+    if ((op == SNAP_CREATE) && (gfs->gfs_snap_root != ino)) {
         dfs_setSnapshotRoot(gfs, ino);
     }
     if (ino != gfs->gfs_snap_root) {

@@ -273,8 +273,10 @@ dfs_snap(struct gfs *gfs, const char *name, enum ioctl_cmd cmd) {
     case SNAP_UMOUNT:
         if (err == 0) {
             fs = dfs_getfs(root, true);
-            dfs_syncInodes(gfs, fs);
-            dfs_flushDirtyPages(gfs, fs);
+            if (fs->fs_readOnly) {
+                dfs_syncInodes(gfs, fs);
+                dfs_flushDirtyPages(gfs, fs);
+            }
             dfs_displayStats(fs);
             dfs_unlock(fs);
         }

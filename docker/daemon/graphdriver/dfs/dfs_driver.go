@@ -8,19 +8,20 @@ import (
     "syscall"
     "unsafe"
 
+    "github.com/Sirupsen/logrus"
     "github.com/docker/docker/daemon/graphdriver"
     "github.com/docker/docker/pkg/idtools"
 )
 
 // Copied from dfs.h
 const (
-    SnapCreate = 1
-    CloneCreate = 2
-    SnapRemove = 3
-    SnapMount = 4
-    SnapUmount = 5
-    SnapStat = 6
-    UmountAll = 7
+    SnapCreate = 101
+    CloneCreate = 102
+    SnapRemove = 103
+    SnapMount = 104
+    SnapUmount = 105
+    SnapStat = 106
+    UmountAll = 107
 )
 
 func init() {
@@ -44,6 +45,7 @@ func Init(home string, options []string, uidMaps, gidMaps []idtools.IDMap) (grap
         gidMaps: gidMaps,
     }
 
+    logrus.Infof("dfs Initialized at %s", home)
     return graphdriver.NewNaiveDiffDriver(driver, uidMaps, gidMaps), nil
 }
 
@@ -86,6 +88,7 @@ func (d *Driver) ioctl(cmd int, parent, id string) error {
     var name string
     var plen int
 
+    logrus.Debugf("dfs ioctl cmd %d parent %s id %s", cmd, parent, id)
     // Open snapshot root directory
     fd, err := syscall.Open(d.home, syscall.O_DIRECTORY, 0);
     if err != nil {
