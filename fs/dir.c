@@ -153,7 +153,7 @@ dfs_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir) {
     assert(S_ISDIR(dir->i_stat.st_mode));
     while (block != DFS_INVALID_BLOCK) {
         //dfs_printf("Reading directory block %ld\n", block);
-        dblock = dfs_readBlock(gfs->gfs_fd, block);
+        dblock = dfs_readBlock(gfs, fs, block);
         dbuf = (char *)&dblock->db_dirent[0];
         remain = DFS_BLOCK_SIZE - sizeof(struct dblock);
         while (remain > DFS_MIN_DIRENT_SIZE) {
@@ -188,7 +188,7 @@ dfs_dirFlushBlock(struct gfs *gfs, struct fs *fs, struct dblock *dblock,
         buf = (char *)dblock;
         memset(&buf[DFS_BLOCK_SIZE - remain], 0, remain);
     }
-    dfs_writeBlock(gfs->gfs_fd, dblock, block);
+    dfs_writeBlock(gfs, fs, dblock, block);
     return block;
 }
 
@@ -278,7 +278,7 @@ dfs_removeTree(struct fs *fs, struct inode *dir) {
 
     dir->i_removed = true;
     while (dirent != NULL) {
-        //dfs_printf("dfs_removeTree: dir %ld nlink %ld removing %s inode %ld dir %d\n", dir->i_stat.st_ino, dir->i_stat.st_nlink, dirent->di_name, dirent->di_ino, S_ISDIR(dirent->di_mode));
+        dfs_printf("dfs_removeTree: dir %ld nlink %ld removing %s inode %ld dir %d\n", dir->i_stat.st_ino, dir->i_stat.st_nlink, dirent->di_name, dirent->di_ino, S_ISDIR(dirent->di_mode));
         dremove(fs, dir, dirent->di_name, dirent->di_ino,
                 S_ISDIR(dirent->di_mode));
         dirent = dir->i_dirent;

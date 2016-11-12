@@ -26,7 +26,7 @@ dfs_newInodeBlock(struct gfs *gfs, struct fs *fs) {
     if (fs->fs_inodeBlocks != NULL) {
         assert(fs->fs_super->sb_inodeBlock != DFS_INVALID_BLOCK);
         //dfs_printf("Writing Inode block at %ld\n", fs->fs_super->sb_inodeBlock);
-        dfs_writeBlock(gfs->gfs_fd, fs->fs_inodeBlocks,
+        dfs_writeBlock(gfs, fs, fs->fs_inodeBlocks,
                        fs->fs_super->sb_inodeBlock);
     } else {
         posix_memalign((void **)&fs->fs_inodeBlocks, DFS_BLOCK_SIZE,
@@ -44,7 +44,7 @@ dfs_destroyFs(struct fs *fs, bool remove) {
     uint64_t count;
 
     dfs_displayStats(fs);
-    dfs_printf("fs %p fs->fs_pcount %ld fs->fs_icount %ld\n", fs, fs->fs_pcount, fs->fs_icount);
+    //dfs_printf("fs %p fs->fs_pcount %ld fs->fs_icount %ld\n", fs, fs->fs_pcount, fs->fs_icount);
     assert(fs->fs_dpcount == 0);
     assert(fs->fs_dpages == NULL);
     count = dfs_destroyInodes(fs, remove);
@@ -207,54 +207,6 @@ dfs_removeSnap(struct gfs *gfs, struct fs *fs) {
     pthread_mutex_unlock(&gfs->gfs_lock);
 }
 
-/* Find out inode numbers for "image/dfs/layerdb/mounts" and
- * "image/dfs/layerdb/sha256" directories.
- */
-void
-dfs_setupSpecialDir(struct gfs *gfs, struct fs *fs) {
-    struct inode *inode;
-    ino_t inum;
-    int i;
-
-    if (gfs->gfs_layerdb_root) {
-        return;
-    }
-
-    char *path[] = {"image", "dfs", "layerdb"};
-    inum = DFS_ROOT_INODE;
-    for (i = 0; i < 3; i++) {
-        inode = dfs_getInode(fs, inum, NULL, false, false);
-        if (inode == NULL) {
-            dfs_reportError(__func__, __LINE__, inum, ENOENT);
-            return;
-        }
-        inum = dfs_dirLookup(fs, inode, path[i]);
-        dfs_inodeUnlock(inode);
-        if (inum == DFS_INVALID_INODE) {
-            dfs_reportError(__func__, __LINE__, inum, ENOENT);
-            return;
-        }
-    }
-    inode = dfs_getInode(fs, inum, NULL, false, false);
-    if (inode == NULL) {
-        dfs_reportError(__func__, __LINE__, inum, ENOENT);
-        return;
-    }
-    gfs->gfs_layerdb_root = inum;
-    printf("layerdb root %ld\n", inum);
-    inum = dfs_dirLookup(fs, inode, "mounts");
-    if (inum != DFS_INVALID_INODE) {
-        gfs->gfs_mounts_root = inum;
-        printf("mounts root %ld\n", inum);
-    }
-    inum = dfs_dirLookup(fs, inode, "sha256");
-    if (inum != DFS_INVALID_INODE) {
-        gfs->gfs_sha256_root = inum;
-        printf("sha256 root %ld\n", inum);
-    }
-    dfs_inodeUnlock(inode);
-}
-
 /* Format a file system by initializing its super block */
 static void
 dfs_format(struct gfs *gfs, struct fs *fs, size_t size) {
@@ -360,11 +312,6 @@ dfs_setupSpecialInodes(struct gfs *gfs, struct fs *fs) {
         gfs->gfs_tmp_root = ino;
         printf("tmp root %ld\n", ino);
     }
-    ino = dfs_dirLookup(fs, dir, "containers");
-    if (ino != DFS_INVALID_INODE) {
-        gfs->gfs_containers_root = ino;
-        printf("containers root %ld\n", ino);
-    }
     ino = dfs_dirLookup(fs, dir, "dfs");
     if (ino != DFS_INVALID_INODE) {
         gfs->gfs_snap_rootInode = dfs_getInode(dfs_getGlobalFs(gfs), ino,
@@ -375,9 +322,7 @@ dfs_setupSpecialInodes(struct gfs *gfs, struct fs *fs) {
         gfs->gfs_snap_root = ino;
         printf("snapshot root %ld\n", ino);
     }
-    /* XXX Set up layerdb and others */
 }
-
 
 /* Mount the device */
 int
@@ -519,6 +464,7 @@ dfs_unmount(struct gfs *gfs) {
         fsync(gfs->gfs_fd);
         close(gfs->gfs_fd);
     }
+    dfs_displayGlobalStats(gfs);
     free(gfs->gfs_fs);
     free(gfs->gfs_roots);
     assert(gfs->gfs_count == 0);

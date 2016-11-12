@@ -79,7 +79,7 @@ int
 dremove(struct fs *fs, struct inode *dir, const char *name,
         ino_t ino, bool rmdir) {
     struct inode * inode = dfs_getInode(fs, ino, NULL, true, true);
-    struct gfs *gfs;
+    bool removed = false;
     ino_t parent;
     int err = 0;
 
@@ -94,14 +94,9 @@ dremove(struct fs *fs, struct inode *dir, const char *name,
         assert(dir->i_stat.st_nlink > 2);
         parent =  dir->i_stat.st_ino;
         assert(inode->i_parent == parent);
-        gfs = fs->fs_gfs;
 
         /* Allow docker to remove some special directories while not empty */
-        if ((inode->i_dirent != NULL) &&
-            (dir->i_removed || (gfs->gfs_containers_root == parent) ||
-             (gfs->gfs_tmp_root == parent) ||
-             (gfs->gfs_mounts_root == parent) ||
-             (gfs->gfs_sha256_root == parent))) {
+        if ((inode->i_dirent != NULL) && (fs == dfs_getGlobalFs(fs->fs_gfs))) {
             dfs_removeTree(fs, inode);
             /* XXX Does VFS deal with invalidating the entries under this
              * directory?
@@ -115,6 +110,7 @@ dremove(struct fs *fs, struct inode *dir, const char *name,
         dir->i_stat.st_nlink--;
         assert(inode->i_stat.st_nlink == 2);
         inode->i_removed = true;
+        removed = true;
     } else {
         assert(dir->i_stat.st_nlink >= 2);
         inode->i_stat.st_nlink--;
@@ -125,6 +121,7 @@ dremove(struct fs *fs, struct inode *dir, const char *name,
                 dfs_truncate(inode, 0);
             }
             inode->i_removed = true;
+            removed = true;
         }
     }
 
@@ -137,6 +134,9 @@ out:
         dfs_inodeUnlock(inode);
     }
     dfs_markInodeDirty(dir, true, true, false, false);
+    if (removed) {
+        __sync_sub_and_fetch(&fs->fs_gfs->gfs_super->sb_inodes, 1);
+    }
     return err;
 }
 
@@ -445,22 +445,9 @@ dfs_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
         global = dfs_getInodeHandle(parent) == DFS_ROOT_INODE;
         if (global && (strcmp(name, "dfs") == 0)) {
             dfs_setSnapshotRoot(gfs, e.ino);
-        } else if (global && (strcmp(name, "containers") == 0)) {
-            gfs->gfs_containers_root = e.ino;
-            printf("containers root %ld\n", e.ino);
         } else if (global && (strcmp(name, "tmp") == 0)) {
             gfs->gfs_tmp_root = e.ino;
             printf("tmp root %ld\n", e.ino);
-        } else if ((parent == gfs->gfs_layerdb_root) &&
-                   (strcmp(name, "mounts") == 0)) {
-            assert(gfs->gfs_mounts_root == 0);
-            gfs->gfs_mounts_root = e.ino;
-            printf("mounts root %ld\n", e.ino);
-        } else if ((parent == gfs->gfs_layerdb_root) &&
-                   (strcmp(name, "sha256") == 0)) {
-            assert(gfs->gfs_sha256_root == 0);
-            gfs->gfs_sha256_root = e.ino;
-            printf("sha256 root %ld\n", e.ino);
         }
     }
     dfs_statsAdd(fs, DFS_MKDIR, err, &start);

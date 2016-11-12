@@ -293,7 +293,7 @@ dfs_xattrFlushBlock(struct gfs *gfs, struct fs *fs, struct xblock *xblock,
         buf = (char *)xblock;
         memset(&buf[DFS_BLOCK_SIZE - remain], 0, remain);
     }
-    dfs_writeBlock(gfs->gfs_fd, xblock, block);
+    dfs_writeBlock(gfs, fs, xblock, block);
     return block;
 }
 
@@ -364,7 +364,7 @@ dfs_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode) {
 
     while (block != DFS_INVALID_BLOCK) {
         //dfs_printf("Reading extended attr block %ld\n", block);
-        xblock = dfs_readBlock(gfs->gfs_fd, block);
+        xblock = dfs_readBlock(gfs, fs, block);
         xbuf = (char *)&xblock->xb_attr[0];
         remain = DFS_BLOCK_SIZE - sizeof(struct xblock);
         while (remain > (2 * sizeof(uint16_t))) {

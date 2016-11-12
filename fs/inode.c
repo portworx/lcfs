@@ -167,7 +167,7 @@ dfs_readInodes(struct gfs *gfs, struct fs *fs) {
     dfs_printf("Reading inodes for fs %d %ld\n", fs->fs_gindex, fs->fs_root);
     while (block != DFS_INVALID_BLOCK) {
         //dfs_printf("Reading inode table from block %ld\n", block);
-        fs->fs_inodeBlocks = dfs_readBlock(gfs->gfs_fd, block);
+        fs->fs_inodeBlocks = dfs_readBlock(gfs, fs, block);
         for (i = 0; i < DFS_IBLOCK_MAX; i++) {
             iblock = fs->fs_inodeBlocks->ib_blks[i];
             if (iblock == 0) {
@@ -178,7 +178,7 @@ dfs_readInodes(struct gfs *gfs, struct fs *fs) {
                 continue;
             }
             //dfs_printf("Reading inode from block %ld\n", iblock);
-            ibuf = dfs_readBlock(gfs->gfs_fd, iblock);
+            ibuf = dfs_readBlock(gfs, fs, iblock);
             inode = ibuf;
             if (inode->i_stat.st_ino == 0) {
                 //dfs_printf("Skipping removed inode\n");
@@ -216,7 +216,7 @@ dfs_readInodes(struct gfs *gfs, struct fs *fs) {
             free(ibuf);
         }
         if (flush) {
-            dfs_writeBlock(gfs->gfs_fd, fs->fs_inodeBlocks, block);
+            dfs_writeBlock(gfs, fs, fs->fs_inodeBlocks, block);
             flush = false;
         }
         block = fs->fs_inodeBlocks->ib_next;
@@ -252,8 +252,9 @@ dfs_freeInode(struct inode *inode, bool remove) {
 }
 
 /* Flush a dirty inode to disk */
-static void
+static int
 dfs_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
+    bool written = false;
     char *buf;
 
     assert(inode->i_fs == fs);
@@ -287,23 +288,26 @@ dfs_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
                 memcpy(&buf[sizeof(struct dinode)], inode->i_target,
                        inode->i_stat.st_size);
             }
-            dfs_writeBlock(gfs->gfs_fd, buf, inode->i_block);
+            dfs_writeBlock(gfs, fs, buf, inode->i_block);
             free(buf);
+            written = true;
         } else if (inode->i_block != DFS_INVALID_BLOCK) {
             inode->i_stat.st_ino = 0;
             posix_memalign((void **)&buf, DFS_BLOCK_SIZE, DFS_BLOCK_SIZE);
             memcpy(buf, &inode->i_dinode, sizeof(struct dinode));
-            dfs_writeBlock(gfs->gfs_fd, buf, inode->i_block);
+            dfs_writeBlock(gfs, fs, buf, inode->i_block);
             free(buf);
         }
         inode->i_dirty = false;
     }
+    return written ? 1 : 0;
 }
 
 /* Sync all dirty inodes */
 void
 dfs_syncInodes(struct gfs *gfs, struct fs *fs) {
     struct inode *inode;
+    uint64_t count = 0;
     int i;
 
     dfs_printf("Syncing inodes for fs %d %ld\n", fs->fs_gindex, fs->fs_root);
@@ -314,7 +318,7 @@ dfs_syncInodes(struct gfs *gfs, struct fs *fs) {
         }
         while (inode) {
             if (dfs_inodeDirty(inode)) {
-                dfs_flushInode(gfs, fs, inode);
+                count += dfs_flushInode(gfs, fs, inode);
             }
             inode = inode->i_cnext;
         }
@@ -322,11 +326,14 @@ dfs_syncInodes(struct gfs *gfs, struct fs *fs) {
     if (fs->fs_inodeBlocks != NULL) {
         assert(fs->fs_super->sb_inodeBlock != DFS_INVALID_BLOCK);
         //dfs_printf("Writing Inode block at %ld\n", fs->fs_super->sb_inodeBlock);
-        dfs_writeBlock(gfs->gfs_fd, fs->fs_inodeBlocks,
+        dfs_writeBlock(gfs, fs, fs->fs_inodeBlocks,
                        fs->fs_super->sb_inodeBlock);
         free(fs->fs_inodeBlocks);
         fs->fs_inodeBlocks = NULL;
         fs->fs_inodeIndex = 0;
+    }
+    if (count) {
+        __sync_add_and_fetch(&fs->fs_iwrite, count);
     }
 }
 
@@ -362,7 +369,7 @@ dfs_invalidate_pcache(struct gfs *gfs, struct fs *fs) {
 /* Destroy inodes belong to a file system */
 uint64_t
 dfs_destroyInodes(struct fs *fs, bool remove) {
-    uint64_t count = 0, icount = 0;
+    uint64_t count = 0, icount = 0, rcount = 0;
     struct inode *inode;
     int i;
 
@@ -375,6 +382,9 @@ dfs_destroyInodes(struct fs *fs, bool remove) {
         //pthread_mutex_lock(&fs->fs_icache[i].ic_lock);
         while ((inode = fs->fs_icache[i].ic_head)) {
             fs->fs_icache[i].ic_head = inode->i_cnext;
+            if (!inode->i_removed) {
+                rcount++;
+            }
             count += dfs_freeInode(inode, remove);
             icount++;
         }
@@ -385,7 +395,7 @@ dfs_destroyInodes(struct fs *fs, bool remove) {
     /* XXX reuse this cache for another file system */
     free(fs->fs_icache);
     if (remove && icount) {
-        __sync_sub_and_fetch(&fs->fs_gfs->gfs_super->sb_inodes, icount);
+        __sync_sub_and_fetch(&fs->fs_gfs->gfs_super->sb_inodes, rcount);
     }
     if (icount) {
         __sync_sub_and_fetch(&fs->fs_icount, icount);
@@ -433,6 +443,7 @@ dfs_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
     dfs_xattrCopy(inode, parent);
     dfs_addInode(fs, inode);
     inode->i_dirty = true;
+    __sync_add_and_fetch(&fs->fs_gfs->gfs_clones, 1);
     return inode;
 }
 

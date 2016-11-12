@@ -18,18 +18,6 @@ struct gfs {
     /* Directory inode for /tmp */
     ino_t gfs_tmp_root;
 
-    /* Directory inode for /containers */
-    ino_t gfs_containers_root;
-
-    /* Directory inode for /image/dfs/layerdb */
-    ino_t gfs_layerdb_root;
-
-    /* Directory inode for /image/dfs/layerdb/mounts */
-    ino_t gfs_mounts_root;
-
-    /* Directory inode for /image/dfs/layerdb/sha256 */
-    ino_t gfs_sha256_root;
-
     /* Inode mapping to gfs_snap_root */
     struct inode *gfs_snap_rootInode;
 
@@ -59,6 +47,24 @@ struct gfs {
 
     /* Count of file systems in use */
     uint64_t gfs_count;
+
+    /* Number of reads */
+    uint64_t gfs_reads;
+
+    /* Number of writes */
+    uint64_t gfs_writes;
+
+    /* Inodes cloned */
+    uint64_t gfs_clones;
+
+    /* Pages hit in cache */
+    uint64_t gfs_phit;
+
+    /* Pages missed in cache */
+    uint64_t gfs_pmissed;
+
+    /* Pages recycled */
+    uint64_t gfs_precycle;
 
     /* Last index in use in gfs_fs/gfs_roots */
     int gfs_scount;
@@ -144,6 +150,15 @@ struct fs {
 
     /* Count of pages */
     uint64_t fs_pcount;
+
+    /* Number of reads */
+    uint64_t fs_reads;
+
+    /* Number of writes */
+    uint64_t fs_writes;
+
+    /* Inodes written */
+    uint64_t fs_iwrite;
 
     /* Next index in inode block array */
     int fs_inodeIndex;

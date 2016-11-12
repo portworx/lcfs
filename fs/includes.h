@@ -30,9 +30,10 @@
 
 struct gfs *getfs();
 
-void *dfs_readBlock(int fd, off_t block);
-int dfs_writeBlock(int fd, void *buf, off_t block);
-int dfs_writeBlocks(int fd, struct iovec *iov, int iovcnt, off_t block);
+void *dfs_readBlock(struct gfs *gfs, struct fs *fs, off_t block);
+int dfs_writeBlock(struct gfs *gfs, struct fs *fs, void *buf, off_t block);
+int dfs_writeBlocks(struct gfs *gfs, struct fs *fs,
+                    struct iovec *iov, int iovcnt, off_t block);
 
 uint64_t dfs_blockAlloc(struct fs *fs, int count, bool meta);
 void dfs_blockFree(struct gfs *gfs, uint64_t count);
@@ -43,7 +44,6 @@ void dfs_superInit(struct super *super, size_t size, bool global);
 
 struct fs *dfs_getfs(ino_t ino, bool exclusive);
 int dfs_getIndex(struct fs *nfs, ino_t parent, ino_t ino);
-void dfs_setupSpecialDir(struct gfs *gfs, struct fs *fs);
 void dfs_addfs(struct fs *fs, struct fs *snap);
 void dfs_removefs(struct gfs *gfs, struct fs *fs);
 void dfs_removeSnap(struct gfs *gfs, struct fs *fs);
@@ -88,6 +88,12 @@ void dfs_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir);
 void dfs_removeTree(struct fs *fs, struct inode *dir);
 void dfs_dirFree(struct inode *dir);
 
+uint64_t dfs_inodeBmapLookup(struct inode *inode, uint64_t page);
+void dfs_copyBmap(struct inode *inode);
+void dfs_expandBmap(struct inode *inode);
+void dfs_inodeBmapAlloc(struct inode *inode);
+void dfs_inodeBmapAdd(struct inode *inode, uint64_t page, uint64_t block);
+
 struct pcache *dfs_pcache_init();
 void dfs_destroy_pages(struct pcache *pcache);
 int dfs_addPages(struct inode *inode, off_t off, size_t size,
@@ -128,6 +134,7 @@ void dfs_statsAdd(struct fs *fs, enum dfs_stats type, bool err,
                   struct timeval *start);
 void dfs_displayStats(struct fs *fs);
 void dfs_displayStatsAll(struct gfs *gfs);
+void dfs_displayGlobalStats(struct gfs *gfs);
 void dfs_statsDeinit(struct fs *fs);
 
 #endif

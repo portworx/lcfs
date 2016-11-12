@@ -174,7 +174,6 @@ dfs_removeClone(fuse_req_t req, struct gfs *gfs, ino_t ino, const char *name) {
     dfs_statsBegin(&start);
     assert(ino == gfs->gfs_snap_root);
     rfs = dfs_getfs(DFS_ROOT_INODE, false);
-    dfs_setupSpecialDir(gfs, rfs);
     root = dfs_getRootIno(rfs, ino, name);
     if (root == DFS_INVALID_INODE) {
         err = ENOENT;
@@ -273,10 +272,8 @@ dfs_snap(struct gfs *gfs, const char *name, enum ioctl_cmd cmd) {
     case SNAP_UMOUNT:
         if (err == 0) {
             fs = dfs_getfs(root, true);
-            if (fs->fs_readOnly) {
-                dfs_syncInodes(gfs, fs);
-                dfs_flushDirtyPages(gfs, fs);
-            }
+            dfs_syncInodes(gfs, fs);
+            dfs_flushDirtyPages(gfs, fs);
             dfs_displayStats(fs);
             dfs_unlock(fs);
         }
