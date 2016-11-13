@@ -107,7 +107,6 @@ dfs_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     struct bmap *bmap;
 
     assert(S_ISREG(inode->i_stat.st_mode));
-    assert(inode->i_extentLength == 0);
     if (inode->i_removed) {
         assert(inode->i_bmap == NULL);
         assert(inode->i_page == NULL);

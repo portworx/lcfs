@@ -56,7 +56,8 @@ dfs_statsNew() {
     memset(&stats->s_max, 0, sizeof(struct timeval) * DFS_REQUEST_MAX);
     memset(&stats->s_total, 0, sizeof(struct timeval) * DFS_REQUEST_MAX);
     for (i = 0; i < DFS_REQUEST_MAX; i++) {
-        stats->s_min[i] = min;
+        stats->s_min[i] = ((i == DFS_FLUSH) || (i == DFS_FSYNCDIR)) ?
+                          (struct timeval){0, 0} : min;
     }
     pthread_mutex_init(&stats->s_lock, NULL);
     return stats;
@@ -72,11 +73,19 @@ dfs_statsBegin(struct timeval *start) {
 
 /* Update stats for the specified request type */
 void
-dfs_statsAdd(struct fs *fs, enum dfs_stats type, bool err, struct timeval *start) {
+dfs_statsAdd(struct fs *fs, enum dfs_stats type, bool err,
+             struct timeval *start) {
     struct stats *stats = fs->fs_stats;
     struct timeval stop, total;
 
     if (!stats_enabled) {
+        return;
+    }
+    if (start == NULL) {
+        __sync_add_and_fetch(&stats->s_count[type], 1);
+        if (err) {
+            __sync_add_and_fetch(&stats->s_err[type], 1);
+        }
         return;
     }
     gettimeofday(&stop, NULL);

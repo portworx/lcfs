@@ -252,7 +252,7 @@ dfs_freeInode(struct inode *inode, bool remove) {
 }
 
 /* Flush a dirty inode to disk */
-static int
+int
 dfs_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     bool written = false;
     char *buf;

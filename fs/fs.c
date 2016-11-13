@@ -44,7 +44,7 @@ dfs_destroyFs(struct fs *fs, bool remove) {
     uint64_t count;
 
     dfs_displayStats(fs);
-    //dfs_printf("fs %p fs->fs_pcount %ld fs->fs_icount %ld\n", fs, fs->fs_pcount, fs->fs_icount);
+    //dfs_printf("dfs_destroyFs: fs %p fs->fs_pcount %ld fs->fs_icount %ld\n", fs, fs->fs_pcount, fs->fs_icount);
     assert(fs->fs_dpcount == 0);
     assert(fs->fs_dpages == NULL);
     count = dfs_destroyInodes(fs, remove);
@@ -423,22 +423,6 @@ dfs_sync(struct gfs *gfs, struct fs *fs) {
     }
 }
 
-#if 0
-/* Sync all snapshots in chain order */
-static void
-dfs_syncSnapshots(struct gfs *gfs, struct fs *fs) {
-    struct fs *nfs = fs;
-
-    while (nfs) {
-        dfs_sync(gfs, nfs);
-        if (fs->fs_snap) {
-            dfs_syncSnapshots(gfs, nfs->fs_snap);
-        }
-        nfs = nfs->fs_next;
-    }
-}
-#endif
-
 /* Free the global file system as part of unmount */
 void
 dfs_unmount(struct gfs *gfs) {
@@ -447,17 +431,19 @@ dfs_unmount(struct gfs *gfs) {
 
     pthread_mutex_destroy(&gfs->gfs_plock);
     pthread_mutex_destroy(&gfs->gfs_lock);
+    //dfs_printf("dfs_unmount: gfs->gfs_scount %d\n", gfs->gfs_scount);
     for (i = 1; i <= gfs->gfs_scount; i++) {
+        fs = gfs->gfs_fs[i];
+        if (fs) {
+            dfs_sync(gfs, fs);
+        }
+    }
+    for (i = 0; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
         if (fs) {
             dfs_sync(gfs, fs);
             dfs_destroyFs(fs, false);
         }
-    }
-    fs = dfs_getGlobalFs(gfs);
-    if (fs) {
-        dfs_sync(gfs, fs);
-        dfs_destroyFs(fs, false);
     }
     dfs_destroyFreePages(gfs);
     if (gfs->gfs_fd) {

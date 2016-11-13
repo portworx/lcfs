@@ -74,6 +74,7 @@ void dfs_syncInodes(struct gfs *gfs, struct fs *fs);
 void dfs_inodeLock(struct inode *inode, bool exclusive);
 void dfs_inodeUnlock(struct inode *inode);
 void dfs_invalidate_pcache(struct gfs *gfs, struct fs *fs);
+int dfs_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode);
 
 ino_t dfs_dirLookup(struct fs *fs, struct inode *dir, const char *name);
 void dfs_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,

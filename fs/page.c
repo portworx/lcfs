@@ -61,6 +61,7 @@ dfs_freePage(struct gfs *gfs, struct page *page) {
     assert(page->p_refCount == 0);
     assert(page->p_block == DFS_INVALID_BLOCK);
     assert(page->p_cnext == NULL);
+    assert(page->p_pcache == NULL);
     assert(!dfs_pageIsFree(gfs, page));
     assert(page->p_dnext == NULL);
 
@@ -349,10 +350,10 @@ dfs_getPageNew(struct gfs *gfs, struct fs *fs, uint64_t block, char *data) {
 /* Remove pages from page cache and free the hash table */
 void
 dfs_destroy_pages(struct pcache *pcache) {
-    uint64_t count = 0;
+    uint64_t i, count = 0;
     struct page *page;
-    int i;
 
+    //dfs_printf("dfs_destroy_pages: pcache %p\n", pcache);
     for (i = 0; i < DFS_PCACHE_SIZE; i++) {
         pthread_mutex_lock(&pcache[i].pc_lock);
         while ((page = pcache[i].pc_head)) {
@@ -710,6 +711,10 @@ dfs_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             }
             end = i;
         } else {
+            if ((i < inode->i_extentLength) ||
+                ((i < inode->i_bcount) && inode->i_bmap[i])) {
+                single = false;
+            }
             ended = true;
         }
     }
@@ -726,6 +731,9 @@ dfs_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             inode->i_bcount = 0;
         }
     } else {
+        if (inode->i_extentLength) {
+            dfs_expandBmap(inode);
+        }
         dfs_inodeBmapAlloc(inode);
     }
     __sync_add_and_fetch(&fs->fs_pcache->pc_pcount, bcount);

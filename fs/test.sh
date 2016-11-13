@@ -76,6 +76,8 @@ ls -l file
 dd if=/dev/zero of=file count=10 bs=4096 seek=5 conv=notrunc
 ls -l file
 dd if=/dev/zero of=file count=10 bs=4096 seek=5
+dd if=/dev/zero of=file count=10 bs=4096 seek=2 conv=fdatasync
+dd if=/dev/zero of=file count=10 bs=4096 seek=10 conv=fsync
 ls -l file
 
 rm -fr file passwd
@@ -84,7 +86,7 @@ ls -ltRi
 cd
 
 service docker stop
-dockerd -s dfs -g $MNT &
+dockerd -s dfs -g $MNT 2>/dev/null &
 sleep 10
 docker run hello-world
 docker ps --all --format {{.ID}} | xargs docker rm
