@@ -142,18 +142,18 @@ dfs_dirRename(struct inode *dir, ino_t ino,
 
 /* Read a directory from disk */
 void
-dfs_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir) {
+dfs_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf) {
     uint64_t block = dir->i_bmapDirBlock;
     int remain, dsize, count = 2;
     struct ddirent *ddirent;
-    struct dblock *dblock;
+    struct dblock *dblock = buf;
     char *dbuf;
 
     //dfs_printf("Reading directory %ld\n", dir->i_stat.st_ino);
     assert(S_ISDIR(dir->i_stat.st_mode));
     while (block != DFS_INVALID_BLOCK) {
         //dfs_printf("Reading directory block %ld\n", block);
-        dblock = dfs_readBlock(gfs, fs, block);
+        dfs_readBlock(gfs, fs, block, dblock);
         dbuf = (char *)&dblock->db_dirent[0];
         remain = DFS_BLOCK_SIZE - sizeof(struct dblock);
         while (remain > DFS_MIN_DIRENT_SIZE) {
@@ -171,7 +171,6 @@ dfs_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir) {
             remain -= dsize;
         }
         block = dblock->db_next;
-        free(dblock);
     }
     assert(dir->i_stat.st_nlink == count);
 }

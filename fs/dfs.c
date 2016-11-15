@@ -82,7 +82,9 @@ main(int argc, char *argv[]) {
         dfs_unmount(gfs);
     }
     fuse_opt_free_args(&args);
-    free(mountpoint);
+    if (mountpoint) {
+        free(mountpoint);
+    }
     free(gfs);
     return err ? 1 : 0;
 }

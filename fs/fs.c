@@ -41,6 +41,7 @@ dfs_newInodeBlock(struct gfs *gfs, struct fs *fs) {
 /* Delete a file system */
 void
 dfs_destroyFs(struct fs *fs, bool remove) {
+    struct gfs *gfs = fs->fs_gfs;
     uint64_t count;
 
     dfs_displayStats(fs);
@@ -52,10 +53,10 @@ dfs_destroyFs(struct fs *fs, bool remove) {
         if (fs->fs_sblock) {
             count++;
         }
-        dfs_blockFree(fs->fs_gfs, count);
+        dfs_blockFree(gfs, count);
     }
     if (fs->fs_pcache && (fs->fs_parent == NULL)) {
-        dfs_destroy_pages(fs->fs_pcache);
+        dfs_destroy_pages(gfs, fs->fs_pcache, remove);
     }
     if (fs->fs_ilock && (fs->fs_parent == NULL)) {
         pthread_mutex_destroy(fs->fs_ilock);
@@ -70,7 +71,7 @@ dfs_destroyFs(struct fs *fs, bool remove) {
     free(fs->fs_super);
     assert(fs->fs_icount == 0);
     assert(fs->fs_pcount == 0);
-    __sync_sub_and_fetch(&fs->fs_gfs->gfs_count, 1);
+    __sync_sub_and_fetch(&gfs->gfs_count, 1);
     free(fs);
 }
 

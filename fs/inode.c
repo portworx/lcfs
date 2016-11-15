@@ -160,31 +160,41 @@ dfs_readInodes(struct gfs *gfs, struct fs *fs) {
     uint64_t iblock, block = fs->fs_super->sb_inodeBlock;
     struct inode *inode;
     bool flush = false;
+    void *ibuf = NULL;
     char *target;
-    void *ibuf;
     int i;
 
     dfs_printf("Reading inodes for fs %d %ld\n", fs->fs_gindex, fs->fs_root);
+    assert(fs->fs_inodeBlocks == NULL);
+    if (block != DFS_INVALID_BLOCK) {
+        posix_memalign((void **)&fs->fs_inodeBlocks, DFS_BLOCK_SIZE,
+                       DFS_BLOCK_SIZE);
+        posix_memalign((void **)&ibuf, DFS_BLOCK_SIZE, DFS_BLOCK_SIZE);
+    }
     while (block != DFS_INVALID_BLOCK) {
         //dfs_printf("Reading inode table from block %ld\n", block);
-        fs->fs_inodeBlocks = dfs_readBlock(gfs, fs, block);
+        dfs_readBlock(gfs, fs, block, fs->fs_inodeBlocks);
         for (i = 0; i < DFS_IBLOCK_MAX; i++) {
             iblock = fs->fs_inodeBlocks->ib_blks[i];
             if (iblock == 0) {
                 break;
             }
             if (iblock == DFS_INVALID_BLOCK) {
-                //dfs_printf("Skipping removed inode, iblock is DFS_INVALID_BLOCK\n");
+                /* XXX If there is a snapshot, add an inode with
+                 * i_removed set.
+                 */
                 continue;
             }
             //dfs_printf("Reading inode from block %ld\n", iblock);
-            ibuf = dfs_readBlock(gfs, fs, iblock);
+            dfs_readBlock(gfs, fs, iblock, ibuf);
             inode = ibuf;
             if (inode->i_stat.st_ino == 0) {
-                //dfs_printf("Skipping removed inode\n");
+
+                /* XXX If there is a snapshot, add an inode with
+                 * i_removed set.
+                 */
                 fs->fs_inodeBlocks->ib_blks[i] = DFS_INVALID_BLOCK;
                 flush = true;
-                free(ibuf);
                 continue;
             }
             inode = malloc(sizeof(struct inode));
@@ -197,11 +207,10 @@ dfs_readInodes(struct gfs *gfs, struct fs *fs) {
             pthread_rwlock_init(&inode->i_rwlock, NULL);
             pthread_rwlock_init(&inode->i_pglock, NULL);
             dfs_addInode(fs, inode);
-            dfs_xattrRead(gfs, fs, inode);
             if (S_ISREG(inode->i_stat.st_mode)) {
-                dfs_bmapRead(gfs, fs, inode);
+                dfs_bmapRead(gfs, fs, inode, ibuf);
             } else if (S_ISDIR(inode->i_stat.st_mode)) {
-                dfs_dirRead(gfs, fs, inode);
+                dfs_dirRead(gfs, fs, inode, ibuf);
             } else if (S_ISLNK(inode->i_stat.st_mode)) {
                 inode->i_target = malloc(inode->i_stat.st_size + 1);
                 target = ibuf;
@@ -209,21 +218,24 @@ dfs_readInodes(struct gfs *gfs, struct fs *fs) {
                 memcpy(inode->i_target, target, inode->i_stat.st_size);
                 inode->i_target[inode->i_stat.st_size] = 0;
             }
+            dfs_xattrRead(gfs, fs, inode, ibuf);
             if (inode->i_stat.st_ino == fs->fs_root) {
                 assert(S_ISDIR(inode->i_stat.st_mode));
                 fs->fs_rootInode = inode;
             }
-            free(ibuf);
         }
         if (flush) {
             dfs_writeBlock(gfs, fs, fs->fs_inodeBlocks, block);
             flush = false;
         }
         block = fs->fs_inodeBlocks->ib_next;
-        free(fs->fs_inodeBlocks);
     }
     assert(fs->fs_rootInode != NULL);
-    fs->fs_inodeBlocks = NULL;
+    if (fs->fs_inodeBlocks) {
+        free(fs->fs_inodeBlocks);
+        fs->fs_inodeBlocks = NULL;
+        free(ibuf);
+    }
     return 0;
 }
 

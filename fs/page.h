@@ -52,6 +52,13 @@ struct page {
 
     /* Lock protecting operations on the page */
     pthread_mutex_t p_lock;
+
+    /* Lock protecting data read */
+    pthread_mutex_t p_dlock;
+
+    /* Set if data is valid */
+    uint8_t p_dvalid;
+
 } __attribute__((packed));
 
 #endif

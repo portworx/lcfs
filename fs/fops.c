@@ -754,7 +754,7 @@ dfs_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     struct timeval start;
     struct inode *inode;
     struct page **pages;
-    uint64_t pcount, i;
+    uint64_t pcount;
     off_t endoffset;
     struct fs *fs;
     size_t fsize;
@@ -794,9 +794,7 @@ dfs_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     }
     pcount = dfs_readPages(inode, off, endoffset, pages, bufv);
     fuse_reply_data(req, bufv, FUSE_BUF_SPLICE_MOVE);
-    for (i = 0; i < pcount; i++) {
-        dfs_releasePage(fs->fs_gfs, pages[i]);
-    }
+    dfs_releaseReadPages(fs->fs_gfs, pages, pcount);
     dfs_inodeUnlock(inode);
 
 out:

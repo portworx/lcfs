@@ -19,7 +19,8 @@ dfs_superInit(struct super *super, size_t size, bool global) {
 /* Read file system super block */
 struct super *
 dfs_superRead(struct gfs *gfs, uint64_t block) {
-    return (struct super *)dfs_readBlock(gfs, dfs_getGlobalFs(gfs), block);
+    return (struct super *)dfs_readBlock(gfs, dfs_getGlobalFs(gfs), block,
+                                         NULL);
 }
 
 /* Write out file system superblock */

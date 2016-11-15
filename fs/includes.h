@@ -30,7 +30,7 @@
 
 struct gfs *getfs();
 
-void *dfs_readBlock(struct gfs *gfs, struct fs *fs, off_t block);
+void *dfs_readBlock(struct gfs *gfs, struct fs *fs, off_t block, void *dbuf);
 int dfs_writeBlock(struct gfs *gfs, struct fs *fs, void *buf, off_t block);
 int dfs_writeBlocks(struct gfs *gfs, struct fs *fs,
                     struct iovec *iov, int iovcnt, off_t block);
@@ -84,7 +84,7 @@ void dfs_dirRemoveInode(struct inode *dir, ino_t ino);
 void dfs_dirRename(struct inode *dir, ino_t ino,
                    const char *name, const char *newname);
 void dfs_dirCopy(struct inode *dir);
-void dfs_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir);
+void dfs_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf);
 void dfs_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir);
 void dfs_removeTree(struct fs *fs, struct inode *dir);
 void dfs_dirFree(struct inode *dir);
@@ -96,17 +96,19 @@ void dfs_inodeBmapAlloc(struct inode *inode);
 void dfs_inodeBmapAdd(struct inode *inode, uint64_t page, uint64_t block);
 
 struct pcache *dfs_pcache_init();
-void dfs_destroy_pages(struct pcache *pcache);
+void dfs_destroy_pages(struct gfs *gfs, struct pcache *pcache, bool remove);
 int dfs_addPages(struct inode *inode, off_t off, size_t size,
                  struct fuse_bufvec *bufv, struct fuse_bufvec *dst);
 int dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,
                   struct page **pages, struct fuse_bufvec *bufv);
 void dfs_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void dfs_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode);
-void dfs_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode);
+void dfs_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
+                  void *buf);
 uint64_t dfs_truncPages(struct inode *inode, off_t size, bool remove);
 void dfs_flushDirtyPages(struct gfs *gfs, struct fs *fs);
-void dfs_releasePage(struct gfs *gfs, struct page *page);
+void dfs_releaseReadPages(struct gfs *gfs, struct page **pages,
+                          uint64_t pcount);
 void dfs_destroyFreePages(struct gfs *gfs);
 
 int dremove(struct fs *fs, struct inode *dir, const char *name,
@@ -119,7 +121,8 @@ void dfs_xattrList(fuse_req_t req, ino_t ino, size_t size);
 void dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name);
 void dfs_xattrCopy(struct inode *inode, struct inode *parent);
 void dfs_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode);
-void dfs_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode);
+void dfs_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
+                   void *buf);
 void dfs_xattrFree(struct inode *inode);
 
 ino_t dfs_getRootIno(struct fs *fs, ino_t parent, const char *name);

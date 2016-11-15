@@ -155,8 +155,9 @@ dfs_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
 
 /* Read bmap blocks of a file and initialize page list */
 void
-dfs_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode) {
-    struct bmapBlock *bblock = NULL;
+dfs_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
+             void *buf) {
+    struct bmapBlock *bblock = buf;
     uint64_t i, bcount = 0;
     struct bmap *bmap;
     uint64_t block;
@@ -177,7 +178,7 @@ dfs_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     block = inode->i_bmapDirBlock;
     while (block != DFS_INVALID_BLOCK) {
         //dfs_printf("Reading bmap block %ld\n", block);
-        bblock = dfs_readBlock(gfs, fs, block);
+        dfs_readBlock(gfs, fs, block, bblock);
         for (i = 0; i < DFS_BMAP_BLOCK; i++) {
             bmap = &bblock->bb_bmap[i];
             if (bmap->b_block == 0) {
@@ -188,7 +189,6 @@ dfs_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             bcount++;
         }
         block = bblock->bb_next;
-        free(bblock);
     }
     assert(inode->i_stat.st_blocks == bcount);
 }

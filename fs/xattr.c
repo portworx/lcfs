@@ -355,16 +355,17 @@ dfs_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
 
 /* Read extended attributes */
 void
-dfs_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode) {
+dfs_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
+              void *buf) {
     uint64_t block = inode->i_xattrBlock;
+    struct xblock *xblock = buf;
     int remain, dsize, nsize;
-    struct xblock *xblock;
     struct dxattr *dxattr;
     char *xbuf;
 
     while (block != DFS_INVALID_BLOCK) {
         //dfs_printf("Reading extended attr block %ld\n", block);
-        xblock = dfs_readBlock(gfs, fs, block);
+        dfs_readBlock(gfs, fs, block, xblock);
         xbuf = (char *)&xblock->xb_attr[0];
         remain = DFS_BLOCK_SIZE - sizeof(struct xblock);
         while (remain > (2 * sizeof(uint16_t))) {
@@ -380,7 +381,6 @@ dfs_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             remain -= dsize;
         }
         block = xblock->xb_next;
-        free(xblock);
     }
 }
 

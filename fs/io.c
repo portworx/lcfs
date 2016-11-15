@@ -2,18 +2,23 @@
 
 /* Read a file system block */
 void *
-dfs_readBlock(struct gfs *gfs, struct fs *fs, off_t block) {
+dfs_readBlock(struct gfs *gfs, struct fs *fs, off_t block, void *dbuf) {
     size_t size;
     void *buf;
 
     //dfs_printf("Reading block %ld\n", block);
     assert((block == DFS_SUPER_BLOCK) || (block < gfs->gfs_super->sb_tblocks));
-    posix_memalign(&buf, DFS_BLOCK_SIZE, DFS_BLOCK_SIZE);
+    if (dbuf == NULL) {
+        posix_memalign(&buf, DFS_BLOCK_SIZE, DFS_BLOCK_SIZE);
+    } else {
+        buf = dbuf;
+    }
     size = pread(gfs->gfs_fd, buf, DFS_BLOCK_SIZE, block * DFS_BLOCK_SIZE);
     assert(size == DFS_BLOCK_SIZE);
     __sync_add_and_fetch(&gfs->gfs_reads, 1);
     __sync_add_and_fetch(&fs->fs_reads, 1);
     return buf;
+
 }
 
 /* Write a file system block */
