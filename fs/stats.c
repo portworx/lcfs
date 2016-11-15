@@ -1,6 +1,6 @@
 #include "includes.h"
 
-static bool stats_enabled = true;
+static bool stats_enabled = false;
 
 /* Type of requests tracked in stats */
 static const char *requests[] = {
@@ -159,8 +159,9 @@ void
 dfs_displayGlobalStats(struct gfs *gfs) {
     printf("Total %ld reads %ld writes\n", gfs->gfs_reads, gfs->gfs_writes);
     printf("%ld inodes cloned\n", gfs->gfs_clones);
-    printf("%ld pages hit %ld pages missed %ld pages recycled\n",
-           gfs->gfs_phit, gfs->gfs_pmissed, gfs->gfs_precycle);
+    printf("%ld pages hit %ld pages missed "
+           "%ld pages recycled %ld pages reused\n", gfs->gfs_phit,
+           gfs->gfs_pmissed, gfs->gfs_precycle, gfs->gfs_preused);
 }
 
 /* Free resources associated with the stats of a file system */

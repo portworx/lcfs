@@ -33,7 +33,8 @@ static inline bool
 dfs_pageIsFree(struct gfs *gfs, struct page *page) {
     return (page->p_fnext != NULL) ||
            (page->p_fprev != NULL) ||
-           (gfs->gfs_pfirst == page);
+           (gfs->gfs_pfirst == page) ||
+           (gfs->gfs_pfree == page);
 }
 
 /* Allocate a new page */
@@ -81,15 +82,14 @@ dfs_insertFreeList(struct gfs *gfs, struct page *page, bool reuse) {
     assert(!dfs_pageIsFree(gfs, page));
 
     if (reuse) {
-        page->p_fprev = gfs->gfs_plast;
-        if (page->p_fprev != NULL) {
-            page->p_fprev->p_fnext = page;
+        assert(page->p_pcache == NULL);
+        page->p_fnext = gfs->gfs_pfree;
+        if (page->p_fnext != NULL) {
+            page->p_fnext->p_fprev = page;
         }
-        gfs->gfs_plast = page;
-        if (gfs->gfs_pfirst == NULL) {
-            gfs->gfs_pfirst = page;
-        }
+        gfs->gfs_pfree = page;
     } else {
+        assert(page->p_pcache != NULL);
         page->p_fnext = gfs->gfs_pfirst;
         if (page->p_fnext != NULL) {
             page->p_fnext->p_fprev = page;
@@ -112,7 +112,10 @@ dfs_removeFreelist(struct gfs *gfs, struct page *page) {
         page->p_fnext->p_fprev = page->p_fprev;
     }
     if (gfs->gfs_pfirst == page) {
+        assert(gfs->gfs_pfree != page);
         gfs->gfs_pfirst = page->p_fnext;
+    } else if (gfs->gfs_pfree == page) {
+        gfs->gfs_pfree = page->p_fnext;
     }
     if (gfs->gfs_plast == page) {
         gfs->gfs_plast = page->p_fprev;
@@ -171,9 +174,15 @@ dfs_destroyFreePages(struct gfs *gfs) {
         dfs_freePage(gfs, page);
         count++;
     }
+    while ((page = gfs->gfs_pfree)) {
+        dfs_removeFreelist(gfs, page);
+        dfs_freePage(gfs, page);
+        count++;
+    }
     pthread_mutex_unlock(&gfs->gfs_plock);
     assert(gfs->gfs_pfirst == NULL);
     assert(gfs->gfs_plast == NULL);
+    assert(gfs->gfs_pfree == NULL);
     if (count) {
         pcount = __sync_fetch_and_sub(&gfs->gfs_pcount, count);
         assert(pcount >= count);
@@ -186,10 +195,25 @@ static struct page *
 dfs_findFreePage(struct gfs *gfs, struct fs *fs) {
     struct page *page = NULL, *cpage, *prev;
     struct pcache *pcache;
+    bool locked = false;
     int hash;
 
-    if ((gfs->gfs_pcount > DFS_PAGE_MAX) && gfs->gfs_plast) {
+    if (gfs->gfs_pfree) {
         pthread_mutex_lock(&gfs->gfs_plock);
+        page = gfs->gfs_pfree;
+        if (page) {
+            dfs_removeFreelist(gfs, page);
+            page->p_refCount++;
+            pthread_mutex_unlock(&gfs->gfs_plock);
+            __sync_add_and_fetch(&gfs->gfs_preused, 1);
+        } else {
+            locked = true;
+        }
+    }
+    if ((page == NULL) && (gfs->gfs_pcount > DFS_PAGE_MAX) && gfs->gfs_plast) {
+        if (!locked) {
+            pthread_mutex_lock(&gfs->gfs_plock);
+        }
         page = gfs->gfs_plast;
         while (page) {
             if (page->p_refCount ||
@@ -243,18 +267,23 @@ dfs_findFreePage(struct gfs *gfs, struct fs *fs) {
             page->p_refCount++;
             pthread_mutex_unlock(&page->p_lock);
             page->p_dvalid = 0;
-            assert(page->p_refCount == 1);
-            assert(page->p_block == DFS_INVALID_BLOCK);
-            assert(page->p_cnext == NULL);
-            assert(page->p_dnext == NULL);
             break;
         }
+        pthread_mutex_unlock(&gfs->gfs_plock);
+        if (page) {
+            __sync_add_and_fetch(&gfs->gfs_precycle, 1);
+        }
+    } else if (locked) {
         pthread_mutex_unlock(&gfs->gfs_plock);
     }
     if (page == NULL) {
         page = dfs_newPage(gfs);
     } else {
-        __sync_add_and_fetch(&gfs->gfs_precycle, 1);
+        assert(page->p_refCount == 1);
+        assert(page->p_pcache == NULL);
+        assert(page->p_block == DFS_INVALID_BLOCK);
+        assert(page->p_cnext == NULL);
+        assert(page->p_dnext == NULL);
     }
     return page;
 }
@@ -374,7 +403,9 @@ dfs_destroy_pages(struct gfs *gfs, struct pcache *pcache, bool remove) {
             page->p_block = DFS_INVALID_BLOCK;
             page->p_cnext = NULL;
 
-            if (remove && !pthread_mutex_lock(&gfs->gfs_plock)) {
+            if (remove) {
+                page->p_dvalid = 0;
+                pthread_mutex_lock(&gfs->gfs_plock);
                 dfs_removeFreelist(gfs, page);
                 dfs_insertFreeList(gfs, page, true);
                 pthread_mutex_unlock(&gfs->gfs_plock);

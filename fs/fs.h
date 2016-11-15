@@ -31,9 +31,12 @@ struct gfs {
     pthread_mutex_t gfs_lock;
 
     /* First page in page free list */
+    struct page *gfs_pfree;
+
+    /* First page in page list */
     struct page *gfs_pfirst;
 
-    /* Last page in page free list */
+    /* Last page in page list */
     struct page *gfs_plast;
 
     /* Lock protecting global list of free pages */
@@ -65,6 +68,9 @@ struct gfs {
 
     /* Pages recycled */
     uint64_t gfs_precycle;
+
+    /* Pages reused */
+    uint64_t gfs_preused;
 
     /* Last index in use in gfs_fs/gfs_roots */
     int gfs_scount;

@@ -144,6 +144,7 @@ out:
 static int
 dfs_remove(struct fs *fs, ino_t parent, const char *name, bool rmdir) {
     struct inode *dir;
+    struct gfs *gfs;
     int err = 0;
     ino_t ino;
 
@@ -167,9 +168,13 @@ dfs_remove(struct fs *fs, ino_t parent, const char *name, bool rmdir) {
         err = ESTALE;
     } else {
         if (rmdir && (fs->fs_gindex == 0)) {
+            gfs = fs->fs_gfs;
 
             /* Do not allow removing a snapshot root */
-            if (dfs_getIndex(fs, parent, ino)) {
+            if ((ino == fs->fs_gfs->gfs_snap_root) ||
+                ((gfs->gfs_snap_rootInode != NULL) &&
+                 (ino == gfs->gfs_snap_rootInode->i_parent)) ||
+                dfs_getIndex(fs, parent, ino)) {
                 dfs_reportError(__func__, __LINE__, parent, EEXIST);
                 err = EEXIST;
             }
