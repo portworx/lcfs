@@ -880,43 +880,11 @@ dfs_release(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
 static void
 dfs_fsync(fuse_req_t req, fuse_ino_t ino, int datasync,
           struct fuse_file_info *fi) {
-    struct timeval start;
-    struct inode *inode;
-    bool sync = false;
-    struct gfs *gfs;
-    struct fs *fs;
-    int count = 0;
+    struct inode *inode = (struct inode *)fi->fh;
 
-    dfs_statsBegin(&start);
     dfs_displayEntry(__func__, ino, 0, NULL);
-    fs = dfs_getfs(ino, false);
-    inode = (struct inode *)fi->fh;
-    assert(inode->i_stat.st_ino == dfs_getInodeHandle(ino));
-    if (!dfs_globalRoot(ino) && inode->i_dirty) {
-        dfs_inodeLock(inode, true);
-        gfs = fs->fs_gfs;
-        if (datasync == 0) {
-            if (inode->i_dirty) {
-                count += dfs_flushInode(gfs, fs, inode);
-                sync = true;
-            }
-        } else if (inode->i_bmapdirty) {
-            count += dfs_flushInode(gfs, fs, inode);
-            sync = true;
-        }
-        dfs_inodeUnlock(inode);
-        if (sync) {
-            /* XXX Do this only if file has pages in the dirty list */
-            dfs_flushDirtyPages(gfs, fs);
-            fsync(gfs->gfs_fd);
-        }
-    }
     fuse_reply_err(req, 0);
-    if (count) {
-        __sync_add_and_fetch(&fs->fs_iwrite, count);
-    }
-    dfs_statsAdd(fs, DFS_FSYNC, 0, &start);
-    dfs_unlock(fs);
+    dfs_statsAdd(inode->i_fs, DFS_FSYNC, 0, NULL);
 }
 
 /* Open a directory */

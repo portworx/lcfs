@@ -68,7 +68,7 @@ static void
 dfs_releasePage(struct gfs *gfs, struct fs *fs, struct page *page, bool read) {
     struct page *cpage, *prev = NULL, *fpage = NULL, *fprev = NULL;
     struct pcache *pcache = fs->fs_pcache;
-    uint64_t hash, hit = 0;
+    uint64_t hash, hit;
 
     hash = dfs_pageBlockHash(page->p_block);
     pthread_mutex_lock(&pcache[hash].pc_lock);
@@ -81,6 +81,7 @@ dfs_releasePage(struct gfs *gfs, struct fs *fs, struct page *page, bool read) {
     /* Free a page if page cache is above limit */
     if (pcache[hash].pc_pcount > (DFS_PAGE_MAX / DFS_PCACHE_SIZE)) {
         cpage = pcache[hash].pc_head;
+        hit = page->p_hitCount;
         while (cpage) {
             if ((cpage->p_refCount == 0) && (cpage->p_hitCount <= hit)) {
                 fprev = prev;
@@ -441,7 +442,7 @@ dfs_readPages(struct inode *inode, off_t soffset, off_t endoffset,
 }
 
 /* Flush a cluster of pages */
-static int
+static void
 dfs_flushPageCluster(struct gfs *gfs, struct fs *fs,
                      struct page *head, uint64_t count) {
     struct page *page = head;
@@ -473,7 +474,6 @@ dfs_flushPageCluster(struct gfs *gfs, struct fs *fs,
         page = head;
     }
     //dfs_printf("Flushed %ld pages to block %ld\n", count, block);
-    return count;
 }
 
 /* Add a page to the file system dirty list for writeback */
@@ -515,7 +515,7 @@ dfs_addPageForWriteBack(struct gfs *gfs, struct fs *fs, struct page *head,
 /* Flush dirty pages of a file system before unmounting it */
 void
 dfs_flushDirtyPages(struct gfs *gfs, struct fs *fs) {
-    struct page * page;
+    struct page *page;
     uint64_t count;
 
     if (fs->fs_dpcount) {
@@ -527,6 +527,26 @@ dfs_flushDirtyPages(struct gfs *gfs, struct fs *fs) {
         pthread_mutex_unlock(&fs->fs_plock);
         if (count) {
             dfs_flushPageCluster(gfs, fs, page, count);
+        }
+    }
+}
+
+/* Invalidate dirty pages */
+void
+dfs_invalidateDirtyPages(struct gfs *gfs, struct fs *fs) {
+    struct page *page, *next;
+
+    if (fs->fs_dpcount) {
+        pthread_mutex_lock(&fs->fs_plock);
+        page = fs->fs_dpages;
+        fs->fs_dpages = NULL;
+        fs->fs_dpcount = 0;
+        pthread_mutex_unlock(&fs->fs_plock);
+        while (page) {
+            next = page->p_dnext;
+            page->p_dnext = NULL;
+            dfs_releasePage(gfs, fs, page, false);
+            page = next;
         }
     }
 }

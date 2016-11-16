@@ -56,8 +56,8 @@ dfs_statsNew() {
     memset(&stats->s_max, 0, sizeof(struct timeval) * DFS_REQUEST_MAX);
     memset(&stats->s_total, 0, sizeof(struct timeval) * DFS_REQUEST_MAX);
     for (i = 0; i < DFS_REQUEST_MAX; i++) {
-        stats->s_min[i] = ((i == DFS_FLUSH) || (i == DFS_FSYNCDIR)) ?
-                          (struct timeval){0, 0} : min;
+        stats->s_min[i] = ((i == DFS_FLUSH) || (i == DFS_FSYNCDIR) ||
+                           (i == DFS_FSYNC)) ?  (struct timeval){0, 0} : min;
     }
     pthread_mutex_init(&stats->s_lock, NULL);
     return stats;
