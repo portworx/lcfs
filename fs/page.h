@@ -8,6 +8,8 @@
 /* Initial size of the page hash table */
 /* XXX This needs to consider available memory */
 #define DFS_PCACHE_SIZE (1024 * 1024)
+#define DFS_PAGE_MAX    1200000
+static_assert(DFS_PAGE_MAX >= DFS_PCACHE_SIZE, "DFS_PAGE_MAX <= DFS_PCACHE_SIZE");
 
 /* Page cache header */
 struct pcache {
@@ -32,26 +34,17 @@ struct page {
     /* Block mapping to */
     uint64_t p_block;
 
-    /* Page cache the page belongs to */
-    struct pcache *p_pcache;
-
     /* Reference count on this page */
     uint64_t p_refCount;
+
+    /* Page cache hitcount */
+    uint64_t p_hitCount;
 
     /* Next page in block hash table */
     struct page *p_cnext;
 
     /* Next page in file system dirty list */
     struct page *p_dnext;
-
-    /* Next page in free list */
-    struct page *p_fnext;
-
-    /* Previous page in free list */
-    struct page *p_fprev;
-
-    /* Lock protecting operations on the page */
-    pthread_mutex_t p_lock;
 
     /* Lock protecting data read */
     pthread_mutex_t p_dlock;

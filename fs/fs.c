@@ -226,7 +226,6 @@ dfs_gfsAlloc(int fd) {
     gfs->gfs_roots = malloc(sizeof(ino_t) * DFS_FS_MAX);
     memset(gfs->gfs_roots, 0, sizeof(ino_t) * DFS_FS_MAX);
     pthread_mutex_init(&gfs->gfs_lock, NULL);
-    pthread_mutex_init(&gfs->gfs_plock, NULL);
     gfs->gfs_fd = fd;
     return gfs;
 }
@@ -430,9 +429,9 @@ dfs_unmount(struct gfs *gfs) {
     struct fs *fs;
     int i;
 
-    pthread_mutex_destroy(&gfs->gfs_plock);
     pthread_mutex_destroy(&gfs->gfs_lock);
-    //dfs_printf("dfs_unmount: gfs->gfs_scount %d\n", gfs->gfs_scount);
+    dfs_printf("dfs_unmount: gfs_scount %d gfs_pcount %ld\n",
+               gfs->gfs_scount, gfs->gfs_pcount);
     for (i = 1; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
         if (fs) {
@@ -446,7 +445,7 @@ dfs_unmount(struct gfs *gfs) {
             dfs_destroyFs(fs, false);
         }
     }
-    dfs_destroyFreePages(gfs);
+    assert(gfs->gfs_pcount == 0);
     if (gfs->gfs_fd) {
         fsync(gfs->gfs_fd);
         close(gfs->gfs_fd);

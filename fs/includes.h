@@ -107,9 +107,8 @@ void dfs_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
                   void *buf);
 uint64_t dfs_truncPages(struct inode *inode, off_t size, bool remove);
 void dfs_flushDirtyPages(struct gfs *gfs, struct fs *fs);
-void dfs_releaseReadPages(struct gfs *gfs, struct page **pages,
+void dfs_releaseReadPages(struct gfs *gfs, struct fs *fs, struct page **pages,
                           uint64_t pcount);
-void dfs_destroyFreePages(struct gfs *gfs);
 
 int dremove(struct fs *fs, struct inode *dir, const char *name,
             ino_t ino, bool rmdir);

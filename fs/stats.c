@@ -1,6 +1,6 @@
 #include "includes.h"
 
-static bool stats_enabled = false;
+static bool stats_enabled = true;
 
 /* Type of requests tracked in stats */
 static const char *requests[] = {

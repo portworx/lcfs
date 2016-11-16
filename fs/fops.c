@@ -799,7 +799,7 @@ dfs_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     }
     pcount = dfs_readPages(inode, off, endoffset, pages, bufv);
     fuse_reply_data(req, bufv, FUSE_BUF_SPLICE_MOVE);
-    dfs_releaseReadPages(fs->fs_gfs, pages, pcount);
+    dfs_releaseReadPages(fs->fs_gfs, fs, pages, pcount);
     dfs_inodeUnlock(inode);
 
 out:

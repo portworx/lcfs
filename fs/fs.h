@@ -30,18 +30,6 @@ struct gfs {
     /* Lock protecting global list of file system chain */
     pthread_mutex_t gfs_lock;
 
-    /* First page in page free list */
-    struct page *gfs_pfree;
-
-    /* First page in page list */
-    struct page *gfs_pfirst;
-
-    /* Last page in page list */
-    struct page *gfs_plast;
-
-    /* Lock protecting global list of free pages */
-    pthread_mutex_t gfs_plock;
-
     /* fuse channel */
     struct fuse_chan *gfs_ch;
 
