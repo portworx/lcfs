@@ -267,16 +267,24 @@ dfs_snap(struct gfs *gfs, const char *name, enum ioctl_cmd cmd) {
         break;
 
     case SNAP_STAT:
-        dfs_statsAdd(rfs, DFS_STAT, err, &start);
-        break;
-
     case SNAP_UMOUNT:
         if (err == 0) {
             fs = dfs_getfs(root, false);
             dfs_displayStats(fs);
             dfs_unlock(fs);
         }
-        dfs_statsAdd(rfs, DFS_UMOUNT, err, &start);
+        dfs_statsAdd(rfs, cmd == SNAP_UMOUNT ? DFS_UMOUNT : DFS_STAT,
+                     err, &start);
+        break;
+
+    case CLEAR_STAT:
+        if (err == 0) {
+            fs = dfs_getfs(root, true);
+            dfs_displayStats(fs);
+            dfs_statsDeinit(fs);
+            fs->fs_stats = dfs_statsNew();
+            dfs_unlock(fs);
+        }
         break;
 
     default:

@@ -1154,6 +1154,7 @@ dfs_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
     case SNAP_STAT:
     case SNAP_UMOUNT:
     case UMOUNT_ALL:
+    case CLEAR_STAT:
         err = dfs_snap(gfs, name, op);
         break;
     }

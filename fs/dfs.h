@@ -10,6 +10,7 @@ enum ioctl_cmd {
     SNAP_UMOUNT = 105,
     SNAP_STAT = 106,
     UMOUNT_ALL = 107,
+    CLEAR_STAT = 108,
 };
 
 #endif

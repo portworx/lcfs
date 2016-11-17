@@ -4,6 +4,9 @@ OBJ=dfs.o fops.o super.o io.o block.o fs.o inode.o dir.o bmap.o page.o xattr.o c
 dfs: $(OBJ)
 	$(CC) $^ -o $@ $(CFLAGS) -ltcmalloc
 
+cstat: cstat.o
+	$(CC) $^ -o $@ $(CFLAGS) -ltcmalloc
+
 clean:
 	rm *.o dfs
 

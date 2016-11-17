@@ -18,6 +18,8 @@ make install
 *  Mount a device/file - "sudo ./dfs <device> <mnt>".
 *  Stop docker and start docker with arguments "-s dfs -g <mnt>". -g argument is needed only if <mnt> is not /var/lib/docker.
 *  Run experiments, stop docker, umount - "sudo fusermount -u <mnt>"
+*  For displaying stats, run "cstat <id> [-c]" from <mnt>/dfs directory.  Make
+sure fuse mount is running in forground mode (-d/-f option).
 
 Portworx Graphdriver
 
@@ -25,12 +27,18 @@ Introduction
 
 Portworx Graphdriver is a custom built file system to meet the needs of a docker graphdriver, similar to AUFS and Overlay graphdrivers.  Unlike, AUFS and Overlay, this new graphdriver is a native file system, which means it does not operate on top of another file system, but operate directly on top of block devices.
 
-This new file system is a user level file system developed using FUSE and does not require any kernel modifications.  It is a POSIX compliant file system.  Given the temporary nature of data stored in a graphdriver, it is implemented without having some of the complexities of a general purpose file system.
+This new file system is a user level file system developed using FUSE and does not require any kernel modifications.  It is a POSIX compliant file system.  Given the ephemeral (temporary) nature of data stored in a graphdriver, it is implemented without having some of the complexities of a general purpose file system.
 
+This file system is not a union file system, but uses snapshot technologies.
 Similar to other graphdrivers, this graphdriver also create layers for images and read-write layers on top of those for containers.   Each image will have a base layer, in which files of the image are populated.  Additional layers are created on top of the base layer for each additional layer in the image being extracted.  Each layer shares data from the previous layer.  If a layer modifies any data, such data is visible from the layers on top of that layer, but not from the layers below that layer.  Also if a layer modifies some data, the original data is not visible from any layers on top of that layer.
 
 In order to implement such a layering scheme, a snapshot technology is used.  Each layer in the image is a read only snapshot sitting on top of the previous layer in the image.  All layers share common data between layers.  Each of these layers is immutable after those are populated completely.  When any existing data inherited from a previous layer is modified while populating data to a new layer, a copy-on-write (COW) is performed in chunks of size 4KB.   New data will be written to newly allocated location on backend storage and old data would no longer be accessible from the layer (or any other layer created on top of that subsequently) which modified the data.  Similarly, any files deleted from a layer are not visible from that layer or on any of the layers on top of that layer.
 When a read-write layer is created while starting a new container (two such layers for every container), a read-write snapshot is created on top of the image layer and mounted from the container.  The container can see all the data from the image layers below the read-write layer and can create new data or modify any existing data as needed.  As it may be clear by now, when any existing data is modified, the data is not modified in the image layer, but a private copy with new data is made available for the read-write layer.
+
+Snapshots are implemented without using any reference counts and thus allows
+supporting unlimited number of layers.  Also creation and deletion of layers
+can be done instantanously.  Also operations within a layer is independent of the
+total number of layers present in the file system.
 
 Layout
 
@@ -39,6 +47,7 @@ When a new device is formatted as a new graphdriver file system, a superblock is
 Similarly, each of the layers created in the file system also has a private superblock for locating data which belongs exclusively to that layer.
 
 Each layer in the file system has a unique index.  This index stays same for the life time of the layer.
+
 In addition to the layers created for storing images and containers, there is a global file system layer which keeps data not part of any layers.  This layer always has the index of 0.  This layer cannot be deleted.
 Superblocks of layers taken on a top of a common layer are linked together.   Superblock of the common layer points to one of those top layer super blocks.  Thus superblocks of all layers taken on top of a layer can be reached from the superblock of that common bottom layer.
 
@@ -85,11 +94,18 @@ Fsync
 
 Fsync is disabled on all files and layers are made persistent when needed.  Syncing dirty pages are usually triggered on last close of a file, with the exception of files in global file system.
 
+rmdir
+
+rmdir in global file system layer (layer 0) may succeed even when directory is
+not empty.  This helps docker daemon to delete directories no longer needed
+without iterating over the directory sub-tree.
+
 ioctls
 
 There is support for a few ioctls for operations like creating/removing/loading/unloading layers.  Currently, ioctls are supported only on the snapshot root directory.
 
 Copying Up(COW, Redirect-On-Write)
+
 When a shared file is modified in a layer, its metadata is copied up completely which includes the inode, whole directory or whole bmap depending on the type of file, all the extended attributes etc).
 
 Initially after a copy up of an inode, user data of file is shared between newly copied up inode and original inode and copy-up of user data happens in units of 4KB as and when user data gets modified in the layer.  While copying up a page, if a whole page is modified, then old data does not have to be read-in.  New data is written to a new location and old data block is untouched.
@@ -115,6 +131,11 @@ Data placement
 
 Space for files is not allocated when data is written to the file, but later when dirty data is flushed to disk.  This has a huge advantage that the size of the file is known at the time of space allocation and all the blocks needed for the file can be allocated as single extent if the file system is not fragmented.  With t he read-only layers created while populating images, files are written once and never modified and this scheme of deferred allocation helps keeping the files contiguous on disk.  Also temporary files may never get written to disk (large temporary files are created for image tar files).
 
+Each layer will allocate space in chunks of a few blocks and then files within that layer
+will consume space from that chunk.  All those chunks can be freed when a layer
+is destroyed.  This kind of eliminates the complexities associated with space
+management in traditional file systems.
+
 I/O coalescing
 
 When space for a file is allocated contiguously as part of flush, the dirty pages of the file can be flushed in large chunks reducing the number of I/Os issued to the device.  Similarly, space for small files is allocated contiguously and their pages are written out in large chunks.
@@ -122,6 +143,7 @@ When space for a file is allocated contiguously as part of flush, the dirty page
 Crash Consistency
 
 If the graphdriver is not shutdown normally, the docker database and layers in the graphdriver need to be consistent.  Also each layer needs to be consistent as well.
+As the graphdriver manages both docker database and images/containers, those are kept in consistent state by using checkpointing technologies.  Thus this file system does not have the complexity of journaling schemes typically used in file systems to provide crash consistency.
 
 Space reclamation
 
