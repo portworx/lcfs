@@ -1,5 +1,5 @@
-#ifndef _DFS_H
-#define _DFS_H
+#ifndef _LC_H
+#define _LC_H
 
 /* Supported ioctls */
 enum ioctl_cmd {

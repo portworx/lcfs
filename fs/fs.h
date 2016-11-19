@@ -1,7 +1,7 @@
-#ifndef _FS_H_
-#define _FS_H_
+#ifndef _LC_H_
+#define _LC_H_
 
-#define DFS_FS_MAX  10000
+#define LC_MAX  4096
 
 /* Global file system */
 struct gfs {
@@ -12,11 +12,8 @@ struct gfs {
     /* Global File system super block */
     struct super *gfs_super;
 
-    /* Directory inode in which snapshot roots are placed (/dfs) */
+    /* Directory inode in which snapshot roots are placed (/lcfs) */
     ino_t gfs_snap_root;
-
-    /* Directory inode for /tmp */
-    ino_t gfs_tmp_root;
 
     /* Inode mapping to gfs_snap_root */
     struct inode *gfs_snap_rootInode;
@@ -163,16 +160,16 @@ struct fs {
 
 /* Check if specified inode belongs in global file system outside any layers */
 static inline bool
-dfs_globalRoot(ino_t ino) {
-    return dfs_getFsHandle(ino) == 0;
+lc_globalRoot(ino_t ino) {
+    return lc_getFsHandle(ino) == 0;
 }
 
 /* Return global file system */
 static inline struct fs *
-dfs_getGlobalFs(struct gfs *gfs) {
+lc_getGlobalFs(struct gfs *gfs) {
     struct fs *fs = gfs->gfs_fs[0];
 
-    assert(fs->fs_root == DFS_ROOT_INODE);
+    assert(fs->fs_root == LC_ROOT_INODE);
     return fs;
 }
 

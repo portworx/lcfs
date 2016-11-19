@@ -1,23 +1,23 @@
 #ifndef _LAYOUT_H__
 #define _LAYOUT_H__
 
-#define DFS_VERSION     1
-#define DFS_SUPER_MAGIC 0x5F5F5F5F
-#define DFS_SUPER_BLOCK 0
-#define DFS_BLOCK_SIZE  4096
-#define DFS_ROOT_INODE  2
-#define DFS_INVALID_BLOCK   -1
-#define DFS_INVALID_INODE   -1
-#define DFS_START_BLOCK (DFS_SUPER_BLOCK + 1)
-#define DFS_START_INODE DFS_ROOT_INODE
+#define LC_VERSION     1
+#define LC_SUPER_MAGIC 0x5F5F5F5F
+#define LC_SUPER_BLOCK 0
+#define LC_BLOCK_SIZE  4096
+#define LC_ROOT_INODE  2
+#define LC_INVALID_BLOCK   -1
+#define LC_INVALID_INODE   -1
+#define LC_START_BLOCK (LC_SUPER_BLOCK + 1)
+#define LC_START_INODE LC_ROOT_INODE
 
-#define DFS_BMAP_MAGIC  0x6452FABC
-#define DFS_DIR_MAGIC   0x7FBD853A
-#define DFS_XATTR_MAGIC 0xBDEF4389
+#define LC_BMAP_MAGIC  0x6452FABC
+#define LC_DIR_MAGIC   0x7FBD853A
+#define LC_XATTR_MAGIC 0xBDEF4389
 
 /* Superblock Flags */
-#define DFS_SUPER_DIRTY     0x00000001  // Snapshot is dirty
-#define DFS_SUPER_RDWR      0x00000002  // Snapshot is readwrite
+#define LC_SUPER_DIRTY     0x00000001  // Snapshot is dirty
+#define LC_SUPER_RDWR      0x00000002  // Snapshot is readwrite
 
 /* File system superblock */
 struct super {
@@ -70,9 +70,9 @@ struct super {
     uint32_t sb_version;
 
     /* Padding for filling up a block */
-    uint8_t  sb_pad[DFS_BLOCK_SIZE - 100];
+    uint8_t  sb_pad[LC_BLOCK_SIZE - 100];
 } __attribute__((packed));
-static_assert(sizeof(struct super) == DFS_BLOCK_SIZE, "superblock size != DFS_BLOCK_SIZE");
+static_assert(sizeof(struct super) == LC_BLOCK_SIZE, "superblock size != LC_BLOCK_SIZE");
 
 /* Disk inode structure */
 struct dinode {
@@ -98,7 +98,7 @@ struct dinode {
 } __attribute__((packed));
 static_assert(sizeof(struct dinode) == 177, "dinode size != 177");
 
-#define DFS_IBLOCK_MAX  ((DFS_BLOCK_SIZE / sizeof(uint64_t)) - 2)
+#define LC_IBLOCK_MAX  ((LC_BLOCK_SIZE / sizeof(uint64_t)) - 2)
 /* Inode block table */
 struct iblock {
     /* Magic number */
@@ -111,9 +111,9 @@ struct iblock {
     uint64_t ib_next;
 
     /* Inode blocks */
-    uint64_t ib_blks[DFS_IBLOCK_MAX];
+    uint64_t ib_blks[LC_IBLOCK_MAX];
 };
-static_assert(sizeof(struct iblock) == DFS_BLOCK_SIZE, "iblock size != DFS_BLOCK_SIZE");
+static_assert(sizeof(struct iblock) == LC_BLOCK_SIZE, "iblock size != LC_BLOCK_SIZE");
 
 /* Bmap block entry */
 struct bmap {
@@ -126,7 +126,7 @@ struct bmap {
 static_assert(sizeof(struct bmap) == 16, "bmap size != 16");
 
 /* Number of bmap entries in a block */
-#define DFS_BMAP_BLOCK ((DFS_BLOCK_SIZE / sizeof(struct bmap)) - 1)
+#define LC_BMAP_BLOCK ((LC_BLOCK_SIZE / sizeof(struct bmap)) - 1)
 
 /* Bmap block structure */
 struct bmapBlock {
@@ -140,9 +140,9 @@ struct bmapBlock {
     uint64_t bb_next;
 
     /* Bmap entries in a block */
-    struct bmap bb_bmap[DFS_BMAP_BLOCK];
+    struct bmap bb_bmap[LC_BMAP_BLOCK];
 };
-static_assert(sizeof(struct bmapBlock) == DFS_BLOCK_SIZE, "bmapBlock size != DFS_BLOCK_SIZE");
+static_assert(sizeof(struct bmapBlock) == LC_BLOCK_SIZE, "bmapBlock size != LC_BLOCK_SIZE");
 
 /* Directory entry structure */
 struct ddirent {
@@ -159,8 +159,8 @@ struct ddirent {
     /* Name of entry */
     char di_name[0];
 } __attribute__((packed));
-#define DFS_MIN_DIRENT_SIZE (sizeof(uint64_t) + (2 * sizeof(uint16_t)))
-static_assert(sizeof(struct ddirent) == DFS_MIN_DIRENT_SIZE, "ddirent size != 12");
+#define LC_MIN_DIRENT_SIZE (sizeof(uint64_t) + (2 * sizeof(uint16_t)))
+static_assert(sizeof(struct ddirent) == LC_MIN_DIRENT_SIZE, "ddirent size != 12");
 
 /* Directory block */
 struct dblock {

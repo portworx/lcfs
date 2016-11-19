@@ -1,13 +1,13 @@
 set -x
 
-MNT=/tmp/dfs-testmountpoint
+MNT=/tmp/lcfs-testmountpoint
 fusermount -u $MNT
 mkdir $MNT
 
-DEVICE=/tmp/dfs-testdevice
+DEVICE=/tmp/lcfs-testdevice
 dd if=/dev/zero of=$DEVICE count=10000 bs=4096
 
-./dfs $DEVICE $MNT &
+./lcfs $DEVICE $MNT &
 sleep 10
 cd $MNT
 
@@ -86,7 +86,7 @@ ls -ltRi
 cd
 
 service docker stop
-dockerd -s dfs -g $MNT 2>/dev/null &
+dockerd -s lcfs -g $MNT 2>/dev/null &
 sleep 10
 docker run hello-world
 docker ps --all --format {{.ID}} | xargs docker rm

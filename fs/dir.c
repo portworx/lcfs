@@ -4,7 +4,7 @@
  * number if found.
  */
 ino_t
-dfs_dirLookup(struct fs *fs, struct inode *dir, const char *name) {
+lc_dirLookup(struct fs *fs, struct inode *dir, const char *name) {
     struct dirent *dirent;
     int len = strlen(name);
     ino_t dino;
@@ -19,18 +19,18 @@ dfs_dirLookup(struct fs *fs, struct inode *dir, const char *name) {
         }
         dirent = dirent->di_next;
     }
-    return DFS_INVALID_INODE;
+    return LC_INVALID_INODE;
 }
 
 /* Add a new directory entry to the given directory */
 void
-dfs_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,
+lc_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,
            int nsize) {
     struct dirent *dirent = malloc(sizeof(struct dirent));
 
     assert(S_ISDIR(dir->i_stat.st_mode));
     assert(!dir->i_shared);
-    assert(ino > DFS_ROOT_INODE);
+    assert(ino > LC_ROOT_INODE);
     dirent->di_ino = ino;
     dirent->di_name = malloc(nsize + 1);
     memcpy(dirent->di_name, name, nsize);
@@ -43,7 +43,7 @@ dfs_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,
 
 /* Copy directory entries from one directory to another */
 void
-dfs_dirCopy(struct inode *dir) {
+lc_dirCopy(struct inode *dir) {
     struct dirent *dirent = dir->i_dirent;
 
     assert(dir->i_shared);
@@ -52,7 +52,7 @@ dfs_dirCopy(struct inode *dir) {
     dir->i_dirent = NULL;
     dir->i_shared = false;
     while (dirent) {
-        dfs_dirAdd(dir, dirent->di_ino, dirent->di_mode,
+        lc_dirAdd(dir, dirent->di_ino, dirent->di_mode,
                    dirent->di_name, dirent->di_size);
         dirent = dirent->di_next;
     }
@@ -62,7 +62,7 @@ dfs_dirCopy(struct inode *dir) {
 
 /* Remove a directory entry */
 void
-dfs_dirRemove(struct inode *dir, const char *name) {
+lc_dirRemove(struct inode *dir, const char *name) {
     struct dirent *dirent = dir->i_dirent;
     struct dirent *pdirent = NULL;
     int len = strlen(name);
@@ -89,7 +89,7 @@ dfs_dirRemove(struct inode *dir, const char *name) {
 
 /* Remove a directory entry by inode number */
 void
-dfs_dirRemoveInode(struct inode *dir, ino_t ino) {
+lc_dirRemoveInode(struct inode *dir, ino_t ino) {
     struct dirent *dirent = dir->i_dirent;
     struct dirent *pdirent = NULL;
 
@@ -104,16 +104,17 @@ dfs_dirRemoveInode(struct inode *dir, ino_t ino) {
             }
             free(dirent->di_name);
             free(dirent);
-            break;
+            return;
         }
         pdirent = dirent;
         dirent = dirent->di_next;
     }
+    assert(false);
 }
 
 /* Rename a directory entry with a new name */
 void
-dfs_dirRename(struct inode *dir, ino_t ino,
+lc_dirRename(struct inode *dir, ino_t ino,
               const char *name, const char *newname) {
     struct dirent *dirent = dir->i_dirent;
     int len = strlen(name);
@@ -142,27 +143,25 @@ dfs_dirRename(struct inode *dir, ino_t ino,
 
 /* Read a directory from disk */
 void
-dfs_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf) {
+lc_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf) {
     uint64_t block = dir->i_bmapDirBlock;
     int remain, dsize, count = 2;
     struct ddirent *ddirent;
     struct dblock *dblock = buf;
     char *dbuf;
 
-    //dfs_printf("Reading directory %ld\n", dir->i_stat.st_ino);
     assert(S_ISDIR(dir->i_stat.st_mode));
-    while (block != DFS_INVALID_BLOCK) {
-        //dfs_printf("Reading directory block %ld\n", block);
-        dfs_readBlock(gfs, fs, block, dblock);
+    while (block != LC_INVALID_BLOCK) {
+        lc_readBlock(gfs, fs, block, dblock);
         dbuf = (char *)&dblock->db_dirent[0];
-        remain = DFS_BLOCK_SIZE - sizeof(struct dblock);
-        while (remain > DFS_MIN_DIRENT_SIZE) {
+        remain = LC_BLOCK_SIZE - sizeof(struct dblock);
+        while (remain > LC_MIN_DIRENT_SIZE) {
             ddirent = (struct ddirent *)dbuf;
             if (ddirent->di_inum == 0) {
                 break;
             }
-            dsize = DFS_MIN_DIRENT_SIZE + ddirent->di_len;
-            dfs_dirAdd(dir, ddirent->di_inum, ddirent->di_type,
+            dsize = LC_MIN_DIRENT_SIZE + ddirent->di_len;
+            lc_dirAdd(dir, ddirent->di_inum, ddirent->di_type,
                        ddirent->di_name, ddirent->di_len);
             if (S_ISDIR(ddirent->di_type)) {
                 count++;
@@ -175,51 +174,49 @@ dfs_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf) {
     assert(dir->i_stat.st_nlink == count);
 }
 
-/* Flush a directory block */
+/* Allocate a directory block and flush to disk */
 static uint64_t
-dfs_dirFlushBlock(struct gfs *gfs, struct fs *fs, struct dblock *dblock,
+lc_dirFlushBlock(struct gfs *gfs, struct fs *fs, struct dblock *dblock,
                   int remain) {
-    uint64_t block = dfs_blockAlloc(fs, 1, true);
+    uint64_t block = lc_blockAlloc(fs, 1, true);
     char *buf;
 
-    //dfs_printf("Flushing directory block %ld\n", block);
     if (remain) {
         buf = (char *)dblock;
-        memset(&buf[DFS_BLOCK_SIZE - remain], 0, remain);
+        memset(&buf[LC_BLOCK_SIZE - remain], 0, remain);
     }
-    dfs_writeBlock(gfs, fs, dblock, block);
+    lc_writeBlock(gfs, fs, dblock, block);
     return block;
 }
 
 /* Flush directory entries */
 void
-dfs_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
-    uint64_t block = DFS_INVALID_BLOCK, count = 0;
+lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
+    uint64_t block = LC_INVALID_BLOCK, count = 0;
     struct dirent *dirent = dir->i_dirent;
     int remain = 0, dsize, subdir = 2;
     struct dblock *dblock = NULL;
     struct ddirent *ddirent;
     char *dbuf = NULL;
 
-    //dfs_printf("Flushing directory %ld\n", dir->i_stat.st_ino);
     assert(S_ISDIR(dir->i_stat.st_mode));
     if (dir->i_removed) {
         dir->i_dirdirty = false;
         return;
     }
     while (dirent) {
-        dsize = DFS_MIN_DIRENT_SIZE + dirent->di_size;
+        dsize = LC_MIN_DIRENT_SIZE + dirent->di_size;
         if (remain < dsize) {
             if (dblock) {
-                block = dfs_dirFlushBlock(gfs, fs, dblock, remain);
+                block = lc_dirFlushBlock(gfs, fs, dblock, remain);
             }
             if (dblock == NULL) {
-                posix_memalign((void **)&dblock, DFS_BLOCK_SIZE,
-                               DFS_BLOCK_SIZE);
+                posix_memalign((void **)&dblock, LC_BLOCK_SIZE,
+                               LC_BLOCK_SIZE);
             }
             dblock->db_next = block;
             dbuf = (char *)&dblock->db_dirent[0];
-            remain = DFS_BLOCK_SIZE - sizeof(struct dblock);
+            remain = LC_BLOCK_SIZE - sizeof(struct dblock);
             count++;
         }
 
@@ -237,24 +234,24 @@ dfs_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
         dirent = dirent->di_next;
     }
     if (dblock) {
-        block = dfs_dirFlushBlock(gfs, fs, dblock, remain);
+        block = lc_dirFlushBlock(gfs, fs, dblock, remain);
         free(dblock);
     }
     dir->i_bmapDirBlock = block;
     if (dir->i_stat.st_blocks) {
         /* XXX Free these blocks */
-        dfs_blockFree(gfs, dir->i_stat.st_blocks);
+        lc_blockFree(gfs, dir->i_stat.st_blocks);
     }
     assert(dir->i_stat.st_nlink == subdir);
     dir->i_stat.st_blocks = count;
-    dir->i_stat.st_size = count * DFS_BLOCK_SIZE;
+    dir->i_stat.st_size = count * LC_BLOCK_SIZE;
     dir->i_dirdirty = false;
     dir->i_dirty = true;
 }
 
 /* Free directory entries */
 void
-dfs_dirFree(struct inode *dir) {
+lc_dirFree(struct inode *dir) {
     struct dirent *dirent = dir->i_dirent, *tmp;
 
     if (dir->i_shared) {
@@ -272,12 +269,11 @@ dfs_dirFree(struct inode *dir) {
 
 /* Remove a directory tree */
 void
-dfs_removeTree(struct fs *fs, struct inode *dir) {
+lc_removeTree(struct fs *fs, struct inode *dir) {
     struct dirent *dirent = dir->i_dirent;
 
-    dir->i_removed = true;
     while (dirent != NULL) {
-        dfs_printf("dfs_removeTree: dir %ld nlink %ld removing %s inode %ld dir %d\n", dir->i_stat.st_ino, dir->i_stat.st_nlink, dirent->di_name, dirent->di_ino, S_ISDIR(dirent->di_mode));
+        lc_printf("lc_removeTree: dir %ld nlink %ld removing %s inode %ld dir %d\n", dir->i_stat.st_ino, dir->i_stat.st_nlink, dirent->di_name, dirent->di_ino, S_ISDIR(dirent->di_mode));
         dremove(fs, dir, dirent->di_name, dirent->di_ino,
                 S_ISDIR(dirent->di_mode));
         dirent = dir->i_dirent;

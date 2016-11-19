@@ -1,6 +1,6 @@
 // +build linux
 
-package dfs
+package lcfs
 
 import (
 	"testing"
@@ -16,80 +16,80 @@ func init() {
 	graphdriver.ApplyUncompressedLayer = archive.ApplyUncompressedLayer
 }
 
-// Make sure dfs file system is mounted on /tmp
+// Make sure lcfs file system is mounted on /tmp
 //
 // This avoids creating a new driver for each test if all tests are run
-// Make sure to put new tests between TestDfsSetup and TestDfsTeardown
-func TestDfsSetup(t *testing.T) {
-	graphtest.GetDriver(t, "dfs")
+// Make sure to put new tests between TestLcfsSetup and TestLcfsTeardown
+func TestLcfsSetup(t *testing.T) {
+	graphtest.GetDriver(t, "lcfs")
 }
 
-func TestDfsCreateEmpty(t *testing.T) {
-	graphtest.DriverTestCreateEmpty(t, "dfs")
+func TestLcfsCreateEmpty(t *testing.T) {
+	graphtest.DriverTestCreateEmpty(t, "lcfs")
 }
 
-func TestDfsCreateBase(t *testing.T) {
-	graphtest.DriverTestCreateBase(t, "dfs")
+func TestLcfsCreateBase(t *testing.T) {
+	graphtest.DriverTestCreateBase(t, "lcfs")
 }
 
-func TestDfsCreateSnap(t *testing.T) {
-	graphtest.DriverTestCreateSnap(t, "dfs")
+func TestLcfsCreateSnap(t *testing.T) {
+	graphtest.DriverTestCreateSnap(t, "lcfs")
 }
 
-func TestDfs50LayerRead(t *testing.T) {
-	graphtest.DriverTestDeepLayerRead(t, 50, "dfs")
+func TestLcfs50LayerRead(t *testing.T) {
+	graphtest.DriverTestDeepLayerRead(t, 50, "lcfs")
 }
 
 // Fails due to bug in calculating changes after apply
 // likely related to https://github.com/docker/docker/issues/21555
-func TestDfsDiffApply10Files(t *testing.T) {
+func TestLcfsDiffApply10Files(t *testing.T) {
 	t.Skipf("Fails to compute changes after apply intermittently")
-	graphtest.DriverTestDiffApply(t, 10, "dfs")
+	graphtest.DriverTestDiffApply(t, 10, "lcfs")
 }
 
-func TestDfsChanges(t *testing.T) {
+func TestLcfsChanges(t *testing.T) {
 	t.Skipf("Fails to compute changes intermittently")
-	graphtest.DriverTestChanges(t, "dfs")
+	graphtest.DriverTestChanges(t, "lcfs")
 }
 
-func TestDfsTeardown(t *testing.T) {
+func TestLcfsTeardown(t *testing.T) {
 	graphtest.PutDriver(t)
 }
 
 // Benchmarks should always setup new driver
 
 func BenchmarkExists(b *testing.B) {
-	graphtest.DriverBenchExists(b, "dfs")
+	graphtest.DriverBenchExists(b, "lcfs")
 }
 
 func BenchmarkGetEmpty(b *testing.B) {
-	graphtest.DriverBenchGetEmpty(b, "dfs")
+	graphtest.DriverBenchGetEmpty(b, "lcfs")
 }
 
 func BenchmarkDiffBase(b *testing.B) {
-	graphtest.DriverBenchDiffBase(b, "dfs")
+	graphtest.DriverBenchDiffBase(b, "lcfs")
 }
 
 func BenchmarkDiffSmallUpper(b *testing.B) {
-	graphtest.DriverBenchDiffN(b, 10, 10, "dfs")
+	graphtest.DriverBenchDiffN(b, 10, 10, "lcfs")
 }
 
 func BenchmarkDiff10KFileUpper(b *testing.B) {
-	graphtest.DriverBenchDiffN(b, 10, 10000, "dfs")
+	graphtest.DriverBenchDiffN(b, 10, 10000, "lcfs")
 }
 
 func BenchmarkDiff10KFilesBottom(b *testing.B) {
-	graphtest.DriverBenchDiffN(b, 10000, 10, "dfs")
+	graphtest.DriverBenchDiffN(b, 10000, 10, "lcfs")
 }
 
 func BenchmarkDiffApply100(b *testing.B) {
-	graphtest.DriverBenchDiffApplyN(b, 100, "dfs")
+	graphtest.DriverBenchDiffApplyN(b, 100, "lcfs")
 }
 
 func BenchmarkDiff20Layers(b *testing.B) {
-	graphtest.DriverBenchDeepLayerDiff(b, 20, "dfs")
+	graphtest.DriverBenchDeepLayerDiff(b, 20, "lcfs")
 }
 
 func BenchmarkRead20Layers(b *testing.B) {
-	graphtest.DriverBenchDeepLayerRead(b, 20, "dfs")
+	graphtest.DriverBenchDeepLayerRead(b, 20, "lcfs")
 }

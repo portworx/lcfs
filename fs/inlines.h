@@ -1,19 +1,19 @@
 #ifndef _INLINES_H
 #define _INLINES_H
 
-static inline uint64_t dfs_getFsHandle(uint64_t fh);
-static inline ino_t dfs_getInodeHandle(uint64_t fh);
+static inline uint64_t lc_getFsHandle(uint64_t fh);
+static inline ino_t lc_getInodeHandle(uint64_t fh);
 
-#if 0
-#define dfs_printf  printf
+#if 1
+#define lc_printf  printf
 #else
-#define dfs_printf(a...)
+#define lc_printf(a...)
 #endif
 
 #if 0
 /* Display debug information on every file system request */
 static inline void
-dfs_displayEntry(const char *func, ino_t dir, ino_t ino, const char *name) {
+lc_displayEntry(const char *func, ino_t dir, ino_t ino, const char *name) {
     /*
     if (strstr(func, "xattr") != NULL) {
         return;
@@ -34,20 +34,20 @@ dfs_displayEntry(const char *func, ino_t dir, ino_t ino, const char *name) {
         return;
     }
     */
-    printf("%s: ino1 %ld (%ld gindex %ld) ino2 %ld (%ld gindex %ld) %s\n", func, dir, dfs_getInodeHandle(dir), dfs_getFsHandle(dir), ino, dfs_getInodeHandle(ino), dfs_getFsHandle(ino), name ? name : "");
+    printf("%s: ino1 %ld (%ld gindex %ld) ino2 %ld (%ld gindex %ld) %s\n", func, dir, lc_getInodeHandle(dir), lc_getFsHandle(dir), ino, lc_getInodeHandle(ino), lc_getFsHandle(ino), name ? name : "");
 }
 #else
-#define dfs_displayEntry(a...)
+#define lc_displayEntry(a...)
 #endif
 
 #if 1
 /* Report errors reported from file system operations */
 static inline void
-dfs_reportError(const char *func, int line, ino_t ino, int err) {
-    printf("%s:%d: reporting error %d for inode %ld (%ld at gindex %ld)\n", func, line, err, ino, dfs_getInodeHandle(ino), dfs_getFsHandle(ino));
+lc_reportError(const char *func, int line, ino_t ino, int err) {
+    printf("%s:%d: reporting error %d for inode %ld (%ld at gindex %ld)\n", func, line, err, ino, lc_getInodeHandle(ino), lc_getFsHandle(ino));
 }
 #else
-#define dfs_reportError(a...)
+#define lc_reportError(a...)
 #endif
 
 #endif

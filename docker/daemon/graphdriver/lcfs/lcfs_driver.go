@@ -1,6 +1,6 @@
 // +build linux
 
-package dfs
+package lcfs
 
 import (
     "fmt"
@@ -13,7 +13,7 @@ import (
     "github.com/docker/docker/pkg/idtools"
 )
 
-// Copied from dfs.h
+// Copied from lcfs.h
 const (
     SnapCreate = 101
     CloneCreate = 102
@@ -25,11 +25,11 @@ const (
 )
 
 func init() {
-    graphdriver.Register("dfs", Init)
+    graphdriver.Register("lcfs", Init)
 }
 
-// Init returns a new DFS driver.
-// An error is returned if DFS is not supported.
+// Init returns a new lcfs driver.
+// An error is returned if lcfs is not supported.
 func Init(home string, options []string, uidMaps, gidMaps []idtools.IDMap) (graphdriver.Driver, error) {
     rootUID, rootGID, err := idtools.GetRootUIDGID(uidMaps, gidMaps)
     if err != nil {
@@ -45,7 +45,7 @@ func Init(home string, options []string, uidMaps, gidMaps []idtools.IDMap) (grap
         gidMaps: gidMaps,
     }
 
-    logrus.Infof("dfs Initialized at %s", home)
+    logrus.Infof("lcfs Initialized at %s", home)
     return graphdriver.NewNaiveDiffDriver(driver, uidMaps, gidMaps), nil
 }
 
@@ -58,20 +58,20 @@ type Driver struct {
     gidMaps []idtools.IDMap
 }
 
-// String prints the name of the driver (dfs).
+// String prints the name of the driver (lcfs).
 func (d *Driver) String() string {
-    return "dfs"
+    return "lcfs"
 }
 
 // Status returns current driver information in a two dimensional string array.
-// Output contains "Build Version" and "Library Version" of the dfs libraries used.
+// Output contains "Build Version" and "Library Version" of the lcfs libraries used.
 // Version information can be used to check compatibility with your kernel.
 func (d *Driver) Status() [][2]string {
     status := [][2]string{}
-    if bv := dfsBuildVersion(); bv != "-" {
+    if bv := lcfsBuildVersion(); bv != "-" {
         status = append(status, [2]string{"Build Version", bv})
     }
-    if lv := dfsLibVersion(); lv != -1 {
+    if lv := lcfsLibVersion(); lv != -1 {
         status = append(status, [2]string{"Library Version", fmt.Sprintf("%d", lv)})
     }
     return status
@@ -88,7 +88,7 @@ func (d *Driver) ioctl(cmd int, parent, id string) error {
     var name string
     var plen int
 
-    logrus.Debugf("dfs ioctl cmd %d parent %s id %s", cmd, parent, id)
+    logrus.Debugf("lcfs ioctl cmd %d parent %s id %s", cmd, parent, id)
     // Open snapshot root directory
     fd, err := syscall.Open(d.home, syscall.O_DIRECTORY, 0);
     if err != nil {

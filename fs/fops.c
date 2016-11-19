@@ -6,8 +6,8 @@
 /* Initialize default values in fuse_entry_param structure.
  */
 static void
-dfs_epInit(struct fuse_entry_param *ep) {
-    assert(ep->ino > DFS_ROOT_INODE);
+lc_epInit(struct fuse_entry_param *ep) {
+    assert(ep->ino > LC_ROOT_INODE);
     ep->attr.st_ino = ep->ino;
     ep->generation = 1;
     ep->attr_timeout = 1.0;
@@ -23,51 +23,51 @@ create(struct fs *fs, ino_t parent, const char *name, mode_t mode,
     ino_t ino;
 
     if (fs->fs_snap) {
-        dfs_reportError(__func__, __LINE__, parent, EROFS);
+        lc_reportError(__func__, __LINE__, parent, EROFS);
         return EROFS;
     }
-    dir = dfs_getInode(fs, parent, NULL, true, true);
+    dir = lc_getInode(fs, parent, NULL, true, true);
     if (dir == NULL) {
-        dfs_reportError(__func__, __LINE__, parent, ENOENT);
+        lc_reportError(__func__, __LINE__, parent, ENOENT);
         return ENOENT;
     }
     assert(S_ISDIR(dir->i_stat.st_mode));
     if (dir->i_shared) {
-        dfs_dirCopy(dir);
+        lc_dirCopy(dir);
     }
-    inode = dfs_inodeInit(fs, mode, uid, gid, rdev, parent, target);
+    inode = lc_inodeInit(fs, mode, uid, gid, rdev, parent, target);
     ino = inode->i_stat.st_ino;
-    dfs_dirAdd(dir, ino, mode, name, strlen(name));
+    lc_dirAdd(dir, ino, mode, name, strlen(name));
     if (S_ISDIR(mode)) {
         assert(inode->i_stat.st_nlink >= 2);
         assert(dir->i_stat.st_nlink >= 2);
         dir->i_stat.st_nlink++;
     }
-    dfs_updateInodeTimes(dir, false, true, true);
+    lc_updateInodeTimes(dir, false, true, true);
     memcpy(&ep->attr, &inode->i_stat, sizeof(struct stat));
     if (fi) {
         inode->i_ocount++;
         fi->fh = (uint64_t)inode;
     }
-    dfs_markInodeDirty(inode, true, false, false, false);
-    dfs_markInodeDirty(dir, true, true, false, false);
-    dfs_inodeUnlock(inode);
-    dfs_inodeUnlock(dir);
-    ep->ino = dfs_setHandle(fs->fs_gindex, ino);
-    dfs_epInit(ep);
+    lc_markInodeDirty(inode, true, false, false, false);
+    lc_markInodeDirty(dir, true, true, false, false);
+    lc_inodeUnlock(inode);
+    lc_inodeUnlock(dir);
+    ep->ino = lc_setHandle(fs->fs_gindex, ino);
+    lc_epInit(ep);
     return 0;
 }
 
 /* Truncate a file */
 static void
-dfs_truncate(struct inode *inode, off_t size) {
+lc_truncate(struct inode *inode, off_t size) {
     int count;
 
     assert(S_ISREG(inode->i_stat.st_mode));
     if (size < inode->i_stat.st_size) {
-        count = dfs_truncPages(inode, size, true);
+        count = lc_truncPages(inode, size, true);
         if (count) {
-            dfs_blockFree(getfs(), count);
+            lc_blockFree(getfs(), count);
         }
     }
     assert(!inode->i_shared);
@@ -78,14 +78,14 @@ dfs_truncate(struct inode *inode, off_t size) {
 int
 dremove(struct fs *fs, struct inode *dir, const char *name,
         ino_t ino, bool rmdir) {
-    struct inode * inode = dfs_getInode(fs, ino, NULL, true, true);
+    struct inode * inode = lc_getInode(fs, ino, NULL, true, true);
     bool removed = false;
     ino_t parent;
     int err = 0;
 
     assert(S_ISDIR(dir->i_stat.st_mode));
     if (inode == NULL) {
-        dfs_reportError(__func__, __LINE__, ino, ESTALE);
+        lc_reportError(__func__, __LINE__, ino, ESTALE);
         err = ESTALE;
         goto out;
     }
@@ -95,16 +95,15 @@ dremove(struct fs *fs, struct inode *dir, const char *name,
         parent =  dir->i_stat.st_ino;
         assert(inode->i_parent == parent);
 
-        /* Allow docker to remove some special directories while not empty */
-        if ((inode->i_dirent != NULL) && (fs == dfs_getGlobalFs(fs->fs_gfs))) {
-            dfs_removeTree(fs, inode);
-            /* XXX Does VFS deal with invalidating the entries under this
-             * directory?
-             */
+        /* Allow directory removals from the root file system even when
+         * directories are not empty.
+         */
+        if ((inode->i_dirent != NULL) && (fs == lc_getGlobalFs(fs->fs_gfs))) {
+            lc_removeTree(fs, inode);
         }
         if (inode->i_dirent != NULL) {
-            dfs_inodeUnlock(inode);
-            //dfs_reportError(__func__, __LINE__, ino, EEXIST);
+            lc_inodeUnlock(inode);
+            //lc_reportError(__func__, __LINE__, ino, EEXIST);
             return EEXIST;
         }
         dir->i_stat.st_nlink--;
@@ -118,7 +117,7 @@ dremove(struct fs *fs, struct inode *dir, const char *name,
         /* Flag a file as removed on last unlink */
         if (inode->i_stat.st_nlink == 0) {
             if ((inode->i_ocount == 0) && S_ISREG(inode->i_stat.st_mode)) {
-                dfs_truncate(inode, 0);
+                lc_truncate(inode, 0);
             }
             inode->i_removed = true;
             removed = true;
@@ -126,14 +125,14 @@ dremove(struct fs *fs, struct inode *dir, const char *name,
     }
 
 out:
-    dfs_dirRemove(dir, name);
+    lc_dirRemove(dir, name);
     if (inode) {
-        dfs_updateInodeTimes(dir, false, false, true);
-        dfs_markInodeDirty(inode, true, rmdir, S_ISREG(inode->i_stat.st_mode),
+        lc_updateInodeTimes(dir, false, false, true);
+        lc_markInodeDirty(inode, true, rmdir, S_ISREG(inode->i_stat.st_mode),
                            false);
-        dfs_inodeUnlock(inode);
+        lc_inodeUnlock(inode);
     }
-    dfs_markInodeDirty(dir, true, true, false, false);
+    lc_markInodeDirty(dir, true, true, false, false);
     if (removed) {
         __sync_sub_and_fetch(&fs->fs_gfs->gfs_super->sb_inodes, 1);
     }
@@ -142,29 +141,29 @@ out:
 
 /* Remove a directory entry */
 static int
-dfs_remove(struct fs *fs, ino_t parent, const char *name, bool rmdir) {
+lc_remove(struct fs *fs, ino_t parent, const char *name, bool rmdir) {
     struct inode *dir;
     struct gfs *gfs;
     int err = 0;
     ino_t ino;
 
     if (fs->fs_snap) {
-        dfs_reportError(__func__, __LINE__, parent, EROFS);
+        lc_reportError(__func__, __LINE__, parent, EROFS);
         return EROFS;
     }
-    dir = dfs_getInode(fs, parent, NULL, true, true);
+    dir = lc_getInode(fs, parent, NULL, true, true);
     if (dir == NULL) {
-        dfs_reportError(__func__, __LINE__, parent, ENOENT);
+        lc_reportError(__func__, __LINE__, parent, ENOENT);
         return ENOENT;
     }
     assert(S_ISDIR(dir->i_stat.st_mode));
     if (dir->i_shared) {
-        dfs_dirCopy(dir);
+        lc_dirCopy(dir);
     }
     /* XXX Combine lookup and removal */
-    ino = dfs_dirLookup(fs, dir, name);
-    if (ino == DFS_INVALID_INODE) {
-        dfs_reportError(__func__, __LINE__, parent, ESTALE);
+    ino = lc_dirLookup(fs, dir, name);
+    if (ino == LC_INVALID_INODE) {
+        lc_reportError(__func__, __LINE__, parent, ESTALE);
         err = ESTALE;
     } else {
         if (rmdir && (fs->fs_gindex == 0)) {
@@ -174,8 +173,8 @@ dfs_remove(struct fs *fs, ino_t parent, const char *name, bool rmdir) {
             if ((ino == fs->fs_gfs->gfs_snap_root) ||
                 ((gfs->gfs_snap_rootInode != NULL) &&
                  (ino == gfs->gfs_snap_rootInode->i_parent)) ||
-                dfs_getIndex(fs, parent, ino)) {
-                dfs_reportError(__func__, __LINE__, parent, EEXIST);
+                lc_getIndex(fs, parent, ino)) {
+                lc_reportError(__func__, __LINE__, parent, EEXIST);
                 err = EEXIST;
             }
         }
@@ -183,13 +182,13 @@ dfs_remove(struct fs *fs, ino_t parent, const char *name, bool rmdir) {
             err = dremove(fs, dir, name, ino, rmdir);
         }
     }
-    dfs_inodeUnlock(dir);
+    lc_inodeUnlock(dir);
     return err;
 }
 
 /* Lookup the specified name in the specified directory */
 static void
-dfs_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
+lc_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
     struct fuse_entry_param ep;
     struct inode *inode, *dir;
     struct fs *fs, *nfs = NULL;
@@ -197,19 +196,19 @@ dfs_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
     int gindex, err = 0;
     ino_t ino;
 
-    dfs_statsBegin(&start);
-    dfs_displayEntry(__func__, parent, 0, name);
-    fs = dfs_getfs(parent, false);
-    dir = dfs_getInode(fs, parent, NULL, false, false);
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, parent, 0, name);
+    fs = lc_getfs(parent, false);
+    dir = lc_getInode(fs, parent, NULL, false, false);
     if (dir == NULL) {
-        dfs_reportError(__func__, __LINE__, parent, ENOENT);
+        lc_reportError(__func__, __LINE__, parent, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
         goto out;
     }
-    ino = dfs_dirLookup(fs, dir, name);
-    if (ino == DFS_INVALID_INODE) {
-        dfs_inodeUnlock(dir);
+    ino = lc_dirLookup(fs, dir, name);
+    if (ino == LC_INVALID_INODE) {
+        lc_inodeUnlock(dir);
 
         /* Let kernel remember lookup failure as a negative entry */
         memset(&ep, 0, sizeof(struct fuse_entry_param));
@@ -221,51 +220,38 @@ dfs_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
 
     /* Check if looking up a snapshot root */
     if (parent == fs->fs_gfs->gfs_snap_root) {
-        gindex = dfs_getIndex(fs, parent, ino);
+        gindex = lc_getIndex(fs, parent, ino);
         if (fs->fs_gindex != gindex) {
-            nfs = dfs_getfs(dfs_setHandle(gindex, ino), false);
+            nfs = lc_getfs(lc_setHandle(gindex, ino), false);
         }
     } else {
         gindex = fs->fs_gindex;
     }
-    inode = dfs_getInode(nfs ? nfs : fs, ino, NULL, false, false);
-    dfs_inodeUnlock(dir);
+    inode = lc_getInode(nfs ? nfs : fs, ino, NULL, false, false);
+    lc_inodeUnlock(dir);
     if (inode == NULL) {
-        dfs_reportError(__func__, __LINE__, ino, ENOENT);
+        lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
     } else {
         memcpy(&ep.attr, &inode->i_stat, sizeof(struct stat));
-        dfs_inodeUnlock(inode);
-        ep.ino = dfs_setHandle(gindex, ino);
-        dfs_epInit(&ep);
+        lc_inodeUnlock(inode);
+        ep.ino = lc_setHandle(gindex, ino);
+        lc_epInit(&ep);
         fuse_reply_entry(req, &ep);
     }
 
 out:
-    dfs_statsAdd(nfs ? nfs : fs, DFS_LOOKUP, err, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(nfs ? nfs : fs, LC_LOOKUP, err, &start);
+    lc_unlock(fs);
     if (nfs) {
-        dfs_unlock(nfs);
+        lc_unlock(nfs);
     }
 }
 
-#if 0
-/* Forget an inode - not relevant for this file system */
-static void
-dfs_forget(fuse_req_t req, fuse_ino_t ino, unsigned long nlookup) {
-    struct timeval start;
-
-    dfs_statsBegin(&start);
-    dfs_displayEntry(__func__, 0, ino, NULL);
-    fuse_reply_none(req);
-    dfs_statsAdd(fs, DFS_FORGET, err, &start);
-}
-#endif
-
 /* Get attributes of a file */
 static void
-dfs_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
+lc_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     struct timeval start;
     struct inode *inode;
     struct stat stbuf;
@@ -273,31 +259,31 @@ dfs_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     ino_t parent;
     int err = 0;
 
-    dfs_statsBegin(&start);
-    dfs_displayEntry(__func__, 0, ino, NULL);
-    fs = dfs_getfs(ino, false);
-    inode = dfs_getInode(fs, ino, NULL, false, false);
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, 0, ino, NULL);
+    fs = lc_getfs(ino, false);
+    inode = lc_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
-        dfs_reportError(__func__, __LINE__, ino, ENOENT);
+        lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
         goto out;
     }
     memcpy(&stbuf, &inode->i_stat, sizeof(struct stat));
     parent = inode->i_parent;
-    dfs_inodeUnlock(inode);
-    stbuf.st_ino = dfs_setHandle(dfs_getIndex(fs, parent,
+    lc_inodeUnlock(inode);
+    stbuf.st_ino = lc_setHandle(lc_getIndex(fs, parent,
                                               stbuf.st_ino), stbuf.st_ino);
     fuse_reply_attr(req, &stbuf, 1.0);
 
 out:
-    dfs_statsAdd(fs, DFS_GETATTR, err, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(fs, LC_GETATTR, err, &start);
+    lc_unlock(fs);
 }
 
 /* Change the attributes of the specified inode as requested */
 static void
-dfs_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
+lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
             int to_set, struct fuse_file_info *fi) {
     bool ctime = false, mtime = false, atime = false;
     struct inode *inode, *handle;
@@ -306,19 +292,19 @@ dfs_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
     struct fs *fs;
     int err = 0;
 
-    dfs_statsBegin(&start);
-    dfs_displayEntry(__func__, ino, 0, NULL);
-    fs = dfs_getfs(ino, false);
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, ino, 0, NULL);
+    fs = lc_getfs(ino, false);
     if (fs->fs_snap) {
-        dfs_reportError(__func__, __LINE__, ino, EROFS);
+        lc_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
         err = EROFS;
         goto out;
     }
     handle = fi ? (struct inode *)fi->fh : NULL;
-    inode = dfs_getInode(fs, ino, handle, true, true);
+    inode = lc_getInode(fs, ino, handle, true, true);
     if (inode == NULL) {
-        dfs_reportError(__func__, __LINE__, ino, ENOENT);
+        lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
         goto out;
@@ -337,7 +323,7 @@ dfs_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
         ctime = true;
     }
     if (to_set & FUSE_SET_ATTR_SIZE) {
-        dfs_truncate(inode, attr->st_size);
+        lc_truncate(inode, attr->st_size);
         mtime = true;
         ctime = true;
     }
@@ -355,54 +341,54 @@ dfs_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
         ctime = true;
     }
     if (ctime || mtime || atime) {
-        dfs_updateInodeTimes(inode, atime, mtime, ctime);
+        lc_updateInodeTimes(inode, atime, mtime, ctime);
     }
-    dfs_markInodeDirty(inode, true, false, to_set & FUSE_SET_ATTR_SIZE, false);
+    lc_markInodeDirty(inode, true, false, to_set & FUSE_SET_ATTR_SIZE, false);
     memcpy(&stbuf, &inode->i_stat, sizeof(struct stat));
-    dfs_inodeUnlock(inode);
-    stbuf.st_ino = dfs_setHandle(fs->fs_gindex, stbuf.st_ino);
+    lc_inodeUnlock(inode);
+    stbuf.st_ino = lc_setHandle(fs->fs_gindex, stbuf.st_ino);
     fuse_reply_attr(req, &stbuf, 1.0);
 
 out:
-    dfs_statsAdd(fs, DFS_SETATTR, err, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(fs, LC_SETATTR, err, &start);
+    lc_unlock(fs);
 }
 
 /* Read target information for a symbolic link */
 static void
-dfs_readlink(fuse_req_t req, fuse_ino_t ino) {
-    char buf[DFS_FILENAME_MAX + 1];
+lc_readlink(fuse_req_t req, fuse_ino_t ino) {
+    char buf[LC_FILENAME_MAX + 1];
     struct timeval start;
     struct inode *inode;
     int size, err = 0;
     struct fs *fs;
 
-    dfs_statsBegin(&start);
-    dfs_displayEntry(__func__, 0, ino, NULL);
-    fs = dfs_getfs(ino, false);
-    inode = dfs_getInode(fs, ino, NULL, false, false);
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, 0, ino, NULL);
+    fs = lc_getfs(ino, false);
+    inode = lc_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
-        dfs_reportError(__func__, __LINE__, ino, ENOENT);
+        lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
         goto out;
     }
     assert(S_ISLNK(inode->i_stat.st_mode));
     size = inode->i_stat.st_size;
-    assert(size && (size <= DFS_FILENAME_MAX));
+    assert(size && (size <= LC_FILENAME_MAX));
     strncpy(buf, inode->i_target, size);
-    dfs_inodeUnlock(inode);
+    lc_inodeUnlock(inode);
     buf[size] = 0;
     fuse_reply_readlink(req, buf);
 
 out:
-    dfs_statsAdd(fs, DFS_READLINK, err, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(fs, LC_READLINK, err, &start);
+    lc_unlock(fs);
 }
 
 /* Create a special file */
 static void
-dfs_mknod(fuse_req_t req, fuse_ino_t parent, const char *name,
+lc_mknod(fuse_req_t req, fuse_ino_t parent, const char *name,
           mode_t mode, dev_t rdev) {
     const struct fuse_ctx *ctx = fuse_req_ctx(req);
     struct fuse_entry_param e;
@@ -410,9 +396,9 @@ dfs_mknod(fuse_req_t req, fuse_ino_t parent, const char *name,
     struct fs *fs;
     int err;
 
-    dfs_statsBegin(&start);
-    dfs_displayEntry(__func__, parent, 0, name);
-    fs = dfs_getfs(parent, false);
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, parent, 0, name);
+    fs = lc_getfs(parent, false);
     err = create(fs, parent, name, mode & ~ctx->umask,
                  ctx->uid, ctx->gid, rdev, NULL, NULL, &e);
     if (err) {
@@ -420,13 +406,13 @@ dfs_mknod(fuse_req_t req, fuse_ino_t parent, const char *name,
     } else {
         fuse_reply_entry(req, &e);
     }
-    dfs_statsAdd(fs, DFS_MKNOD, err, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(fs, LC_MKNOD, err, &start);
+    lc_unlock(fs);
 }
 
 /* Create a directory */
 static void
-dfs_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
+lc_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
     const struct fuse_ctx *ctx = fuse_req_ctx(req);
     struct fuse_entry_param e;
     struct timeval start;
@@ -435,9 +421,9 @@ dfs_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
     bool global;
     int err;
 
-    dfs_statsBegin(&start);
-    dfs_displayEntry(__func__, parent, 0, name);
-    fs = dfs_getfs(parent, false);
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, parent, 0, name);
+    fs = lc_getfs(parent, false);
     err = create(fs, parent, name, S_IFDIR | (mode & ~ctx->umask),
                  ctx->uid, ctx->gid, 0, NULL, NULL, &e);
     if (err) {
@@ -447,53 +433,50 @@ dfs_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
 
         /* Remember some special directories created */
         gfs = getfs();
-        global = dfs_getInodeHandle(parent) == DFS_ROOT_INODE;
-        if (global && (strcmp(name, "dfs") == 0)) {
-            dfs_setSnapshotRoot(gfs, e.ino);
-        } else if (global && (strcmp(name, "tmp") == 0)) {
-            gfs->gfs_tmp_root = e.ino;
-            printf("tmp root %ld\n", e.ino);
+        global = lc_getInodeHandle(parent) == LC_ROOT_INODE;
+        if (global && (strcmp(name, "lcfs") == 0)) {
+            lc_setSnapshotRoot(gfs, e.ino);
         }
     }
-    dfs_statsAdd(fs, DFS_MKDIR, err, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(fs, LC_MKDIR, err, &start);
+    lc_unlock(fs);
 }
 
 /* Remove a file */
 static void
-dfs_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
+lc_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
     struct timeval start;
     struct fs *fs;
     int err;
 
-    dfs_statsBegin(&start);
-    dfs_displayEntry(__func__, parent, 0, name);
-    fs = dfs_getfs(parent, false);
-    err = dfs_remove(fs, parent, name, false);
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, parent, 0, name);
+    fs = lc_getfs(parent, false);
+    err = lc_remove(fs, parent, name, false);
     fuse_reply_err(req, err);
-    dfs_statsAdd(fs, DFS_UNLINK, err, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(fs, LC_UNLINK, err, &start);
+    lc_unlock(fs);
 }
 
 /* Remove a special directory */
 static void
-dfs_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name) {
+lc_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name) {
     struct timeval start;
     struct fs *fs;
     int err;
 
-    dfs_statsBegin(&start);
-    dfs_displayEntry(__func__, parent, 0, name);
-    fs = dfs_getfs(parent, false);
-    err = dfs_remove(fs, parent, name, true);
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, parent, 0, name);
+    fs = lc_getfs(parent, false);
+    err = lc_remove(fs, parent, name, true);
     fuse_reply_err(req, err);
-    dfs_statsAdd(fs, DFS_RMDIR, err, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(fs, LC_RMDIR, err, &start);
+    lc_unlock(fs);
 }
 
 /* Create a symbolic link */
 static void
-dfs_symlink(fuse_req_t req, const char *link, fuse_ino_t parent,
+lc_symlink(fuse_req_t req, const char *link, fuse_ino_t parent,
             const char *name) {
     const struct fuse_ctx *ctx = fuse_req_ctx(req);
     struct fuse_entry_param e;
@@ -501,9 +484,9 @@ dfs_symlink(fuse_req_t req, const char *link, fuse_ino_t parent,
     struct fs *fs;
     int err;
 
-    dfs_statsBegin(&start);
-    dfs_displayEntry(__func__, parent, 0, name);
-    fs = dfs_getfs(parent, false);
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, parent, 0, name);
+    fs = lc_getfs(parent, false);
     err = create(fs, parent, name, S_IFLNK | (0777 & ~ctx->umask),
                  ctx->uid, ctx->gid, 0, link, NULL, &e);
     if (err) {
@@ -511,13 +494,13 @@ dfs_symlink(fuse_req_t req, const char *link, fuse_ino_t parent,
     } else {
         fuse_reply_entry(req, &e);
     }
-    dfs_statsAdd(fs, DFS_SYMLINK, err, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(fs, LC_SYMLINK, err, &start);
+    lc_unlock(fs);
 }
 
 /* Rename a file to another (mv) */
 static void
-dfs_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
+lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
            fuse_ino_t newparent, const char *newname) {
     struct inode *inode, *sdir, *tdir = NULL;
     struct timeval start;
@@ -525,11 +508,11 @@ dfs_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
     struct fs *fs;
     int err = 0;
 
-    dfs_statsBegin(&start);
-    dfs_displayEntry(__func__, parent, newparent, name);
-    fs = dfs_getfs(parent, false);
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, parent, newparent, name);
+    fs = lc_getfs(parent, false);
     if (fs->fs_snap) {
-        dfs_reportError(__func__, __LINE__, parent, EROFS);
+        lc_reportError(__func__, __LINE__, parent, EROFS);
         fuse_reply_err(req, EROFS);
         err = EROFS;
         goto out;
@@ -537,108 +520,108 @@ dfs_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
 
     /* Follow some locking order while locking the directories */
     if (parent > newparent) {
-        tdir = dfs_getInode(fs, newparent, NULL, true, true);
+        tdir = lc_getInode(fs, newparent, NULL, true, true);
         if (tdir == NULL) {
-            dfs_reportError(__func__, __LINE__, newparent, ENOENT);
+            lc_reportError(__func__, __LINE__, newparent, ENOENT);
             fuse_reply_err(req, ENOENT);
             err = ENOENT;
             goto out;
         }
         assert(S_ISDIR(tdir->i_stat.st_mode));
     }
-    sdir = dfs_getInode(fs, parent, NULL, true, true);
+    sdir = lc_getInode(fs, parent, NULL, true, true);
     if (sdir == NULL) {
         if (tdir) {
-            dfs_inodeUnlock(tdir);
+            lc_inodeUnlock(tdir);
         }
-        dfs_reportError(__func__, __LINE__, parent, ENOENT);
+        lc_reportError(__func__, __LINE__, parent, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
         goto out;
     }
     assert(S_ISDIR(sdir->i_stat.st_mode));
     if (parent < newparent) {
-        tdir = dfs_getInode(fs, newparent, NULL, true, true);
+        tdir = lc_getInode(fs, newparent, NULL, true, true);
         if (tdir == NULL) {
-            dfs_inodeUnlock(sdir);
-            dfs_reportError(__func__, __LINE__, newparent, ENOENT);
+            lc_inodeUnlock(sdir);
+            lc_reportError(__func__, __LINE__, newparent, ENOENT);
             fuse_reply_err(req, ENOENT);
             err = ENOENT;
             goto out;
         }
         assert(S_ISDIR(tdir->i_stat.st_mode));
     }
-    ino = dfs_dirLookup(fs, sdir, name);
-    if (ino == DFS_INVALID_INODE) {
-        dfs_inodeUnlock(sdir);
+    ino = lc_dirLookup(fs, sdir, name);
+    if (ino == LC_INVALID_INODE) {
+        lc_inodeUnlock(sdir);
         if (tdir) {
-            dfs_inodeUnlock(tdir);
+            lc_inodeUnlock(tdir);
         }
-        dfs_reportError(__func__, __LINE__, parent, ENOENT);
+        lc_reportError(__func__, __LINE__, parent, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
         goto out;
     }
     if (sdir->i_shared) {
-        dfs_dirCopy(sdir);
+        lc_dirCopy(sdir);
     }
-    target = dfs_dirLookup(fs, tdir ? tdir : sdir, newname);
+    target = lc_dirLookup(fs, tdir ? tdir : sdir, newname);
 
     /* Renaming to another directory */
     if (parent != newparent) {
         if (tdir->i_shared) {
-            dfs_dirCopy(tdir);
+            lc_dirCopy(tdir);
         }
-        if (target != DFS_INVALID_INODE) {
+        if (target != LC_INVALID_INODE) {
             dremove(fs, tdir, newname, target, false);
         }
-        inode = dfs_getInode(fs, ino, NULL, true, true);
+        inode = lc_getInode(fs, ino, NULL, true, true);
         if (inode == NULL) {
-            dfs_inodeUnlock(sdir);
-            dfs_inodeUnlock(tdir);
-            dfs_reportError(__func__, __LINE__, ino, ENOENT);
+            lc_inodeUnlock(sdir);
+            lc_inodeUnlock(tdir);
+            lc_reportError(__func__, __LINE__, ino, ENOENT);
             fuse_reply_err(req, ENOENT);
             err = ENOENT;
             goto out;
         }
-        dfs_dirAdd(tdir, ino, inode->i_stat.st_mode, newname, strlen(newname));
-        dfs_dirRemove(sdir, name);
+        lc_dirAdd(tdir, ino, inode->i_stat.st_mode, newname, strlen(newname));
+        lc_dirRemove(sdir, name);
         if (S_ISDIR(inode->i_stat.st_mode)) {
             assert(sdir->i_stat.st_nlink > 2);
             sdir->i_stat.st_nlink--;
             assert(tdir->i_stat.st_nlink >= 2);
             tdir->i_stat.st_nlink++;
         }
-        inode->i_parent = dfs_getInodeHandle(newparent);
-        dfs_updateInodeTimes(inode, false, false, true);
-        dfs_markInodeDirty(inode, true, false, false, false);
-        dfs_inodeUnlock(inode);
+        inode->i_parent = lc_getInodeHandle(newparent);
+        lc_updateInodeTimes(inode, false, false, true);
+        lc_markInodeDirty(inode, true, false, false, false);
+        lc_inodeUnlock(inode);
     } else {
 
         /* Rename within the directory */
-        if (target != DFS_INVALID_INODE) {
+        if (target != LC_INVALID_INODE) {
             dremove(fs, sdir, newname, target, false);
         }
-        dfs_dirRename(sdir, ino, name, newname);
+        lc_dirRename(sdir, ino, name, newname);
     }
-    dfs_updateInodeTimes(sdir, false, true, true);
-    dfs_markInodeDirty(sdir, true, true, false, false);
+    lc_updateInodeTimes(sdir, false, true, true);
+    lc_markInodeDirty(sdir, true, true, false, false);
     if (tdir) {
-        dfs_updateInodeTimes(tdir, false, true, true);
-        dfs_markInodeDirty(tdir, true, true, false, false);
-        dfs_inodeUnlock(tdir);
+        lc_updateInodeTimes(tdir, false, true, true);
+        lc_markInodeDirty(tdir, true, true, false, false);
+        lc_inodeUnlock(tdir);
     }
-    dfs_inodeUnlock(sdir);
+    lc_inodeUnlock(sdir);
     fuse_reply_err(req, 0);
 
 out:
-    dfs_statsAdd(fs, DFS_RENAME, err, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(fs, LC_RENAME, err, &start);
+    lc_unlock(fs);
 }
 
 /* Create a new link to an inode */
 static void
-dfs_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
+lc_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
          const char *newname) {
     struct fuse_entry_param ep;
     struct inode *inode, *dir;
@@ -646,18 +629,18 @@ dfs_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
     struct fs *fs;
     int err = 0;
 
-    dfs_statsBegin(&start);
-    dfs_displayEntry(__func__, newparent, ino, newname);
-    fs = dfs_getfs(ino, false);
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, newparent, ino, newname);
+    fs = lc_getfs(ino, false);
     if (fs->fs_snap) {
-        dfs_reportError(__func__, __LINE__, ino, EROFS);
+        lc_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
         err = EROFS;
         goto out;
     }
-    dir = dfs_getInode(fs, newparent, NULL, true, true);
+    dir = lc_getInode(fs, newparent, NULL, true, true);
     if (dir == NULL) {
-        dfs_reportError(__func__, __LINE__, newparent, ENOENT);
+        lc_reportError(__func__, __LINE__, newparent, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
         goto out;
@@ -665,58 +648,58 @@ dfs_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
     assert(S_ISDIR(dir->i_stat.st_mode));
     assert(dir->i_stat.st_nlink >= 2);
     if (dir->i_shared) {
-        dfs_dirCopy(dir);
+        lc_dirCopy(dir);
     }
-    inode = dfs_getInode(fs, ino, NULL, true, true);
+    inode = lc_getInode(fs, ino, NULL, true, true);
     if (inode == NULL) {
-        dfs_inodeUnlock(dir);
-        dfs_reportError(__func__, __LINE__, ino, ENOENT);
+        lc_inodeUnlock(dir);
+        lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
         goto out;
     }
     assert(S_ISREG(inode->i_stat.st_mode));
-    dfs_dirAdd(dir, inode->i_stat.st_ino, inode->i_stat.st_mode, newname,
+    lc_dirAdd(dir, inode->i_stat.st_ino, inode->i_stat.st_mode, newname,
                strlen(newname));
-    dfs_updateInodeTimes(dir, false, true, true);
-    dfs_markInodeDirty(dir, true, true, false, false);
+    lc_updateInodeTimes(dir, false, true, true);
+    lc_markInodeDirty(dir, true, true, false, false);
     inode->i_stat.st_nlink++;
-    dfs_updateInodeTimes(inode, false, false, true);
-    dfs_markInodeDirty(inode, true, false, false, false);
-    dfs_inodeUnlock(dir);
+    lc_updateInodeTimes(inode, false, false, true);
+    lc_markInodeDirty(inode, true, false, false, false);
+    lc_inodeUnlock(dir);
     memcpy(&ep.attr, &inode->i_stat, sizeof(struct stat));
-    dfs_inodeUnlock(inode);
-    ep.ino = dfs_setHandle(fs->fs_gindex, ino);
-    dfs_epInit(&ep);
+    lc_inodeUnlock(inode);
+    ep.ino = lc_setHandle(fs->fs_gindex, ino);
+    lc_epInit(&ep);
     fuse_reply_entry(req, &ep);
 
 out:
-    dfs_statsAdd(fs, DFS_LINK, err, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(fs, LC_LINK, err, &start);
+    lc_unlock(fs);
 }
 
 /* Set up file handle in case file is shared from another file system */
 static int
-dfs_openInode(struct fs *fs, fuse_ino_t ino, struct fuse_file_info *fi) {
+lc_openInode(struct fs *fs, fuse_ino_t ino, struct fuse_file_info *fi) {
     struct inode *inode;
     bool modify;
 
     fi->fh = 0;
     modify = (fi->flags & (O_WRONLY | O_RDWR));
     if (modify && fs->fs_snap) {
-        dfs_reportError(__func__, __LINE__, ino, EROFS);
+        lc_reportError(__func__, __LINE__, ino, EROFS);
         return EROFS;
     }
-    inode = dfs_getInode(fs, ino, NULL, modify, true);
+    inode = lc_getInode(fs, ino, NULL, modify, true);
     if (inode == NULL) {
-        dfs_reportError(__func__, __LINE__, ino, ENOENT);
+        lc_reportError(__func__, __LINE__, ino, ENOENT);
         return ENOENT;
     }
 
     /* Do not allow opening a removed inode */
     if (inode->i_removed) {
-        dfs_inodeUnlock(inode);
-        dfs_reportError(__func__, __LINE__, ino, ENOENT);
+        lc_inodeUnlock(inode);
+        lc_reportError(__func__, __LINE__, ino, ENOENT);
         return ENOENT;
     }
 
@@ -727,33 +710,33 @@ dfs_openInode(struct fs *fs, fuse_ino_t ino, struct fuse_file_info *fi) {
         inode->i_ocount++;
     }
     fi->fh = (uint64_t)inode;
-    dfs_inodeUnlock(inode);
+    lc_inodeUnlock(inode);
     return 0;
 }
 
 /* Open a file and return a handle corresponding to the inode number */
 static void
-dfs_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
+lc_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     struct timeval start;
     struct fs *fs;
     int err;
 
-    dfs_statsBegin(&start);
-    dfs_displayEntry(__func__, 0, ino, NULL);
-    fs = dfs_getfs(ino, false);
-    err = dfs_openInode(fs, ino, fi);
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, 0, ino, NULL);
+    fs = lc_getfs(ino, false);
+    err = lc_openInode(fs, ino, fi);
     if (err) {
         fuse_reply_err(req, err);
     } else {
         fuse_reply_open(req, fi);
     }
-    dfs_statsAdd(fs, DFS_OPEN, err, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(fs, LC_OPEN, err, &start);
+    lc_unlock(fs);
 }
 
 /* Read from a file */
 static void
-dfs_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
+lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
          struct fuse_file_info *fi) {
     struct fuse_bufvec *bufv;
     struct timeval start;
@@ -765,21 +748,21 @@ dfs_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     size_t fsize;
     int err = 0;
 
-    dfs_statsBegin(&start);
-    dfs_displayEntry(__func__, ino, 0, NULL);
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, ino, 0, NULL);
     if (size == 0) {
         fuse_reply_buf(req, NULL, 0);
         return;
     }
     fsize = sizeof(struct fuse_bufvec) +
-            (sizeof(struct fuse_buf) * ((size / DFS_BLOCK_SIZE) + 2));
+            (sizeof(struct fuse_buf) * ((size / LC_BLOCK_SIZE) + 2));
     bufv = alloca(fsize);
-    pages = alloca(sizeof(struct page *) * ((size / DFS_BLOCK_SIZE) + 2));
+    pages = alloca(sizeof(struct page *) * ((size / LC_BLOCK_SIZE) + 2));
     memset(bufv, 0, fsize);
-    fs = dfs_getfs(ino, false);
-    inode = dfs_getInode(fs, ino, (struct inode *)fi->fh, false, false);
+    fs = lc_getfs(ino, false);
+    inode = lc_getInode(fs, ino, (struct inode *)fi->fh, false, false);
     if (inode == NULL) {
-        dfs_reportError(__func__, __LINE__, ino, ENOENT);
+        lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
         goto out;
@@ -789,7 +772,7 @@ dfs_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     /* Reading beyond file size is not allowed */
     fsize = inode->i_stat.st_size;
     if (off >= fsize) {
-        dfs_inodeUnlock(inode);
+        lc_inodeUnlock(inode);
         fuse_reply_buf(req, NULL, 0);
         goto out;
     }
@@ -797,34 +780,36 @@ dfs_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     if (endoffset > fsize) {
         endoffset = fsize;
     }
-    pcount = dfs_readPages(inode, off, endoffset, pages, bufv);
+    pcount = lc_readPages(inode, off, endoffset, pages, bufv);
     fuse_reply_data(req, bufv, FUSE_BUF_SPLICE_MOVE);
-    dfs_releaseReadPages(fs->fs_gfs, fs, pages, pcount);
-    dfs_inodeUnlock(inode);
+    lc_releaseReadPages(fs->fs_gfs, fs, pages, pcount);
+    lc_inodeUnlock(inode);
 
 out:
-    dfs_statsAdd(fs, DFS_READ, err, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(fs, LC_READ, err, &start);
+    lc_unlock(fs);
 }
 
 /* Flush a file */
 static void
-dfs_flush(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
+lc_flush(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     struct inode *inode = (struct inode *)fi->fh;
 
-    dfs_displayEntry(__func__, ino, 0, NULL);
+    lc_displayEntry(__func__, ino, 0, NULL);
     fuse_reply_err(req, 0);
-    dfs_statsAdd(inode->i_fs, DFS_FLUSH, 0, NULL);
+    lc_statsAdd(inode->i_fs, LC_FLUSH, 0, NULL);
 }
 
 /* Decrement open count on an inode */
 static void
-dfs_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
+lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
                  struct fuse_file_info *fi, bool *inval) {
     struct inode *inode;
 
     assert(fi);
     inode = (struct inode *)fi->fh;
+
+    /* Nothing to do if inode is not part of this layer */
     if (inode->i_fs != fs) {
         if (inval && (inode->i_stat.st_size > 0) &&
             S_ISREG(inode->i_stat.st_mode)) {
@@ -833,8 +818,8 @@ dfs_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
         fuse_reply_err(req, 0);
         return;
     }
-    dfs_inodeLock(inode, true);
-    assert(inode->i_stat.st_ino == dfs_getInodeHandle(ino));
+    lc_inodeLock(inode, true);
+    assert(inode->i_stat.st_ino == lc_getInodeHandle(ino));
     assert(inode->i_fs == fs);
     assert(inode->i_ocount > 0);
     inode->i_ocount--;
@@ -842,74 +827,81 @@ dfs_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
     /* Truncate a removed file on last close */
     if ((inode->i_ocount == 0) && inode->i_removed &&
         S_ISREG(inode->i_stat.st_mode)) {
-        dfs_truncate(inode, 0);
+        lc_truncate(inode, 0);
     }
+
+    /* Invalidate pages of shared files in kernel page cache */
     if (inval) {
         *inval = (inode->i_ocount == 0) && (inode->i_stat.st_size > 0) &&
                  (!inode->i_pcache || fs->fs_readOnly ||
                   (fs->fs_snap != NULL));
     }
     fuse_reply_err(req, 0);
+
+    /* Flush dirty pages of a file on last close */
     if (fs->fs_readOnly && (inode->i_ocount == 0) &&
         S_ISREG(inode->i_stat.st_mode) && inode->i_bmapdirty) {
-        dfs_bmapFlush(fs->fs_gfs, inode->i_fs, inode);
+        lc_bmapFlush(fs->fs_gfs, inode->i_fs, inode);
     }
-    dfs_inodeUnlock(inode);
+    lc_inodeUnlock(inode);
 }
 
 /* Release open count on a file */
 static void
-dfs_release(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
+lc_release(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     struct gfs *gfs = getfs();
     struct timeval start;
     struct fs *fs;
     bool inval;
 
-    dfs_statsBegin(&start);
-    dfs_displayEntry(__func__, ino, 0, NULL);
-    fs = dfs_getfs(ino, false);
-    dfs_releaseInode(req, fs, ino, fi, &inval);
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, ino, 0, NULL);
+    fs = lc_getfs(ino, false);
+    lc_releaseInode(req, fs, ino, fi, &inval);
     if (inval) {
         fuse_lowlevel_notify_inval_inode(gfs->gfs_ch, ino, 0, -1);
     }
-    dfs_statsAdd(fs, DFS_RELEASE, false, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(fs, LC_RELEASE, false, &start);
+    lc_unlock(fs);
 }
 
 /* Sync a file */
 static void
-dfs_fsync(fuse_req_t req, fuse_ino_t ino, int datasync,
+lc_fsync(fuse_req_t req, fuse_ino_t ino, int datasync,
           struct fuse_file_info *fi) {
     struct inode *inode = (struct inode *)fi->fh;
 
-    dfs_displayEntry(__func__, ino, 0, NULL);
+    /* Fsync is disabled in this file system as layers are made persistent when
+     * needed.
+     */
+    lc_displayEntry(__func__, ino, 0, NULL);
     fuse_reply_err(req, 0);
-    dfs_statsAdd(inode->i_fs, DFS_FSYNC, 0, NULL);
+    lc_statsAdd(inode->i_fs, LC_LCYNC, 0, NULL);
 }
 
 /* Open a directory */
 static void
-dfs_opendir(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
+lc_opendir(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     struct timeval start;
     struct fs *fs;
     int err;
 
-    dfs_statsBegin(&start);
-    dfs_displayEntry(__func__, 0, ino, NULL);
-    fs = dfs_getfs(ino, false);
-    err = dfs_openInode(fs, ino, fi);
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, 0, ino, NULL);
+    fs = lc_getfs(ino, false);
+    err = lc_openInode(fs, ino, fi);
     if (err) {
         fuse_reply_err(req, err);
     } else {
         fuse_reply_open(req, fi);
     }
-    dfs_statsAdd(fs, DFS_OPENDIR, err, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(fs, LC_OPENDIR, err, &start);
+    lc_unlock(fs);
 }
 
 /* Read entries from a directory */
 static void
-dfs_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
+lc_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
             struct fuse_file_info *fi) {
     int count = 0, err = 0;
     struct dirent *dirent;
@@ -920,12 +912,12 @@ dfs_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     struct stat st;
     struct fs *fs;
 
-    dfs_statsBegin(&start);
-    dfs_displayEntry(__func__, ino, 0, NULL);
-    fs = dfs_getfs(ino, false);
-    dir = dfs_getInode(fs, ino, (struct inode *)fi->fh, false, false);
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, ino, 0, NULL);
+    fs = lc_getfs(ino, false);
+    dir = lc_getInode(fs, ino, (struct inode *)fi->fh, false, false);
     if (dir == NULL) {
-        dfs_reportError(__func__, __LINE__, ino, ENOENT);
+        lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
         goto out;
@@ -939,9 +931,9 @@ dfs_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     memset(&st, 0, sizeof(struct stat));
     csize = 0;
     while (dirent != NULL) {
-        assert(dirent->di_ino > DFS_ROOT_INODE);
+        assert(dirent->di_ino > LC_ROOT_INODE);
         count++;
-        st.st_ino = dfs_setHandle(dfs_getIndex(fs, ino, dirent->di_ino),
+        st.st_ino = lc_setHandle(lc_getIndex(fs, ino, dirent->di_ino),
                                   dirent->di_ino);
         st.st_mode = dirent->di_mode;
         esize = fuse_add_direntry(req, &buf[csize], size - csize,
@@ -953,7 +945,7 @@ dfs_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
         }
         dirent = dirent->di_next;
     }
-    dfs_inodeUnlock(dir);
+    lc_inodeUnlock(dir);
     if (csize) {
         fuse_reply_buf(req, buf, csize);
     } else {
@@ -961,75 +953,80 @@ dfs_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     }
 
 out:
-    dfs_statsAdd(fs, DFS_READDIR, err, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(fs, LC_READDIR, err, &start);
+    lc_unlock(fs);
 }
 
 /* Release a directory */
 static void
-dfs_releasedir(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
+lc_releasedir(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     struct timeval start;
     struct fs *fs;
 
-    dfs_statsBegin(&start);
-    dfs_displayEntry(__func__, ino, 0, NULL);
-    fs = dfs_getfs(ino, false);
-    dfs_releaseInode(req, fs, ino, fi, NULL);
-    dfs_statsAdd(fs, DFS_RELEASEDIR, false, &start);
-    dfs_unlock(fs);
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, ino, 0, NULL);
+    fs = lc_getfs(ino, false);
+    lc_releaseInode(req, fs, ino, fi, NULL);
+    lc_statsAdd(fs, LC_RELEASEDIR, false, &start);
+    lc_unlock(fs);
 }
 
+/* Sync a directory */
 static void
-dfs_fsyncdir(fuse_req_t req, fuse_ino_t ino, int datasync,
+lc_fsyncdir(fuse_req_t req, fuse_ino_t ino, int datasync,
              struct fuse_file_info *fi) {
     struct inode *inode = (struct inode *)fi->fh;
 
-    dfs_displayEntry(__func__, ino, 0, NULL);
+    /* Fsync is disabled in this file system as layers are made persistent when
+     * needed.
+     */
+    lc_displayEntry(__func__, ino, 0, NULL);
     fuse_reply_err(req, 0);
-    dfs_statsAdd(inode->i_fs, DFS_FSYNCDIR, 0, NULL);
+    lc_statsAdd(inode->i_fs, LC_LCYNCDIR, 0, NULL);
 }
 
 /* File system statfs */
 static void
-dfs_statfs(fuse_req_t req, fuse_ino_t ino) {
+lc_statfs(fuse_req_t req, fuse_ino_t ino) {
     struct gfs *gfs = getfs();
     struct super *super = gfs->gfs_super;
     struct timeval start;
     struct statvfs buf;
 
-    dfs_statsBegin(&start);
-    dfs_displayEntry(__func__, ino, 0, NULL);
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, ino, 0, NULL);
     memset(&buf, 0, sizeof(struct statvfs));
-    buf.f_bsize = DFS_BLOCK_SIZE;
-    buf.f_frsize = DFS_BLOCK_SIZE;
+    buf.f_bsize = LC_BLOCK_SIZE;
+    buf.f_frsize = LC_BLOCK_SIZE;
     buf.f_blocks = super->sb_tblocks;
     buf.f_bfree = buf.f_blocks - super->sb_blocks;
     buf.f_bavail = buf.f_bfree;
     buf.f_files = UINT32_MAX;
     buf.f_ffree = buf.f_files - super->sb_inodes;
     buf.f_favail = buf.f_ffree;
-    buf.f_namemax = DFS_FILENAME_MAX;
+    buf.f_namemax = LC_FILENAME_MAX;
     fuse_reply_statfs(req, &buf);
-    dfs_statsAdd(dfs_getGlobalFs(gfs), DFS_STATFS, false, &start);
+    lc_statsAdd(lc_getGlobalFs(gfs), LC_STATLC, false, &start);
 }
 
 /* Set extended attributes on a file, currently used for creating a new file
  * system
  */
 static void
-dfs_setxattr(fuse_req_t req, fuse_ino_t ino, const char *name,
+lc_setxattr(fuse_req_t req, fuse_ino_t ino, const char *name,
              const char *value, size_t size, int flags) {
-    dfs_displayEntry(__func__, ino, 0, name);
-    dfs_xattrAdd(req, ino, name, value, size, flags);
+    lc_displayEntry(__func__, ino, 0, name);
+    lc_xattrAdd(req, ino, name, value, size, flags);
 }
 
 /* Get extended attributes of the specified inode */
 static void
-dfs_getxattr(fuse_req_t req, fuse_ino_t ino, const char *name, size_t size) {
+lc_getxattr(fuse_req_t req, fuse_ino_t ino, const char *name, size_t size) {
     struct gfs *gfs = getfs();
 
-    dfs_displayEntry(__func__, ino, 0, name);
+    lc_displayEntry(__func__, ino, 0, name);
     if (!gfs->gfs_xattr_enabled) {
+        //lc_reportError(__func__, __LINE__, ino, ENODATA);
         fuse_reply_err(req, ENODATA);
         return;
     }
@@ -1037,35 +1034,33 @@ dfs_getxattr(fuse_req_t req, fuse_ino_t ino, const char *name, size_t size) {
     /* XXX Figure out a way to avoid invoking this for system.posix_acl_access
      * and system.posix_acl_default.
      */
-    dfs_xattrGet(req, ino, name, size);
+    lc_xattrGet(req, ino, name, size);
 }
 
 /* List extended attributes on a file */
 static void
-dfs_listxattr(fuse_req_t req, fuse_ino_t ino, size_t size) {
-    dfs_displayEntry(__func__, ino, 0, NULL);
-    dfs_xattrList(req, ino, size);
+lc_listxattr(fuse_req_t req, fuse_ino_t ino, size_t size) {
+    lc_displayEntry(__func__, ino, 0, NULL);
+    lc_xattrList(req, ino, size);
 }
 
 /* Remove extended attributes */
 static void
-dfs_removexattr(fuse_req_t req, fuse_ino_t ino, const char *name) {
-    dfs_displayEntry(__func__, ino, 0, name);
-    dfs_xattrRemove(req, ino, name);
-}
+lc_removexattr(fuse_req_t req, fuse_ino_t ino, const char *name) {
+    struct gfs *gfs = getfs();
 
-#if 0
-/* Check access permissions on an inode */
-static void
-dfs_access(fuse_req_t req, fuse_ino_t ino, int mask) {
-    dfs_displayEntry(__func__, 0, ino, NULL);
-    fuse_reply_err(req, 0);
+    lc_displayEntry(__func__, ino, 0, name);
+    if (!gfs->gfs_xattr_enabled) {
+        //lc_reportError(__func__, __LINE__, ino, ENODATA);
+        fuse_reply_err(req, ENODATA);
+        return;
+    }
+    lc_xattrRemove(req, ino, name);
 }
-#endif
 
 /* Create a file */
 static void
-dfs_create(fuse_req_t req, fuse_ino_t parent, const char *name,
+lc_create(fuse_req_t req, fuse_ino_t parent, const char *name,
            mode_t mode, struct fuse_file_info *fi) {
     const struct fuse_ctx *ctx = fuse_req_ctx(req);
     struct fuse_entry_param e;
@@ -1073,9 +1068,9 @@ dfs_create(fuse_req_t req, fuse_ino_t parent, const char *name,
     struct fs *fs;
     int err;
 
-    dfs_statsBegin(&start);
-    dfs_displayEntry(__func__, parent, 0, name);
-    fs = dfs_getfs(parent, false);
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, parent, 0, name);
+    fs = lc_getfs(parent, false);
     err = create(fs, parent, name, S_IFREG | (mode & ~ctx->umask),
                  ctx->uid, ctx->gid, 0, NULL, fi, &e);
     if (err) {
@@ -1083,46 +1078,29 @@ dfs_create(fuse_req_t req, fuse_ino_t parent, const char *name,
     } else {
         fuse_reply_create(req, &e, fi);
     }
-    dfs_statsAdd(fs, DFS_CREATE, err, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(fs, LC_CREATE, err, &start);
+    lc_unlock(fs);
 }
 
-#if 0
-static void
-dfs_getlk(fuse_req_t req, fuse_ino_t ino,
-          struct fuse_file_info *fi, struct flock *lock) {
-    dfs_displayEntry(__func__, ino);
-}
 
+/* IOCTLs for certain operations.  Supported only on layer root directory */
 static void
-dfs_setlk(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi,
-          struct flock *lock, int sleep) {
-    dfs_displayEntry(__func__, ino);
-}
-
-static void
-dfs_bmap(fuse_req_t req, fuse_ino_t ino, size_t blocksize, uint64_t idx) {
-    dfs_displayEntry(__func__, ino);
-}
-#endif
-
-static void
-dfs_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
+lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
           struct fuse_file_info *fi, unsigned flags,
           const void *in_buf, size_t in_bufsz, size_t out_bufsz) {
     char name[in_bufsz + 1], *snap, *parent;
     struct gfs *gfs = getfs();
     int len, op, err = ENOSYS;
 
-    dfs_displayEntry(__func__, ino, cmd, NULL);
+    lc_displayEntry(__func__, ino, cmd, NULL);
     op = _IOC_NR(cmd);
 
     /* XXX For allowing tests to run */
     if ((op == SNAP_CREATE) && (gfs->gfs_snap_root != ino)) {
-        dfs_setSnapshotRoot(gfs, ino);
+        lc_setSnapshotRoot(gfs, ino);
     }
     if (ino != gfs->gfs_snap_root) {
-        //dfs_reportError(__func__, __LINE__, ino, ENOSYS);
+        //lc_reportError(__func__, __LINE__, ino, ENOSYS);
         fuse_reply_err(req, ENOSYS);
         return;
     }
@@ -1143,11 +1121,11 @@ dfs_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
             len = 0;
             snap = name;
         }
-        dfs_newClone(req, gfs, snap, parent, len, op == CLONE_CREATE);
+        lc_newClone(req, gfs, snap, parent, len, op == CLONE_CREATE);
         return;
 
     case SNAP_REMOVE:
-        dfs_removeClone(req, gfs, ino, name);
+        lc_removeClone(req, gfs, ino, name);
         return;
 
     case SNAP_MOUNT:
@@ -1155,27 +1133,20 @@ dfs_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
     case SNAP_UMOUNT:
     case UMOUNT_ALL:
     case CLEAR_STAT:
-        err = dfs_snap(gfs, name, op);
+        err = lc_snap(gfs, name, op);
         break;
     }
     if (err) {
+        lc_reportError(__func__, __LINE__, ino, err);
         fuse_reply_err(req, err);
     } else {
         fuse_reply_ioctl(req, 0, NULL, 0);
     }
 }
 
-#if 0
-static void
-dfs_poll(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi,
-         struct fuse_pollhandle *ph) {
-    dfs_displayEntry(__func__, ino);
-}
-#endif
-
 /* Write provided data to file at the specified offset */
 static void
-dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
+lc_write_buf(fuse_req_t req, fuse_ino_t ino,
               struct fuse_bufvec *bufv, off_t off, struct fuse_file_info *fi) {
     struct fuse_bufvec *dst;
     struct timeval start;
@@ -1185,24 +1156,24 @@ dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
     off_t endoffset;
     struct fs *fs;
 
-    dfs_statsBegin(&start);
-    dfs_displayEntry(__func__, ino, 0, NULL);
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, ino, 0, NULL);
     size = bufv->buf[bufv->idx].size;
     wsize = sizeof(struct fuse_bufvec) +
-           (sizeof(struct fuse_buf) * ((size / DFS_BLOCK_SIZE) + 2));
+           (sizeof(struct fuse_buf) * ((size / LC_BLOCK_SIZE) + 2));
     dst = alloca(wsize);
     memset(dst, 0, wsize);
     endoffset = off + size;
-    fs = dfs_getfs(ino, false);
+    fs = lc_getfs(ino, false);
     if (fs->fs_snap) {
-        dfs_reportError(__func__, __LINE__, ino, EROFS);
+        lc_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
         err = EROFS;
         goto out;
     }
-    inode = dfs_getInode(fs, ino, (struct inode *)fi->fh, true, true);
+    inode = lc_getInode(fs, ino, (struct inode *)fi->fh, true, true);
     if (inode == NULL) {
-        dfs_reportError(__func__, __LINE__, ino, ENOENT);
+        lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
         goto out;
@@ -1213,109 +1184,80 @@ dfs_write_buf(fuse_req_t req, fuse_ino_t ino,
     if (endoffset > inode->i_stat.st_size) {
         inode->i_stat.st_size = endoffset;
     }
-    count = dfs_addPages(inode, off, size, bufv, dst);
-    dfs_updateInodeTimes(inode, false, true, true);
-    dfs_markInodeDirty(inode, true, false, true, false);
-    dfs_inodeUnlock(inode);
+    count = lc_addPages(inode, off, size, bufv, dst);
+    lc_updateInodeTimes(inode, false, true, true);
+    lc_markInodeDirty(inode, true, false, true, false);
+    lc_inodeUnlock(inode);
     if (count) {
-        dfs_blockAlloc(fs, count, true);
+        lc_blockAlloc(fs, count, true);
     }
     fuse_reply_write(req, size);
 
 out:
-    dfs_statsAdd(fs, DFS_WRITE_BUF, err, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(fs, LC_WRITE_BUF, err, &start);
+    lc_unlock(fs);
 }
-
-#if 0
-static void
-dfs_retrieve_reply(fuse_req_t req, void *cookie, fuse_ino_t ino, off_t offset,
-                   struct fuse_bufvec *bufv) {
-    dfs_displayEntry(__func__, ino);
-}
-
-/* Forget multiple inodes */
-static void
-dfs_forget_multi(fuse_req_t req, size_t count,
-                 struct fuse_forget_data *forgets) {
-    dfs_displayEntry(__func__, 0, count, NULL);
-}
-
-static void
-dfs_flock(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi, int op) {
-    dfs_displayEntry(__func__, ino);
-}
-
-static void
-dfs_fallocate(fuse_req_t req, fuse_ino_t ino, int mode,
-              off_t offset, off_t length, struct fuse_file_info *fi) {
-    dfs_displayEntry(__func__, ino);
-}
-#endif
 
 /* Initialize a new file system */
 static void
-dfs_init(void *userdata, struct fuse_conn_info *conn) {
-    printf("%s: capable 0x%x want 0x%x gfs %p\n", __func__,
-           conn->capable, conn->want, userdata);
+lc_init(void *userdata, struct fuse_conn_info *conn) {
     conn->want |= FUSE_CAP_IOCTL_DIR;
 }
 
 /* Destroy a file system */
 static void
-dfs_destroy(void *fsp) {
+lc_destroy(void *fsp) {
     struct gfs *gfs = (struct gfs *)fsp;
 
-    printf("%s: gfs %p\n", __func__, gfs);
-    dfs_unmount(gfs);
+    lc_unmount(gfs);
 }
 
 /* Fuse operations registered with the fuse driver */
-struct fuse_lowlevel_ops dfs_ll_oper = {
-    .init       = dfs_init,
-    .destroy    = dfs_destroy,
-    .lookup     = dfs_lookup,
-    //.forget     = dfs_forget,
-	.getattr	= dfs_getattr,
-    .setattr    = dfs_setattr,
-	.readlink	= dfs_readlink,
-	.mknod  	= dfs_mknod,
-	.mkdir  	= dfs_mkdir,
-	.unlink  	= dfs_unlink,
-	.rmdir		= dfs_rmdir,
-	.symlink	= dfs_symlink,
-    .rename     = dfs_rename,
-    .link       = dfs_link,
-    .open       = dfs_open,
-    .read       = dfs_read,
-    .flush      = dfs_flush,
-    .release    = dfs_release,
-    .fsync      = dfs_fsync,
-    .opendir    = dfs_opendir,
-    .readdir    = dfs_readdir,
-    .releasedir = dfs_releasedir,
-    .fsyncdir   = dfs_fsyncdir,
-    .statfs     = dfs_statfs,
-    .setxattr   = dfs_setxattr,
-    .getxattr   = dfs_getxattr,
-    .listxattr  = dfs_listxattr,
-    .removexattr  = dfs_removexattr,
-    //.access     = dfs_access,
-    .create     = dfs_create,
+struct fuse_lowlevel_ops lc_ll_oper = {
+    .init       = lc_init,
+    .destroy    = lc_destroy,
+    .lookup     = lc_lookup,
+    //.forget     = lc_forget,
+	.getattr	= lc_getattr,
+    .setattr    = lc_setattr,
+	.readlink	= lc_readlink,
+	.mknod  	= lc_mknod,
+	.mkdir  	= lc_mkdir,
+	.unlink  	= lc_unlink,
+	.rmdir		= lc_rmdir,
+	.symlink	= lc_symlink,
+    .rename     = lc_rename,
+    .link       = lc_link,
+    .open       = lc_open,
+    .read       = lc_read,
+    .flush      = lc_flush,
+    .release    = lc_release,
+    .fsync      = lc_fsync,
+    .opendir    = lc_opendir,
+    .readdir    = lc_readdir,
+    .releasedir = lc_releasedir,
+    .fsyncdir   = lc_fsyncdir,
+    .statfs     = lc_statfs,
+    .setxattr   = lc_setxattr,
+    .getxattr   = lc_getxattr,
+    .listxattr  = lc_listxattr,
+    .removexattr  = lc_removexattr,
+    //.access     = lc_access,
+    .create     = lc_create,
 #if 0
-    .getlk      = dfs_getlk,
-    .setlk      = dfs_setlk,
-    .bmap       = dfs_bmap,
+    .getlk      = lc_getlk,
+    .setlk      = lc_setlk,
+    .bmap       = lc_bmap,
 #endif
-    .ioctl      = dfs_ioctl,
+    .ioctl      = lc_ioctl,
 #if 0
-    .poll       = dfs_poll,
+    .poll       = lc_poll,
 #endif
-    .write_buf  = dfs_write_buf,
+    .write_buf  = lc_write_buf,
 #if 0
-    .retrieve_reply = dfs_retrieve_reply,
-    .forget_multi = dfs_forget_multi,
-    .flock      = dfs_flock,
-    .fallocate  = dfs_fallocate,
+    .retrieve_reply = lc_retrieve_reply,
+    .forget_multi = lc_forget_multi,
+    .flock      = lc_flock,
+    .fallocate  = lc_fallocate,
 #endif
 };

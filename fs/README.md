@@ -15,10 +15,10 @@ make install
     On ubuntu, run "sudo apt-get install libgoogle-perftools-dev"
 *  Build this directory by running make.
 *  Download docker sources and add files for this driver.  Build docker and install that.
-*  Mount a device/file - "sudo ./dfs <device> <mnt>".
-*  Stop docker and start docker with arguments "-s dfs -g <mnt>". -g argument is needed only if <mnt> is not /var/lib/docker.
+*  Mount a device/file - "sudo ./lcfs <device> <mnt>".
+*  Stop docker and start docker with arguments "-s lcfs -g <mnt>". -g argument is needed only if <mnt> is not /var/lib/docker.
 *  Run experiments, stop docker, umount - "sudo fusermount -u <mnt>"
-*  For displaying stats, run "cstat <id> [-c]" from <mnt>/dfs directory.  Make
+*  For displaying stats, run "cstat <id> [-c]" from <mnt>/lcfs directory.  Make
 sure fuse mount is running in forground mode (-d/-f option).
 
 Portworx Graphdriver
@@ -125,7 +125,7 @@ User data can be cached in chunks of size 4KB, called pages in block cache.  Pag
 
 Stats
 
-All file operations and ioctl requests are counted and times taken for each of those are tracked for each layer separately.  Those stats can be queried using a command.  Today, it is displayed at the time a layer is unmounted.
+When enabled, all file operations and ioctl requests are counted and times taken for each of those are tracked for each layer separately.  Those stats can be queried using a command.  As of now, it is also displayed at the time a layer is unmounted.
 
 Data placement
 

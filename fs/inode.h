@@ -5,10 +5,10 @@
 
 /* Initial size of the inode hash table */
 /* XXX This needs to consider available memory */
-#define DFS_ICACHE_SIZE 1024
+#define LC_ICACHE_SIZE 1024
 
 /* Current file name size limit */
-#define DFS_FILENAME_MAX 255
+#define LC_FILENAME_MAX 255
 
 /* Inode cache header */
 struct icache {
@@ -141,32 +141,32 @@ struct inode {
 
 /* Set up inode handle using inode number and file system id */
 static inline uint64_t
-dfs_setHandle(uint64_t gindex, ino_t ino) {
-    assert(gindex < DFS_FS_MAX);
+lc_setHandle(uint64_t gindex, ino_t ino) {
+    assert(gindex < LC_MAX);
     return (gindex << 32) | ino;
 }
 
 /* Get the file system id from the file handle */
 static inline uint64_t
-dfs_getFsHandle(uint64_t handle) {
+lc_getFsHandle(uint64_t handle) {
     int gindex = handle >> 32;
 
-    assert(gindex < DFS_FS_MAX);
+    assert(gindex < LC_MAX);
     return gindex;
 }
 
 /* Get inode number corresponding to the file handle */
 static inline ino_t
-dfs_getInodeHandle(uint64_t handle) {
-    if (handle <= DFS_ROOT_INODE) {
-        return DFS_ROOT_INODE;
+lc_getInodeHandle(uint64_t handle) {
+    if (handle <= LC_ROOT_INODE) {
+        return LC_ROOT_INODE;
     }
     return handle & 0xFFFFFFFF;
 }
 
 /* Mark inode dirty for flushing to disk */
 static inline void
-dfs_markInodeDirty(struct inode *inode, bool dirty, bool dir, bool bmap,
+lc_markInodeDirty(struct inode *inode, bool dirty, bool dir, bool bmap,
                    bool xattr) {
     if (dirty) {
         inode->i_dirty = true;
@@ -186,7 +186,7 @@ dfs_markInodeDirty(struct inode *inode, bool dirty, bool dir, bool bmap,
 
 /* Check an inode is dirty or not */
 static inline bool
-dfs_inodeDirty(struct inode *inode) {
+lc_inodeDirty(struct inode *inode) {
     return inode->i_dirty || inode->i_dirdirty || inode->i_bmapdirty ||
            inode->i_xattrdirty;
 }

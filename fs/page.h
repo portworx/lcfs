@@ -3,13 +3,13 @@
 
 #include "includes.h"
 
-#define DFS_PAGE_HOLE       ((uint64_t)-1)
+#define LC_PAGE_HOLE       ((uint64_t)-1)
 
 /* Initial size of the page hash table */
 /* XXX This needs to consider available memory */
-#define DFS_PCACHE_SIZE (1024 * 1024)
-#define DFS_PAGE_MAX    1200000
-static_assert(DFS_PAGE_MAX >= DFS_PCACHE_SIZE, "DFS_PAGE_MAX <= DFS_PCACHE_SIZE");
+#define LC_PCACHE_SIZE (1024 * 1024)
+#define LC_PAGE_MAX    1200000
+static_assert(LC_PAGE_MAX >= LC_PCACHE_SIZE, "LC_PAGE_MAX <= LC_PCACHE_SIZE");
 
 /* Page cache header */
 struct pcache {

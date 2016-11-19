@@ -1,6 +1,9 @@
 #include "includes.h"
 #include <sys/ioctl.h>
 
+/* Display (and optionally clear) stats of a layer.
+ * Issue the command from the layer root directory.
+ */
 int
 main(int argc, char *argv[]) {
     char name[256];

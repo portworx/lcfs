@@ -2,7 +2,7 @@
 
 /* Allocate a new file system structure */
 struct fs *
-dfs_newFs(struct gfs *gfs, bool rw) {
+lc_newFs(struct gfs *gfs, bool rw) {
     struct fs *fs = malloc(sizeof(struct fs));
     time_t t;
 
@@ -14,49 +14,47 @@ dfs_newFs(struct gfs *gfs, bool rw) {
     fs->fs_atime = t;
     pthread_mutex_init(&fs->fs_plock, NULL);
     pthread_rwlock_init(&fs->fs_rwlock, NULL);
-    fs->fs_icache = dfs_icache_init();
-    fs->fs_stats = dfs_statsNew();
+    fs->fs_icache = lc_icache_init();
+    fs->fs_stats = lc_statsNew();
     __sync_add_and_fetch(&gfs->gfs_count, 1);
     return fs;
 }
 
 /* Allocate a new inode block */
 void
-dfs_newInodeBlock(struct gfs *gfs, struct fs *fs) {
+lc_newInodeBlock(struct gfs *gfs, struct fs *fs) {
     if (fs->fs_inodeBlocks != NULL) {
-        assert(fs->fs_super->sb_inodeBlock != DFS_INVALID_BLOCK);
-        //dfs_printf("Writing Inode block at %ld\n", fs->fs_super->sb_inodeBlock);
-        dfs_writeBlock(gfs, fs, fs->fs_inodeBlocks,
+        assert(fs->fs_super->sb_inodeBlock != LC_INVALID_BLOCK);
+        lc_writeBlock(gfs, fs, fs->fs_inodeBlocks,
                        fs->fs_super->sb_inodeBlock);
     } else {
-        posix_memalign((void **)&fs->fs_inodeBlocks, DFS_BLOCK_SIZE,
-                       DFS_BLOCK_SIZE);
+        posix_memalign((void **)&fs->fs_inodeBlocks, LC_BLOCK_SIZE,
+                       LC_BLOCK_SIZE);
     }
-    memset(fs->fs_inodeBlocks, 0, DFS_BLOCK_SIZE);
+    memset(fs->fs_inodeBlocks, 0, LC_BLOCK_SIZE);
     fs->fs_inodeIndex = 0;
     fs->fs_inodeBlocks->ib_next = fs->fs_super->sb_inodeBlock;
-    fs->fs_super->sb_inodeBlock = dfs_blockAlloc(fs, 1, true);
+    fs->fs_super->sb_inodeBlock = lc_blockAlloc(fs, 1, true);
 }
 
 /* Delete a file system */
 void
-dfs_destroyFs(struct fs *fs, bool remove) {
+lc_destroyFs(struct fs *fs, bool remove) {
     struct gfs *gfs = fs->fs_gfs;
     uint64_t count;
 
-    dfs_displayStats(fs);
-    //dfs_printf("dfs_destroyFs: fs %p fs->fs_pcount %ld fs->fs_icount %ld\n", fs, fs->fs_pcount, fs->fs_icount);
+    lc_displayStats(fs);
     assert(fs->fs_dpcount == 0);
     assert(fs->fs_dpages == NULL);
-    count = dfs_destroyInodes(fs, remove);
+    count = lc_destroyInodes(fs, remove);
     if (remove) {
         if (fs->fs_sblock) {
             count++;
         }
-        dfs_blockFree(gfs, count);
+        lc_blockFree(gfs, count);
     }
     if (fs->fs_pcache && (fs->fs_parent == NULL)) {
-        dfs_destroy_pages(gfs, fs->fs_pcache, remove);
+        lc_destroy_pages(gfs, fs->fs_pcache, remove);
     }
     if (fs->fs_ilock && (fs->fs_parent == NULL)) {
         pthread_mutex_destroy(fs->fs_ilock);
@@ -64,7 +62,7 @@ dfs_destroyFs(struct fs *fs, bool remove) {
     }
     pthread_mutex_destroy(&fs->fs_plock);
     pthread_rwlock_destroy(&fs->fs_rwlock);
-    dfs_statsDeinit(fs);
+    lc_statsDeinit(fs);
     if (fs->fs_inodeBlocks) {
         free(fs->fs_inodeBlocks);
     }
@@ -79,7 +77,7 @@ dfs_destroyFs(struct fs *fs, bool remove) {
  * File system is locked in exclusive mode while taking/deleting snapshots.
  */
 void
-dfs_lock(struct fs *fs, bool exclusive) {
+lc_lock(struct fs *fs, bool exclusive) {
     if (exclusive) {
         pthread_rwlock_wrlock(&fs->fs_rwlock);
     } else {
@@ -89,7 +87,7 @@ dfs_lock(struct fs *fs, bool exclusive) {
 
 /* Unlock the file system */
 void
-dfs_unlock(struct fs *fs) {
+lc_unlock(struct fs *fs) {
     pthread_rwlock_unlock(&fs->fs_rwlock);
 }
 
@@ -98,15 +96,15 @@ dfs_unlock(struct fs *fs) {
  * file system.
  */
 int
-dfs_getIndex(struct fs *nfs, ino_t parent, ino_t ino) {
+lc_getIndex(struct fs *nfs, ino_t parent, ino_t ino) {
     struct gfs *gfs = nfs->fs_gfs;
     int i, gindex = nfs->fs_gindex;
     ino_t root;
 
     /* Snapshots are allowed in one directory right now */
     if ((gindex == 0) && gfs->gfs_scount && (parent == gfs->gfs_snap_root)) {
-        root = dfs_getInodeHandle(ino);
-        assert(dfs_globalRoot(ino));
+        root = lc_getInodeHandle(ino);
+        assert(lc_globalRoot(ino));
         for (i = 1; i <= gfs->gfs_scount; i++) {
             if (gfs->gfs_roots[i] == root) {
                 return i;
@@ -118,14 +116,14 @@ dfs_getIndex(struct fs *nfs, ino_t parent, ino_t ino) {
 
 /* Return the file system in which the inode belongs to */
 struct fs *
-dfs_getfs(ino_t ino, bool exclusive) {
-    int gindex = dfs_getFsHandle(ino);
+lc_getfs(ino_t ino, bool exclusive) {
+    int gindex = lc_getFsHandle(ino);
     struct gfs *gfs = getfs();
     struct fs *fs;
 
-    assert(gindex < DFS_FS_MAX);
+    assert(gindex < LC_MAX);
     fs = gfs->gfs_fs[gindex];
-    dfs_lock(fs, exclusive);
+    lc_lock(fs, exclusive);
     assert(fs->fs_gindex == gindex);
     assert(gfs->gfs_roots[gindex] == fs->fs_root);
     return fs;
@@ -133,12 +131,13 @@ dfs_getfs(ino_t ino, bool exclusive) {
 
 /* Add a file system to global list of file systems */
 void
-dfs_addfs(struct fs *fs, struct fs *snap) {
+lc_addfs(struct fs *fs, struct fs *snap) {
     struct gfs *gfs = fs->fs_gfs;
     int i;
 
+    /* Find a free slot and insert the new file system */
     pthread_mutex_lock(&gfs->gfs_lock);
-    for (i = 1; i < DFS_FS_MAX; i++) {
+    for (i = 1; i < LC_MAX; i++) {
         if (gfs->gfs_fs[i] == NULL) {
             fs->fs_gindex = i;
             fs->fs_super->sb_index = i;
@@ -150,7 +149,7 @@ dfs_addfs(struct fs *fs, struct fs *snap) {
             break;
         }
     }
-    assert(i < DFS_FS_MAX);
+    assert(i < LC_MAX);
 
     /* Add this file system to the snapshot list or root file systems list */
     if (snap) {
@@ -158,17 +157,18 @@ dfs_addfs(struct fs *fs, struct fs *snap) {
         snap->fs_next = fs;
         fs->fs_super->sb_nextSnap = snap->fs_super->sb_nextSnap;
         snap->fs_super->sb_nextSnap = fs->fs_sblock;
-        snap->fs_super->sb_flags |= DFS_SUPER_DIRTY;
+        snap->fs_super->sb_flags |= LC_SUPER_DIRTY;
     }
     pthread_mutex_unlock(&gfs->gfs_lock);
 }
 
 /* Remove a file system from the global list */
 void
-dfs_removefs(struct gfs *gfs, struct fs *fs) {
+lc_removefs(struct gfs *gfs, struct fs *fs) {
     assert(fs->fs_snap == NULL);
     assert(fs->fs_gindex > 0);
-    assert(fs->fs_gindex < DFS_FS_MAX);
+    assert(fs->fs_gindex < LC_MAX);
+    assert(gfs->gfs_fs[fs->fs_gindex] == fs);
     pthread_mutex_lock(&gfs->gfs_lock);
     gfs->gfs_fs[fs->fs_gindex] = NULL;
     gfs->gfs_roots[fs->fs_gindex] = 0;
@@ -181,25 +181,29 @@ dfs_removefs(struct gfs *gfs, struct fs *fs) {
 
 /* Remove the file system from the snapshot list */
 void
-dfs_removeSnap(struct gfs *gfs, struct fs *fs) {
+lc_removeSnap(struct gfs *gfs, struct fs *fs) {
     struct fs *pfs, *nfs;
 
     assert(fs->fs_snap == NULL);
     assert(fs->fs_gindex > 0);
-    assert(fs->fs_gindex < DFS_FS_MAX);
+    assert(fs->fs_gindex < LC_MAX);
     pthread_mutex_lock(&gfs->gfs_lock);
     pfs = fs->fs_parent;
     if (pfs && (pfs->fs_snap == fs)) {
+
+        /* Parent points to this layer */
         pfs->fs_snap = fs->fs_next;
         pfs->fs_super->sb_childSnap = fs->fs_super->sb_nextSnap;
-        pfs->fs_super->sb_flags |= DFS_SUPER_DIRTY;
+        pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
     } else {
-        nfs = pfs ? pfs->fs_snap : dfs_getGlobalFs(gfs);
+
+        /* Remove from the common parent list */
+        nfs = pfs ? pfs->fs_snap : lc_getGlobalFs(gfs);
         while (nfs) {
             if (nfs->fs_next == fs) {
                 nfs->fs_next = fs->fs_next;
                 nfs->fs_super->sb_nextSnap = fs->fs_super->sb_nextSnap;
-                nfs->fs_super->sb_flags |= DFS_SUPER_DIRTY;
+                nfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
                 break;
             }
             nfs = nfs->fs_next;
@@ -210,21 +214,21 @@ dfs_removeSnap(struct gfs *gfs, struct fs *fs) {
 
 /* Format a file system by initializing its super block */
 static void
-dfs_format(struct gfs *gfs, struct fs *fs, size_t size) {
-    dfs_superInit(gfs->gfs_super, size, true);
-    dfs_rootInit(fs, fs->fs_root);
+lc_format(struct gfs *gfs, struct fs *fs, size_t size) {
+    lc_superInit(gfs->gfs_super, size, true);
+    lc_rootInit(fs, fs->fs_root);
 }
 
 /* Allocate global file system */
 static struct gfs *
-dfs_gfsAlloc(int fd) {
+lc_gfsAlloc(int fd) {
     struct gfs *gfs = malloc(sizeof(struct gfs));
 
     memset(gfs, 0, sizeof(struct gfs));
-    gfs->gfs_fs = malloc(sizeof(struct fs *) * DFS_FS_MAX);
-    memset(gfs->gfs_fs, 0, sizeof(struct fs *) * DFS_FS_MAX);
-    gfs->gfs_roots = malloc(sizeof(ino_t) * DFS_FS_MAX);
-    memset(gfs->gfs_roots, 0, sizeof(ino_t) * DFS_FS_MAX);
+    gfs->gfs_fs = malloc(sizeof(struct fs *) * LC_MAX);
+    memset(gfs->gfs_fs, 0, sizeof(struct fs *) * LC_MAX);
+    gfs->gfs_roots = malloc(sizeof(ino_t) * LC_MAX);
+    memset(gfs->gfs_roots, 0, sizeof(ino_t) * LC_MAX);
     pthread_mutex_init(&gfs->gfs_lock, NULL);
     gfs->gfs_fd = fd;
     return gfs;
@@ -232,36 +236,44 @@ dfs_gfsAlloc(int fd) {
 
 /* Initialize a file system after reading its super block */
 static struct fs *
-dfs_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
-    struct super *super = dfs_superRead(gfs, block);
+lc_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
+    struct super *super = lc_superRead(gfs, block);
     struct fs *fs;
     int i;
 
-    fs = dfs_newFs(gfs, super->sb_flags & DFS_SUPER_RDWR);
+    fs = lc_newFs(gfs, super->sb_flags & LC_SUPER_RDWR);
     fs->fs_sblock = block;
     fs->fs_super = super;
     fs->fs_root = fs->fs_super->sb_root;
     if (child) {
+
+        /* First child layer of the parent */
         assert(pfs->fs_snap == NULL);
         pfs->fs_snap = fs;
         fs->fs_parent = pfs;
         fs->fs_pcache = pfs->fs_pcache;
         fs->fs_ilock = pfs->fs_ilock;
     } else if (pfs->fs_parent == NULL) {
+
+        /* Base layer */
         assert(pfs->fs_next == NULL);
         pfs->fs_next = fs;
-        fs->fs_pcache = dfs_pcache_init();
+        fs->fs_pcache = lc_pcache_init();
         fs->fs_ilock = malloc(sizeof(pthread_mutex_t));
         pthread_mutex_init(fs->fs_ilock, NULL);
     } else {
+
+        /* Layer with common parent */
         assert(pfs->fs_next == NULL);
         pfs->fs_next = fs;
         fs->fs_pcache = pfs->fs_pcache;
         fs->fs_parent = pfs->fs_parent;
         fs->fs_ilock = pfs->fs_ilock;
     }
+
+    /* Add the layer to the global list */
     i = fs->fs_super->sb_index;
-    assert(i < DFS_FS_MAX);
+    assert(i < LC_MAX);
     assert(gfs->gfs_fs[i] == NULL);
     gfs->gfs_fs[i] = fs;
     gfs->gfs_roots[i] = fs->fs_root;
@@ -269,7 +281,7 @@ dfs_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
         gfs->gfs_scount = i;
     }
     fs->fs_gindex = i;
-    dfs_printf("Added fs with parent %ld root %ld index %d block %ld\n",
+    lc_printf("Added fs with parent %ld root %ld index %d block %ld\n",
                fs->fs_parent ? fs->fs_parent->fs_root : - 1,
                fs->fs_root, fs->fs_gindex, block);
     return fs;
@@ -277,14 +289,14 @@ dfs_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
 
 /* Initialize all file systems from disk */
 static void
-dfs_initSnapshots(struct gfs *gfs, struct fs *pfs) {
+lc_initSnapshots(struct gfs *gfs, struct fs *pfs) {
     struct fs *fs, *nfs = pfs;
     uint64_t block;
 
     /* Initialize all snapshots of the same parent */
     block = pfs->fs_super->sb_nextSnap;
     while (block) {
-        fs = dfs_initfs(gfs, nfs, block, false);
+        fs = lc_initfs(gfs, nfs, block, false);
         nfs = fs;
         block = fs->fs_super->sb_nextSnap;
     }
@@ -294,8 +306,8 @@ dfs_initSnapshots(struct gfs *gfs, struct fs *pfs) {
     while (nfs) {
         block = nfs->fs_super->sb_childSnap;
         if (block) {
-            fs = dfs_initfs(gfs, nfs, block, true);
-            dfs_initSnapshots(gfs, fs);
+            fs = lc_initfs(gfs, nfs, block, true);
+            lc_initSnapshots(gfs, fs);
         }
         nfs = nfs->fs_next;
     }
@@ -303,21 +315,16 @@ dfs_initSnapshots(struct gfs *gfs, struct fs *pfs) {
 
 /* Set up some special inodes on restart */
 static void
-dfs_setupSpecialInodes(struct gfs *gfs, struct fs *fs) {
+lc_setupSpecialInodes(struct gfs *gfs, struct fs *fs) {
     struct inode *dir = fs->fs_rootInode;
     ino_t ino;
 
-    ino = dfs_dirLookup(fs, dir, "tmp");
-    if (ino != DFS_INVALID_INODE) {
-        gfs->gfs_tmp_root = ino;
-        printf("tmp root %ld\n", ino);
-    }
-    ino = dfs_dirLookup(fs, dir, "dfs");
-    if (ino != DFS_INVALID_INODE) {
-        gfs->gfs_snap_rootInode = dfs_getInode(dfs_getGlobalFs(gfs), ino,
+    ino = lc_dirLookup(fs, dir, "lcfs");
+    if (ino != LC_INVALID_INODE) {
+        gfs->gfs_snap_rootInode = lc_getInode(lc_getGlobalFs(gfs), ino,
                                                NULL, false, false);
         if (gfs->gfs_snap_rootInode) {
-            dfs_inodeUnlock(gfs->gfs_snap_rootInode);
+            lc_inodeUnlock(gfs->gfs_snap_rootInode);
         }
         gfs->gfs_snap_root = ino;
         printf("snapshot root %ld\n", ino);
@@ -326,7 +333,7 @@ dfs_setupSpecialInodes(struct gfs *gfs, struct fs *fs) {
 
 /* Mount the device */
 int
-dfs_mount(char *device, struct gfs **gfsp) {
+lc_mount(char *device, struct gfs **gfsp) {
     struct gfs *gfs;
     struct fs *fs;
     size_t size;
@@ -346,52 +353,52 @@ dfs_mount(char *device, struct gfs **gfsp) {
         perror("lseek");
         return errno;
     }
-    gfs = dfs_gfsAlloc(fd);
+    gfs = lc_gfsAlloc(fd);
 
     /* Initialize a file system structure in memory */
     /* XXX Recreate file system after abnormal shutdown for now */
-    fs = dfs_newFs(gfs, true);
-    fs->fs_root = DFS_ROOT_INODE;
-    fs->fs_sblock = DFS_SUPER_BLOCK;
-    fs->fs_pcache = dfs_pcache_init();
+    fs = lc_newFs(gfs, true);
+    fs->fs_root = LC_ROOT_INODE;
+    fs->fs_sblock = LC_SUPER_BLOCK;
+    fs->fs_pcache = lc_pcache_init();
     gfs->gfs_fs[0] = fs;
-    gfs->gfs_roots[0] = DFS_ROOT_INODE;
+    gfs->gfs_roots[0] = LC_ROOT_INODE;
 
     /* Try to find a valid superblock, if not found, format the device */
-    fs->fs_super = dfs_superRead(gfs, fs->fs_sblock);
+    fs->fs_super = lc_superRead(gfs, fs->fs_sblock);
     gfs->gfs_super = fs->fs_super;
-    if ((gfs->gfs_super->sb_magic != DFS_SUPER_MAGIC) ||
-        (gfs->gfs_super->sb_version != DFS_VERSION) ||
-        (gfs->gfs_super->sb_flags & DFS_SUPER_DIRTY)) {
+    if ((gfs->gfs_super->sb_magic != LC_SUPER_MAGIC) ||
+        (gfs->gfs_super->sb_version != LC_VERSION) ||
+        (gfs->gfs_super->sb_flags & LC_SUPER_DIRTY)) {
         printf("Formating %s, size %ld\n", device, size);
-        dfs_format(gfs, fs, size);
+        lc_format(gfs, fs, size);
     } else {
-        if (gfs->gfs_super->sb_flags & DFS_SUPER_DIRTY) {
+        if (gfs->gfs_super->sb_flags & LC_SUPER_DIRTY) {
             printf("Filesystem is dirty\n");
             return EIO;
         }
-        assert(size == (gfs->gfs_super->sb_tblocks * DFS_BLOCK_SIZE));
+        assert(size == (gfs->gfs_super->sb_tblocks * LC_BLOCK_SIZE));
         gfs->gfs_super->sb_mounts++;
         printf("Mounting %s, size %ld nmounts %ld\n",
                device, size, gfs->gfs_super->sb_mounts);
-        dfs_initSnapshots(gfs, fs);
+        lc_initSnapshots(gfs, fs);
         for (i = 0; i <= gfs->gfs_scount; i++) {
             fs = gfs->gfs_fs[i];
             if (fs) {
-                err = dfs_readInodes(gfs, fs);
+                err = lc_readInodes(gfs, fs);
                 if (err != 0) {
                     printf("Reading inodes failed, err %d\n", err);
                     return EIO;
                 }
             }
         }
-        fs = dfs_getGlobalFs(gfs);
-        dfs_setupSpecialInodes(gfs, fs);
+        fs = lc_getGlobalFs(gfs);
+        lc_setupSpecialInodes(gfs, fs);
     }
 
     /* Write out the file system super block */
-    gfs->gfs_super->sb_flags |= DFS_SUPER_DIRTY | DFS_SUPER_RDWR;
-    err = dfs_superWrite(gfs, fs);
+    gfs->gfs_super->sb_flags |= LC_SUPER_DIRTY | LC_SUPER_RDWR;
+    err = lc_superWrite(gfs, fs);
     if (err != 0) {
         printf("Superblock write failed, err %d\n", err);
     } else {
@@ -402,47 +409,46 @@ dfs_mount(char *device, struct gfs **gfsp) {
 
 /* Sync a dirty file system */
 static void
-dfs_sync(struct gfs *gfs, struct fs *fs) {
+lc_sync(struct gfs *gfs, struct fs *fs) {
     int err;
 
-    if (fs && (fs->fs_super->sb_flags & DFS_SUPER_DIRTY)) {
-        dfs_lock(fs, true);
-        dfs_syncInodes(gfs, fs);
-        dfs_flushDirtyPages(gfs, fs);
+    if (fs && (fs->fs_super->sb_flags & LC_SUPER_DIRTY)) {
+        lc_lock(fs, true);
+        lc_syncInodes(gfs, fs);
+        lc_flushDirtyPages(gfs, fs);
 
         /* Flush everything to disk before marking file system clean */
         fsync(gfs->gfs_fd);
-        fs->fs_super->sb_flags &= ~DFS_SUPER_DIRTY;
-        //dfs_printf("Writing out file system superblock for fs %d %ld to block %ld\n", fs->fs_gindex, fs->fs_root, fs->fs_sblock);
-        err = dfs_superWrite(gfs, fs);
+        fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
+        err = lc_superWrite(gfs, fs);
         if (err) {
             printf("Superblock update error %d for fs index %d root %ld\n",
                    err, fs->fs_gindex, fs->fs_root);
         }
-        dfs_unlock(fs);
+        lc_unlock(fs);
     }
 }
 
 /* Free the global file system as part of unmount */
 void
-dfs_unmount(struct gfs *gfs) {
+lc_unmount(struct gfs *gfs) {
     struct fs *fs;
     int i;
 
     pthread_mutex_destroy(&gfs->gfs_lock);
-    dfs_printf("dfs_unmount: gfs_scount %d gfs_pcount %ld\n",
+    lc_printf("lc_unmount: gfs_scount %d gfs_pcount %ld\n",
                gfs->gfs_scount, gfs->gfs_pcount);
     for (i = 1; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
         if (fs) {
-            dfs_sync(gfs, fs);
+            lc_sync(gfs, fs);
         }
     }
     for (i = 0; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
         if (fs) {
-            dfs_sync(gfs, fs);
-            dfs_destroyFs(fs, false);
+            lc_sync(gfs, fs);
+            lc_destroyFs(fs, false);
         }
     }
     assert(gfs->gfs_pcount == 0);
@@ -450,7 +456,7 @@ dfs_unmount(struct gfs *gfs) {
         fsync(gfs->gfs_fd);
         close(gfs->gfs_fd);
     }
-    dfs_displayGlobalStats(gfs);
+    lc_displayGlobalStats(gfs);
     free(gfs->gfs_fs);
     free(gfs->gfs_roots);
     assert(gfs->gfs_count == 0);
@@ -458,10 +464,10 @@ dfs_unmount(struct gfs *gfs) {
 
 /* Write out superblocks of all file systems */
 void
-dfs_umountAll(struct gfs *gfs) {
+lc_umountAll(struct gfs *gfs) {
     int i;
 
     for (i = 1; i <= gfs->gfs_scount; i++) {
-        dfs_sync(gfs, gfs->gfs_fs[i]);
+        lc_sync(gfs, gfs->gfs_fs[i]);
     }
 }

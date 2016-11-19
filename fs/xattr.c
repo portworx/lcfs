@@ -2,7 +2,7 @@
 
 /* Link a new attribute to the inode */
 static void
-dfs_xattrLink(struct inode *inode, const char *name, int len,
+lc_xattrLink(struct inode *inode, const char *name, int len,
               const char *value, size_t size) {
     struct xattr *xattr = malloc(sizeof(struct xattr));
 
@@ -23,7 +23,7 @@ dfs_xattrLink(struct inode *inode, const char *name, int len,
 
 /* Add the specified extended attribute to the inode */
 void
-dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
+lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
              const char *value, size_t size, int flags) {
     struct gfs *gfs = getfs();
     int len = strlen(name);
@@ -33,17 +33,17 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
     struct fs *fs;
     int err = 0;
 
-    dfs_statsBegin(&start);
-    fs = dfs_getfs(ino, false);
+    lc_statsBegin(&start);
+    fs = lc_getfs(ino, false);
     if (fs->fs_snap) {
-        dfs_reportError(__func__, __LINE__, ino, EROFS);
+        lc_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
         err = EROFS;
         goto out;
     }
-    inode = dfs_getInode(fs, ino, NULL, true, true);
+    inode = lc_getInode(fs, ino, NULL, true, true);
     if (inode == NULL) {
-        dfs_reportError(__func__, __LINE__, ino, ENOENT);
+        lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
         goto out;
@@ -51,7 +51,7 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
 
     if (!gfs->gfs_xattr_enabled) {
         gfs->gfs_xattr_enabled = true;
-        dfs_printf("Enabled extended attributes\n");
+        lc_printf("Enabled extended attributes\n");
     }
     xattr = inode->i_xattr;
     while (xattr) {
@@ -61,8 +61,8 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
              * exists already.
              */
             if (flags == XATTR_CREATE) {
-                dfs_inodeUnlock(inode);
-                dfs_reportError(__func__, __LINE__, ino, EEXIST);
+                lc_inodeUnlock(inode);
+                lc_reportError(__func__, __LINE__, ino, EEXIST);
                 fuse_reply_err(req, EEXIST);
                 err = EEXIST;
                 goto out;
@@ -80,9 +80,9 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
                     xattr->x_value = NULL;
                 }
                 xattr->x_size = size;
-                dfs_updateInodeTimes(inode, false, false, true);
-                dfs_markInodeDirty(inode, true, false, false, true);
-                dfs_inodeUnlock(inode);
+                lc_updateInodeTimes(inode, false, false, true);
+                lc_markInodeDirty(inode, true, false, false, true);
+                lc_inodeUnlock(inode);
                 fuse_reply_err(req, 0);
                 goto out;
             }
@@ -94,26 +94,26 @@ dfs_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
      * exist.
      */
     if (flags == XATTR_REPLACE) {
-        dfs_inodeUnlock(inode);
-        dfs_reportError(__func__, __LINE__, ino, ENODATA);
+        lc_inodeUnlock(inode);
+        lc_reportError(__func__, __LINE__, ino, ENODATA);
         fuse_reply_err(req, ENODATA);
         err = ENODATA;
         goto out;
     }
-    dfs_xattrLink(inode, name, len, value, size);
-    dfs_updateInodeTimes(inode, false, false, true);
-    dfs_markInodeDirty(inode, true, false, false, true);
-    dfs_inodeUnlock(inode);
+    lc_xattrLink(inode, name, len, value, size);
+    lc_updateInodeTimes(inode, false, false, true);
+    lc_markInodeDirty(inode, true, false, false, true);
+    lc_inodeUnlock(inode);
     fuse_reply_err(req, 0);
 
 out:
-    dfs_statsAdd(fs, DFS_SETXATTR, err, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(fs, LC_SETXATTR, err, &start);
+    lc_unlock(fs);
 }
 
 /* Get the specified attribute of the inode */
 void
-dfs_xattrGet(fuse_req_t req, ino_t ino, const char *name,
+lc_xattrGet(fuse_req_t req, ino_t ino, const char *name,
              size_t size) {
     struct timeval start;
     struct xattr *xattr;
@@ -121,11 +121,11 @@ dfs_xattrGet(fuse_req_t req, ino_t ino, const char *name,
     struct fs *fs;
     int err = 0;
 
-    dfs_statsBegin(&start);
-    fs = dfs_getfs(ino, false);
-    inode = dfs_getInode(fs, ino, NULL, false, false);
+    lc_statsBegin(&start);
+    fs = lc_getfs(ino, false);
+    inode = lc_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
-        dfs_reportError(__func__, __LINE__, ino, ENOENT);
+        lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
         goto out;
@@ -141,23 +141,23 @@ dfs_xattrGet(fuse_req_t req, ino_t ino, const char *name,
                 fuse_reply_err(req, ERANGE);
                 err = ERANGE;
             }
-            dfs_inodeUnlock(inode);
+            lc_inodeUnlock(inode);
             goto out;
         }
         xattr = xattr->x_next;
     }
-    dfs_inodeUnlock(inode);
+    lc_inodeUnlock(inode);
     fuse_reply_err(req, ENODATA);
     err = ENODATA;
 
 out:
-    dfs_statsAdd(fs, DFS_GETXATTR, err, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(fs, LC_GETXATTR, err, &start);
+    lc_unlock(fs);
 }
 
 /* List the specified attributes of the inode */
 void
-dfs_xattrList(fuse_req_t req, ino_t ino, size_t size) {
+lc_xattrList(fuse_req_t req, ino_t ino, size_t size) {
     struct timeval start;
     struct xattr *xattr;
     struct inode *inode;
@@ -165,22 +165,22 @@ dfs_xattrList(fuse_req_t req, ino_t ino, size_t size) {
     struct fs *fs;
     char *buf;
 
-    dfs_statsBegin(&start);
-    fs = dfs_getfs(ino, false);
-    inode = dfs_getInode(fs, ino, NULL, false, false);
+    lc_statsBegin(&start);
+    fs = lc_getfs(ino, false);
+    inode = lc_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
-        dfs_reportError(__func__, __LINE__, ino, ENOENT);
+        lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
         goto out;
     }
     if (size == 0) {
         fuse_reply_xattr(req, inode->i_xsize);
-        dfs_inodeUnlock(inode);
+        lc_inodeUnlock(inode);
         goto out;
     } else if (size < inode->i_xsize) {
-        dfs_inodeUnlock(inode);
-        dfs_reportError(__func__, __LINE__, ino, ERANGE);
+        lc_inodeUnlock(inode);
+        lc_reportError(__func__, __LINE__, ino, ERANGE);
         fuse_reply_err(req, ERANGE);
         err = ERANGE;
         goto out;
@@ -193,35 +193,35 @@ dfs_xattrList(fuse_req_t req, ino_t ino, size_t size) {
         xattr = xattr->x_next;
     }
     assert(i == inode->i_xsize);
-    dfs_inodeUnlock(inode);
+    lc_inodeUnlock(inode);
     fuse_reply_buf(req, buf, inode->i_xsize);
     free(buf);
 
 out:
-    dfs_statsAdd(fs, DFS_LISTXATTR, err, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(fs, LC_LISTXATTR, err, &start);
+    lc_unlock(fs);
 }
 
 /* Remove the specified extended attribute */
 void
-dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
+lc_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
     struct xattr *xattr, *pxattr = NULL;
     struct timeval start;
     struct inode *inode;
     struct fs *fs;
     int err = 0;
 
-    dfs_statsBegin(&start);
-    fs = dfs_getfs(ino, false);
+    lc_statsBegin(&start);
+    fs = lc_getfs(ino, false);
     if (fs->fs_snap) {
-        dfs_reportError(__func__, __LINE__, ino, EROFS);
+        lc_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
         err = EROFS;
         goto out;
     }
-    inode = dfs_getInode(fs, ino, NULL, true, true);
+    inode = lc_getInode(fs, ino, NULL, true, true);
     if (inode == NULL) {
-        dfs_reportError(__func__, __LINE__, ino, ENOENT);
+        lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
         goto out;
@@ -240,28 +240,28 @@ dfs_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
                 free(xattr->x_value);
             }
             free(xattr);
-            dfs_updateInodeTimes(inode, false, false, true);
-            dfs_markInodeDirty(inode, true, false, false, true);
-            dfs_inodeUnlock(inode);
+            lc_updateInodeTimes(inode, false, false, true);
+            lc_markInodeDirty(inode, true, false, false, true);
+            lc_inodeUnlock(inode);
             fuse_reply_err(req, 0);
             goto out;
         }
         pxattr = xattr;
         xattr = xattr->x_next;
     }
-    dfs_inodeUnlock(inode);
-    //dfs_reportError(__func__, __LINE__, ino, ENODATA);
+    lc_inodeUnlock(inode);
+    //lc_reportError(__func__, __LINE__, ino, ENODATA);
     fuse_reply_err(req, ENODATA);
     err = ENODATA;
 
 out:
-    dfs_statsAdd(fs, DFS_REMOVEXATTR, err, &start);
-    dfs_unlock(fs);
+    lc_statsAdd(fs, LC_REMOVEXATTR, err, &start);
+    lc_unlock(fs);
 }
 
 /* Copy extended attributes of one inode to another */
 void
-dfs_xattrCopy(struct inode *inode, struct inode *parent) {
+lc_xattrCopy(struct inode *inode, struct inode *parent) {
     struct xattr *xattr = parent->i_xattr, *new;
 
     while (xattr) {
@@ -281,35 +281,33 @@ dfs_xattrCopy(struct inode *inode, struct inode *parent) {
     inode->i_xattrdirty = true;
 }
 
-/* Flush extended attribute block */
+/* Allocate a block and flush extended attributes */
 static uint64_t
-dfs_xattrFlushBlock(struct gfs *gfs, struct fs *fs, struct xblock *xblock,
+lc_xattrFlushBlock(struct gfs *gfs, struct fs *fs, struct xblock *xblock,
                     int remain) {
-    uint64_t block = dfs_blockAlloc(fs, 1, true);
+    uint64_t block = lc_blockAlloc(fs, 1, true);
     char *buf;
 
-    //dfs_printf("Writing out extended attr block %ld\n", block);
     if (remain) {
         buf = (char *)xblock;
-        memset(&buf[DFS_BLOCK_SIZE - remain], 0, remain);
+        memset(&buf[LC_BLOCK_SIZE - remain], 0, remain);
     }
-    dfs_writeBlock(gfs, fs, xblock, block);
+    lc_writeBlock(gfs, fs, xblock, block);
     return block;
 }
 
 
 /* Flush extended attributes */
 void
-dfs_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
+lc_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     struct xattr *xattr = inode->i_xattr;
-    uint64_t block = DFS_INVALID_BLOCK;
+    uint64_t block = LC_INVALID_BLOCK;
     struct xblock *xblock = NULL;
     int remain = 0, dsize, nsize;
     size_t size = inode->i_xsize;
     struct dxattr *dxattr;
     char *xbuf = NULL;
 
-    //dfs_printf("Flushing extended attributes of inode %ld xsize %ld\n", inode->i_stat.st_ino, inode->i_xsize);
     if (inode->i_removed) {
         inode->i_xattrdirty = false;
         return;
@@ -319,14 +317,14 @@ dfs_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         dsize = (2 * sizeof(uint16_t)) + nsize + xattr->x_size;
         if (remain < dsize) {
             if (xblock) {
-                block = dfs_xattrFlushBlock(gfs, fs, xblock, remain);
+                block = lc_xattrFlushBlock(gfs, fs, xblock, remain);
             } else {
-                posix_memalign((void **)&xblock, DFS_BLOCK_SIZE,
-                               DFS_BLOCK_SIZE);
+                posix_memalign((void **)&xblock, LC_BLOCK_SIZE,
+                               LC_BLOCK_SIZE);
             }
             xblock->xb_next = block;
             xbuf = (char *)&xblock->xb_attr[0];
-            remain = DFS_BLOCK_SIZE - sizeof(struct xblock);
+            remain = LC_BLOCK_SIZE - sizeof(struct xblock);
         }
         dxattr = (struct dxattr *)xbuf;
         dxattr->dx_nsize = nsize;
@@ -342,7 +340,7 @@ dfs_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         size -= nsize + 1;
     }
     if (xblock) {
-        block = dfs_xattrFlushBlock(gfs, fs, xblock, remain);
+        block = lc_xattrFlushBlock(gfs, fs, xblock, remain);
         free(xblock);
     }
     assert(size == 0);
@@ -355,7 +353,7 @@ dfs_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
 
 /* Read extended attributes */
 void
-dfs_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
+lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
               void *buf) {
     uint64_t block = inode->i_xattrBlock;
     struct xblock *xblock = buf;
@@ -363,18 +361,17 @@ dfs_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
     struct dxattr *dxattr;
     char *xbuf;
 
-    while (block != DFS_INVALID_BLOCK) {
-        //dfs_printf("Reading extended attr block %ld\n", block);
-        dfs_readBlock(gfs, fs, block, xblock);
+    while (block != LC_INVALID_BLOCK) {
+        lc_readBlock(gfs, fs, block, xblock);
         xbuf = (char *)&xblock->xb_attr[0];
-        remain = DFS_BLOCK_SIZE - sizeof(struct xblock);
+        remain = LC_BLOCK_SIZE - sizeof(struct xblock);
         while (remain > (2 * sizeof(uint16_t))) {
             dxattr = (struct dxattr *)xbuf;
             nsize = dxattr->dx_nsize;
             if (nsize == 0) {
                 break;
             }
-            dfs_xattrLink(inode, dxattr->dx_nameValue, nsize,
+            lc_xattrLink(inode, dxattr->dx_nameValue, nsize,
                           &dxattr->dx_nameValue[nsize], dxattr->dx_nvalue);
             dsize = (2 * sizeof(uint16_t)) + nsize + dxattr->dx_nvalue;
             xbuf += dsize;
@@ -386,7 +383,7 @@ dfs_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
 
 /* Free all the extended attributes of an inode */
 void
-dfs_xattrFree(struct inode *inode) {
+lc_xattrFree(struct inode *inode) {
     struct xattr *xattr = inode->i_xattr, *tmp;
 
     while (xattr) {
