@@ -93,9 +93,6 @@ struct inode {
     /* Block map */
     uint64_t *i_bmap;
 
-    /* Blocks allocated to this inode and not inherited */
-    uint64_t i_blks;
-
     /* Size of bmap array */
     uint64_t i_bcount;
 

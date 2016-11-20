@@ -204,6 +204,8 @@ lc_removeClone(fuse_req_t req, struct gfs *gfs, ino_t ino, const char *name) {
     lc_printf("Removing fs with parent %ld root %ld index %d name %s\n",
                fs->fs_parent ? fs->fs_parent->fs_root : - 1,
                fs->fs_root, fs->fs_gindex, name);
+    fs->fs_removed = true;
+    lc_invalidateDirtyPages(gfs, fs);
 
     /* Remove the file system from the snapshot chain */
     lc_removeSnap(gfs, fs);
@@ -236,11 +238,11 @@ out:
         if (!err) {
             fuse_lowlevel_notify_delete(gfs->gfs_ch, ino, root, name,
                                         strlen(name));
+            lc_freeLayerBlocks(gfs, fs, true);
             lc_removefs(gfs, fs);
         }
         lc_unlock(fs);
         if (!err) {
-            lc_invalidateDirtyPages(gfs, fs);
             lc_destroyFs(fs, true);
         }
     }
@@ -259,6 +261,7 @@ lc_snap(struct gfs *gfs, const char *name, enum ioctl_cmd cmd) {
 
     /* Unmount all layers */
     if (cmd == UMOUNT_ALL) {
+        /* XXX Do this in the background */
         lc_umountAll(gfs);
         lc_statsAdd(rfs, LC_CLEANUP, 0, &start);
         return 0;
@@ -267,6 +270,11 @@ lc_snap(struct gfs *gfs, const char *name, enum ioctl_cmd cmd) {
     err = (root == LC_INVALID_INODE) ? ENOENT : 0;
     switch (cmd) {
     case SNAP_MOUNT:
+        if (err == 0) {
+            fs = lc_getfs(root, true);
+            fs->fs_super->sb_flags |= LC_SUPER_DIRTY;
+            lc_unlock(fs);
+        }
         lc_statsAdd(rfs, LC_MOUNT, err, &start);
         break;
 

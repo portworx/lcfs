@@ -30,6 +30,12 @@ struct gfs {
     /* fuse channel */
     struct fuse_chan *gfs_ch;
 
+    /* Free extents */
+    struct extent *gfs_extents;
+
+    /* Lock protecting allocations */
+    pthread_mutex_t gfs_alock;
+
     /* Count of pages in use */
     uint64_t gfs_pcount;
 
@@ -127,6 +133,18 @@ struct fs {
     /* Lock protecting dirty page list */
     pthread_mutex_t fs_plock;
 
+    /* Lock protecting extent lists */
+    pthread_mutex_t fs_alock;
+
+    /* Free extents */
+    struct extent *fs_extents;
+
+    /* Extents allocated */
+    struct extent *fs_aextents;
+
+    /* Extents to be freed */
+    struct extent *fs_fextents;
+
     /* Blocks reserved for metadata */
     uint64_t fs_meta_next;
 
@@ -156,6 +174,9 @@ struct fs {
 
     /* Set if readOnly snapshot */
     bool fs_readOnly;
+
+    /* Set if layer is being removed */
+    bool fs_removed;
 } __attribute__((packed));
 
 /* Check if specified inode belongs in global file system outside any layers */

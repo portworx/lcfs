@@ -61,14 +61,10 @@ create(struct fs *fs, ino_t parent, const char *name, mode_t mode,
 /* Truncate a file */
 static void
 lc_truncate(struct inode *inode, off_t size) {
-    int count;
-
     assert(S_ISREG(inode->i_stat.st_mode));
+
     if (size < inode->i_stat.st_size) {
-        count = lc_truncPages(inode, size, true);
-        if (count) {
-            lc_blockFree(getfs(), count);
-        }
+        lc_truncPages(inode, size, true);
     }
     assert(!inode->i_shared);
     inode->i_stat.st_size = size;
@@ -1152,9 +1148,9 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
     struct timeval start;
     struct inode *inode;
     size_t size, wsize;
-    int count, err = 0;
     off_t endoffset;
     struct fs *fs;
+    int err = 0;
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, ino, 0, NULL);
@@ -1184,13 +1180,10 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
     if (endoffset > inode->i_stat.st_size) {
         inode->i_stat.st_size = endoffset;
     }
-    count = lc_addPages(inode, off, size, bufv, dst);
+    lc_addPages(inode, off, size, bufv, dst);
     lc_updateInodeTimes(inode, false, true, true);
     lc_markInodeDirty(inode, true, false, true, false);
     lc_inodeUnlock(inode);
-    if (count) {
-        lc_blockAlloc(fs, count, true);
-    }
     fuse_reply_write(req, size);
 
 out:

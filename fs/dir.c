@@ -239,8 +239,7 @@ lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
     }
     dir->i_bmapDirBlock = block;
     if (dir->i_stat.st_blocks) {
-        /* XXX Free these blocks */
-        lc_blockFree(gfs, dir->i_stat.st_blocks);
+        /* XXX Free old blocks */
     }
     assert(dir->i_stat.st_nlink == subdir);
     dir->i_stat.st_blocks = count;

@@ -242,12 +242,10 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
 }
 
 /* Free an inode and associated resources */
-static uint64_t
+static void
 lc_freeInode(struct inode *inode, bool remove) {
-    uint64_t count = 0;
-
     if (S_ISREG(inode->i_stat.st_mode)) {
-        count = lc_truncPages(inode, 0, remove);
+        lc_truncPages(inode, 0, remove);
     } else if (S_ISDIR(inode->i_stat.st_mode)) {
         lc_dirFree(inode);
     } else if (S_ISLNK(inode->i_stat.st_mode)) {
@@ -262,7 +260,6 @@ lc_freeInode(struct inode *inode, bool remove) {
     pthread_rwlock_destroy(&inode->i_pglock);
     pthread_rwlock_destroy(&inode->i_rwlock);
     free(inode);
-    return count;
 }
 
 /* Flush a dirty inode to disk */
@@ -356,9 +353,9 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs) {
 }
 
 /* Destroy inodes belong to a file system */
-uint64_t
+void
 lc_destroyInodes(struct fs *fs, bool remove) {
-    uint64_t count = 0, icount = 0, rcount = 0;
+    uint64_t icount = 0, rcount = 0;
     struct inode *inode;
     int i;
 
@@ -374,7 +371,7 @@ lc_destroyInodes(struct fs *fs, bool remove) {
             if (!inode->i_removed) {
                 rcount++;
             }
-            count += lc_freeInode(inode, remove);
+            lc_freeInode(inode, remove);
             icount++;
         }
         assert(fs->fs_icache[i].ic_head == NULL);
@@ -389,7 +386,6 @@ lc_destroyInodes(struct fs *fs, bool remove) {
     if (icount) {
         __sync_sub_and_fetch(&fs->fs_icount, icount);
     }
-    return remove ? count : 0;
 }
 
 /* Clone an inode from a parent layer */

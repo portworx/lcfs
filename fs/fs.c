@@ -13,6 +13,7 @@ lc_newFs(struct gfs *gfs, bool rw) {
     fs->fs_ctime = t;
     fs->fs_atime = t;
     pthread_mutex_init(&fs->fs_plock, NULL);
+    pthread_mutex_init(&fs->fs_alock, NULL);
     pthread_rwlock_init(&fs->fs_rwlock, NULL);
     fs->fs_icache = lc_icache_init();
     fs->fs_stats = lc_statsNew();
@@ -41,18 +42,12 @@ lc_newInodeBlock(struct gfs *gfs, struct fs *fs) {
 void
 lc_destroyFs(struct fs *fs, bool remove) {
     struct gfs *gfs = fs->fs_gfs;
-    uint64_t count;
 
     lc_displayStats(fs);
+    assert(fs->fs_meta_next == 0);
     assert(fs->fs_dpcount == 0);
     assert(fs->fs_dpages == NULL);
-    count = lc_destroyInodes(fs, remove);
-    if (remove) {
-        if (fs->fs_sblock) {
-            count++;
-        }
-        lc_blockFree(gfs, count);
-    }
+    lc_destroyInodes(fs, remove);
     if (fs->fs_pcache && (fs->fs_parent == NULL)) {
         lc_destroy_pages(gfs, fs->fs_pcache, remove);
     }
@@ -61,6 +56,7 @@ lc_destroyFs(struct fs *fs, bool remove) {
         free(fs->fs_ilock);
     }
     pthread_mutex_destroy(&fs->fs_plock);
+    pthread_mutex_destroy(&fs->fs_alock);
     pthread_rwlock_destroy(&fs->fs_rwlock);
     lc_statsDeinit(fs);
     if (fs->fs_inodeBlocks) {
@@ -71,6 +67,7 @@ lc_destroyFs(struct fs *fs, bool remove) {
     assert(fs->fs_pcount == 0);
     __sync_sub_and_fetch(&gfs->gfs_count, 1);
     free(fs);
+    lc_printf("lc_destroyFs: destroyed file system %p\n", fs);
 }
 
 /* Lock a file system in shared while starting a request.
@@ -177,6 +174,7 @@ lc_removefs(struct gfs *gfs, struct fs *fs) {
         gfs->gfs_scount--;
     }
     pthread_mutex_unlock(&gfs->gfs_lock);
+    fs->fs_gindex = -1;
 }
 
 /* Remove the file system from the snapshot list */
@@ -230,6 +228,7 @@ lc_gfsAlloc(int fd) {
     gfs->gfs_roots = malloc(sizeof(ino_t) * LC_MAX);
     memset(gfs->gfs_roots, 0, sizeof(ino_t) * LC_MAX);
     pthread_mutex_init(&gfs->gfs_lock, NULL);
+    pthread_mutex_init(&gfs->gfs_alock, NULL);
     gfs->gfs_fd = fd;
     return gfs;
 }
@@ -395,6 +394,7 @@ lc_mount(char *device, struct gfs **gfsp) {
         fs = lc_getGlobalFs(gfs);
         lc_setupSpecialInodes(gfs, fs);
     }
+    lc_blockAllocatorInit(gfs);
 
     /* Write out the file system super block */
     gfs->gfs_super->sb_flags |= LC_SUPER_DIRTY | LC_SUPER_RDWR;
@@ -416,6 +416,10 @@ lc_sync(struct gfs *gfs, struct fs *fs) {
         lc_lock(fs, true);
         lc_syncInodes(gfs, fs);
         lc_flushDirtyPages(gfs, fs);
+        lc_freeLayerBlocks(gfs, fs, false);
+        if (fs == lc_getGlobalFs(gfs)) {
+            lc_updateBlockMap(gfs);
+        }
 
         /* Flush everything to disk before marking file system clean */
         fsync(gfs->gfs_fd);
@@ -435,31 +439,48 @@ lc_unmount(struct gfs *gfs) {
     struct fs *fs;
     int i;
 
-    pthread_mutex_destroy(&gfs->gfs_lock);
     lc_printf("lc_unmount: gfs_scount %d gfs_pcount %ld\n",
                gfs->gfs_scount, gfs->gfs_pcount);
+    pthread_mutex_lock(&gfs->gfs_lock);
+
+    /* Flush dirty data before destroying file systems since layers may be out
+     * of order in the file system table and parent layers should not be
+     * destroyed before child layers.
+     */
     for (i = 1; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
-        if (fs) {
+        if (fs && !fs->fs_removed) {
+            pthread_mutex_unlock(&gfs->gfs_lock);
             lc_sync(gfs, fs);
+            pthread_mutex_lock(&gfs->gfs_lock);
         }
     }
     for (i = 0; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
-        if (fs) {
-            lc_sync(gfs, fs);
+        if (fs && !fs->fs_removed) {
+            pthread_mutex_unlock(&gfs->gfs_lock);
+            if (i == 0) {
+                lc_sync(gfs, fs);
+            }
             lc_destroyFs(fs, false);
+            pthread_mutex_lock(&gfs->gfs_lock);
+        } else {
+            assert(i != 0);
         }
     }
+    pthread_mutex_unlock(&gfs->gfs_lock);
+    assert(gfs->gfs_count == 0);
     assert(gfs->gfs_pcount == 0);
     if (gfs->gfs_fd) {
         fsync(gfs->gfs_fd);
         close(gfs->gfs_fd);
     }
     lc_displayGlobalStats(gfs);
+    lc_blockAllocatorDeinit(gfs);
     free(gfs->gfs_fs);
     free(gfs->gfs_roots);
-    assert(gfs->gfs_count == 0);
+    pthread_mutex_destroy(&gfs->gfs_lock);
+    pthread_mutex_destroy(&gfs->gfs_alock);
 }
 
 /* Write out superblocks of all file systems */

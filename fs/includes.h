@@ -25,6 +25,7 @@
 #include "layout.h"
 #include "fs.h"
 #include "inode.h"
+#include "block.h"
 #include "page.h"
 #include "stats.h"
 
@@ -35,8 +36,12 @@ int lc_writeBlock(struct gfs *gfs, struct fs *fs, void *buf, off_t block);
 int lc_writeBlocks(struct gfs *gfs, struct fs *fs,
                     struct iovec *iov, int iovcnt, off_t block);
 
-uint64_t lc_blockAlloc(struct fs *fs, int count, bool meta);
-void lc_blockFree(struct gfs *gfs, uint64_t count);
+void lc_blockAllocatorInit(struct gfs *gfs);
+void lc_blockAllocatorDeinit(struct gfs *gfs);
+void lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool remove);
+uint64_t lc_blockAlloc(struct fs *fs, uint64_t count, bool meta);
+void lc_blockFree(struct fs *fs, uint64_t block, uint64_t count);
+void lc_updateBlockMap(struct gfs *gfs);
 
 struct super *lc_superRead(struct gfs *gfs, uint64_t block);
 int lc_superWrite(struct gfs *gfs, struct fs *fs);
@@ -60,7 +65,7 @@ struct icache *lc_icache_init();
 void lc_icache_deinit(struct icache *icache);
 ino_t lc_inodeAlloc(struct fs *fs);
 int lc_readInodes(struct gfs *gfs, struct fs *fs);
-uint64_t lc_destroyInodes(struct fs *fs, bool remove);
+void lc_destroyInodes(struct fs *fs, bool remove);
 struct inode *lc_getInode(struct fs *fs, ino_t ino, struct inode *handle,
                            bool copy, bool exclusive);
 struct inode *lc_inodeInit(struct fs *fs, mode_t mode,
@@ -96,7 +101,7 @@ void lc_inodeBmapAdd(struct inode *inode, uint64_t page, uint64_t block);
 
 struct pcache *lc_pcache_init();
 void lc_destroy_pages(struct gfs *gfs, struct pcache *pcache, bool remove);
-int lc_addPages(struct inode *inode, off_t off, size_t size,
+void lc_addPages(struct inode *inode, off_t off, size_t size,
                  struct fuse_bufvec *bufv, struct fuse_bufvec *dst);
 int lc_readPages(struct inode *inode, off_t soffset, off_t endoffset,
                   struct page **pages, struct fuse_bufvec *bufv);
@@ -104,7 +109,7 @@ void lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void lc_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
                   void *buf);
-uint64_t lc_truncPages(struct inode *inode, off_t size, bool remove);
+void lc_truncPages(struct inode *inode, off_t size, bool remove);
 void lc_flushDirtyPages(struct gfs *gfs, struct fs *fs);
 void lc_releaseReadPages(struct gfs *gfs, struct fs *fs, struct page **pages,
                           uint64_t pcount);

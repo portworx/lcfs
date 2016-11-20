@@ -183,10 +183,9 @@ retry:
         }
         pthread_mutex_unlock(&page->p_dlock);
     }
-    assert(page->p_refCount >= 1);
+    assert(page->p_refCount > 0);
     assert(!read || page->p_data);
     assert(!read || page->p_dvalid);
-    assert(read || !page->p_dvalid);
     assert(page->p_block == block);
     if (hit) {
         __sync_add_and_fetch(&gfs->gfs_phit, 1);
@@ -207,6 +206,7 @@ lc_getPageNew(struct gfs *gfs, struct fs *fs, uint64_t block, char *data) {
     }
     page->p_data = data;
     page->p_dvalid = 1;
+    page->p_hitCount = 0;
     return page;
 }
 
@@ -220,7 +220,6 @@ lc_destroy_pages(struct gfs *gfs, struct pcache *pcache, bool remove) {
         pcount = 0;
         pthread_mutex_lock(&pcache[i].pc_lock);
         while ((page = pcache[i].pc_head)) {
-            assert(page->p_refCount == 0);
             pcache[i].pc_head = page->p_cnext;
             page->p_block = LC_INVALID_BLOCK;
             page->p_cnext = NULL;
@@ -304,12 +303,11 @@ lc_inodeAllocPages(struct inode *inode) {
 }
 
 /* Add or update existing page of the inode with new data provided */
-static int
+static void
 lc_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
             int *incr, struct fuse_bufvec *bufv) {
     struct page *bpage;
     char *data, *pdata;
-    bool new = false;
     uint64_t block;
 
     assert(pg < inode->i_pcount);
@@ -357,17 +355,16 @@ lc_addPage(struct inode *inode, uint64_t pg, off_t poffset, size_t psize,
         lc_insertDirtyPage(inode, pg, pdata);
     }
     lc_updateVec(pdata, bufv, poffset, psize);
-    return new;
 }
 
 /* Update pages of a file with provided data */
-int
+void
 lc_addPages(struct inode *inode, off_t off, size_t size,
              struct fuse_bufvec *bufv, struct fuse_bufvec *dst) {
     size_t wsize = size, psize;
-    int count = 0, added = 0;
     uint64_t page, spage;
     off_t poffset;
+    int added = 0;
 
     assert(S_ISREG(inode->i_stat.st_mode));
 
@@ -394,7 +391,7 @@ lc_addPages(struct inode *inode, off_t off, size_t size,
         if (psize > wsize) {
             psize = wsize;
         }
-        count += lc_addPage(inode, page, poffset, psize, &added, dst);
+        lc_addPage(inode, page, poffset, psize, &added, dst);
         page++;
         wsize -= psize;
     }
@@ -403,8 +400,6 @@ lc_addPages(struct inode *inode, off_t off, size_t size,
     if (added) {
         __sync_add_and_fetch(&inode->i_fs->fs_pcount, added);
     }
-    inode->i_blks += count;
-    return count;
 }
 
 /* Read specified pages of a file */
@@ -679,10 +674,11 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
 }
 
 /* Truncate pages beyond the new size of the file */
-uint64_t
+void
 lc_truncPages(struct inode *inode, off_t size, bool remove) {
     uint64_t pg = size / LC_BLOCK_SIZE, lpage;
-    uint64_t i, bcount = 0, tcount = 0, pcount;
+    uint64_t i, bcount = 0, pcount;
+    struct fs *fs = inode->i_fs;
     bool truncated = false;
     struct page *bpage;
     int freed = 0;
@@ -699,7 +695,7 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
         assert(inode->i_page == 0);
         assert(!inode->i_shared);
         inode->i_pcache = true;
-        return 0;
+        return;
     }
 
     /* Copy bmap list before changing it */
@@ -716,7 +712,7 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
             inode->i_pcount = 0;
             inode->i_bcount = 0;
             inode->i_bmap = NULL;
-            return 0;
+            return;
         }
         lc_copyBmap(inode);
     }
@@ -732,6 +728,7 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
         } else {
             if (inode->i_extentLength > pg) {
                 bcount = inode->i_extentLength - pg;
+                lc_blockFree(fs, inode->i_extentBlock + pg, bcount);
                 inode->i_extentLength = pg;
             }
             if (inode->i_extentLength == 0) {
@@ -741,9 +738,7 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
     }
 
     /* Remove blockmap entries past the new size */
-    if (remove && (size == 0)) {
-        bcount = inode->i_stat.st_blocks;
-    } else if (remove && inode->i_bcount) {
+    if (remove && inode->i_bcount) {
         assert(inode->i_stat.st_blocks <= inode->i_bcount);
         for (i = pg; i < inode->i_bcount; i++) {
             if (inode->i_bmap[i] == 0) {
@@ -758,17 +753,18 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
                 if (pdata == NULL) {
                     posix_memalign((void **)&pdata,
                                    LC_BLOCK_SIZE, LC_BLOCK_SIZE);
-                    __sync_add_and_fetch(&inode->i_fs->fs_pcount, 1);
-                    bpage = lc_getPage(inode->i_fs, inode->i_bmap[i], true);
+                    __sync_add_and_fetch(&fs->fs_pcount, 1);
+                    bpage = lc_getPage(fs, inode->i_bmap[i], true);
                     memcpy(pdata, bpage->p_data, poffset);
-                    lc_releasePage(inode->i_fs->fs_gfs, inode->i_fs, bpage,
-                                    true);
+                    lc_releasePage(fs->fs_gfs, fs, bpage,
+                                   true);
                     lc_insertDirtyPage(inode, pg, pdata);
                 }
                 memset(&pdata[poffset], 0, LC_BLOCK_SIZE - poffset);
-                inode->i_blks++;
                 truncated = true;
             } else {
+                /* XXX Try to coalesce this */
+                lc_blockFree(fs, inode->i_bmap[i], 1);
                 inode->i_bmap[i] = 0;
                 bcount++;
             }
@@ -798,7 +794,7 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
         }
     }
     if (freed) {
-        pcount = __sync_fetch_and_sub(&inode->i_fs->fs_pcount, freed);
+        pcount = __sync_fetch_and_sub(&fs->fs_pcount, freed);
         assert(pcount >= freed);
     }
 
@@ -822,10 +818,5 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
         assert(inode->i_pcount == 0);
         assert(inode->i_bcount == 0);
         inode->i_pcache = true;
-
-        /* XXX Does not work after remount */
-        tcount = inode->i_blks;
-        inode->i_blks = 0;
     }
-    return tcount;
 }
