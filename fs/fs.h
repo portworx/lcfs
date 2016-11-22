@@ -114,8 +114,20 @@ struct fs {
      */
     pthread_rwlock_t fs_rwlock;
 
+    /* Pages for writing inodes */
+    struct page *fs_inodePages;
+
+    /* Pending count of inode pages to be written out */
+    uint64_t fs_inodePagesCount;
+
     /* Current list of inode blocks */
     struct iblock *fs_inodeBlocks;
+
+    /* Pages for writing out inode block map */
+    struct page *fs_inodeBlockPages;
+
+    /* Count of pages linked from fs_inodeBlockPages pending flushing */
+    uint64_t fs_inodeBlockCount;
 
     /* Creation time in seconds since Epoch */
     time_t fs_ctime;
@@ -145,11 +157,20 @@ struct fs {
     /* Extents to be freed */
     struct extent *fs_fextents;
 
-    /* Blocks reserved for metadata */
-    uint64_t fs_meta_next;
+    /* Metadata extents to be freed */
+    struct extent *fs_mextents;
+
+    /* Blocks reserved for Inodes */
+    uint64_t fs_blockInodes;
+
+    /* Count of blocks reserved for Inodes */
+    uint64_t fs_blockInodesCount;
 
     /* Blocks reserved for metadata */
-    uint64_t fs_meta_count;
+    uint64_t fs_blockMeta;
+
+    /* Count of blocks reserved for metadata */
+    uint64_t fs_blockMetaCount;
 
     /* Stats for this file system */
     struct stats *fs_stats;
@@ -159,6 +180,12 @@ struct fs {
 
     /* Count of pages */
     uint64_t fs_pcount;
+
+    /* Count of blocks allocated */
+    uint64_t fs_blocks;
+
+    /* Count of blocks freed */
+    uint64_t fs_freed;
 
     /* Number of reads */
     uint64_t fs_reads;

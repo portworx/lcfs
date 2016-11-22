@@ -283,28 +283,48 @@ lc_xattrCopy(struct inode *inode, struct inode *parent) {
 
 /* Allocate a block and flush extended attributes */
 static uint64_t
-lc_xattrFlushBlock(struct gfs *gfs, struct fs *fs, struct xblock *xblock,
-                    int remain) {
-    uint64_t block = lc_blockAlloc(fs, 1, true);
+lc_xattrFlushBlocks(struct gfs *gfs, struct fs *fs,
+                    struct page *fpage, uint64_t pcount) {
+    uint64_t block, count = pcount;
+    struct page *page = fpage;
+    struct xblock *xblock;
+
+    block = lc_blockAlloc(fs, pcount, true);
+    while (page) {
+        count--;
+        lc_addPageBlockHash(gfs, fs, page, block + count);
+        xblock = (struct xblock *)page->p_data;
+        xblock->xb_next = (page == fpage) ? LC_INVALID_BLOCK :
+                                            block + count + 1;
+        page = page->p_dnext;
+    }
+    assert(count == 0);
+    lc_flushPageCluster(gfs, fs, fpage, pcount);
+    return block;
+}
+
+/* Add a new page to the list of extended attributes blocks */
+static struct page *
+lc_xattrAddPage(struct gfs *gfs, struct fs *fs, struct xblock *xblock,
+                int remain, struct page *page) {
     char *buf;
 
     if (remain) {
         buf = (char *)xblock;
         memset(&buf[LC_BLOCK_SIZE - remain], 0, remain);
     }
-    lc_writeBlock(gfs, fs, xblock, block);
-    return block;
+    return lc_getPageNoBlock(gfs, fs, (char *)xblock, page);
 }
-
 
 /* Flush extended attributes */
 void
 lc_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
+    uint64_t block = LC_INVALID_BLOCK, pcount = 0;
     struct xattr *xattr = inode->i_xattr;
-    uint64_t block = LC_INVALID_BLOCK;
     struct xblock *xblock = NULL;
     int remain = 0, dsize, nsize;
     size_t size = inode->i_xsize;
+    struct page *page = NULL;
     struct dxattr *dxattr;
     char *xbuf = NULL;
 
@@ -317,14 +337,12 @@ lc_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         dsize = (2 * sizeof(uint16_t)) + nsize + xattr->x_size;
         if (remain < dsize) {
             if (xblock) {
-                block = lc_xattrFlushBlock(gfs, fs, xblock, remain);
-            } else {
-                posix_memalign((void **)&xblock, LC_BLOCK_SIZE,
-                               LC_BLOCK_SIZE);
+                page = lc_xattrAddPage(gfs, fs, xblock, remain, page);
             }
-            xblock->xb_next = block;
+            posix_memalign((void **)&xblock, LC_BLOCK_SIZE, LC_BLOCK_SIZE);
             xbuf = (char *)&xblock->xb_attr[0];
             remain = LC_BLOCK_SIZE - sizeof(struct xblock);
+            pcount++;
         }
         dxattr = (struct dxattr *)xbuf;
         dxattr->dx_nsize = nsize;
@@ -340,8 +358,11 @@ lc_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         size -= nsize + 1;
     }
     if (xblock) {
-        block = lc_xattrFlushBlock(gfs, fs, xblock, remain);
-        free(xblock);
+        page = lc_xattrAddPage(gfs, fs, xblock, remain, page);
+    }
+    if (pcount) {
+        block = lc_xattrFlushBlocks(gfs, fs, page, pcount);
+        lc_addExtent(&inode->i_xattrExtents, block, pcount);
     }
     assert(size == 0);
 
@@ -362,6 +383,7 @@ lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
     char *xbuf;
 
     while (block != LC_INVALID_BLOCK) {
+        lc_addExtent(&inode->i_xattrExtents, block, 1);
         lc_readBlock(gfs, fs, block, xblock);
         xbuf = (char *)&xblock->xb_attr[0];
         remain = LC_BLOCK_SIZE - sizeof(struct xblock);

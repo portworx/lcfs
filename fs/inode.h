@@ -10,6 +10,9 @@
 /* Current file name size limit */
 #define LC_FILENAME_MAX 255
 
+/* Attempt to cluster these many inodes together */
+#define LC_INODE_CLUSTER_SIZE   LC_CLUSTER_SIZE
+
 /* Inode cache header */
 struct icache {
 
@@ -104,6 +107,12 @@ struct inode {
 
     /* Size of extended attributes */
     size_t i_xsize;
+
+    /* Extents for bmap or directory blocks */
+    struct extent *i_bmapDirExtents;
+
+    /* Extents for bmap or directory blocks */
+    struct extent *i_xattrExtents;
 
     /* Set if file is marked for removal */
     bool i_removed;

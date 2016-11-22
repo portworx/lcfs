@@ -4,7 +4,7 @@
 static inline uint64_t lc_getFsHandle(uint64_t fh);
 static inline ino_t lc_getInodeHandle(uint64_t fh);
 
-#if 1
+#if 0
 #define lc_printf  printf
 #else
 #define lc_printf(a...)

@@ -2,10 +2,6 @@
 
 static char lc_zPage[LC_BLOCK_SIZE];
 
-#define LC_PAGECACHE_SIZE  32
-#define LC_CLUSTER_SIZE    256
-#define LC_PAGE_MAX        1200000
-
 /* Return the hash number for the block number provided */
 static inline int
 lc_pageBlockHash(uint64_t block) {
@@ -124,6 +120,34 @@ lc_releaseReadPages(struct gfs *gfs, struct fs *fs,
     }
 }
 
+/* Add a page to page block hash list */
+void
+lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
+                    struct page *page, uint64_t block) {
+    struct pcache *pcache = fs->fs_pcache;
+    int hash = lc_pageBlockHash(block);
+    struct page *cpage;
+
+    assert(page->p_block == LC_INVALID_BLOCK);
+    page->p_block = block;
+    pthread_mutex_lock(&pcache[hash].pc_lock);
+    cpage = pcache[hash].pc_head;
+
+    /* Invalidate previous instance of this block if there is one */
+    while (cpage) {
+        if (cpage->p_block == block) {
+            assert(cpage->p_refCount == 0);
+            cpage->p_block = LC_INVALID_BLOCK;
+            break;
+        }
+        cpage = cpage->p_cnext;
+    }
+    page->p_cnext = pcache[hash].pc_head;
+    pcache[hash].pc_head = page;
+    pcache[hash].pc_pcount++;
+    pthread_mutex_unlock(&pcache[hash].pc_lock);
+}
+
 /* Lookup a page in the block hash */
 static struct page *
 lc_getPage(struct fs *fs, uint64_t block, bool read) {
@@ -207,6 +231,29 @@ lc_getPageNew(struct gfs *gfs, struct fs *fs, uint64_t block, char *data) {
     page->p_data = data;
     page->p_dvalid = 1;
     page->p_hitCount = 0;
+    return page;
+}
+
+/* Get a page with no block associated with */
+struct page *
+lc_getPageNoBlock(struct gfs *gfs, struct fs *fs, char *data,
+                  struct page *prev) {
+    struct page *page = lc_newPage(gfs);
+
+    page->p_data = data;
+    page->p_dvalid = 1;
+    page->p_dnext = prev;
+    return page;
+}
+
+struct page *
+lc_getPageNewData(struct fs *fs, uint64_t block) {
+    struct page *page;
+
+    page = lc_getPage(fs, block, false);
+    if (page->p_data == NULL) {
+        posix_memalign((void **)&page->p_data, LC_BLOCK_SIZE, LC_BLOCK_SIZE);
+    }
     return page;
 }
 
@@ -455,9 +502,9 @@ lc_readPages(struct inode *inode, off_t soffset, off_t endoffset,
 }
 
 /* Flush a cluster of pages */
-static void
+void
 lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
-                     struct page *head, uint64_t count) {
+                    struct page *head, uint64_t count) {
     struct page *page = head;
     struct iovec *iovec;
     uint64_t block = 0;
@@ -579,6 +626,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     assert(S_ISREG(inode->i_stat.st_mode));
     assert(!inode->i_shared);
     if ((inode->i_page == NULL) || (inode->i_stat.st_size == 0)) {
+        assert(inode->i_page == NULL);
         return;
     }
     lpage = (inode->i_stat.st_size + LC_BLOCK_SIZE - 1) / LC_BLOCK_SIZE;
@@ -692,7 +740,7 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
         assert(inode->i_stat.st_size == 0);
         assert(inode->i_bcount == 0);
         assert(inode->i_pcount == 0);
-        assert(inode->i_page == 0);
+        assert(inode->i_page == NULL);
         assert(!inode->i_shared);
         inode->i_pcache = true;
         return;

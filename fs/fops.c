@@ -1121,7 +1121,7 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
         return;
 
     case SNAP_REMOVE:
-        lc_removeClone(req, gfs, ino, name);
+        lc_removeClone(req, gfs, name);
         return;
 
     case SNAP_MOUNT:

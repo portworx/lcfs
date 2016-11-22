@@ -182,19 +182,14 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
                 break;
             }
             if (iblock == LC_INVALID_BLOCK) {
-                /* XXX If there is a snapshot, add an inode with
-                 * i_removed set.
-                 */
+                assert(fs->fs_parent == NULL);
                 continue;
             }
             //lc_printf("Reading inode from block %ld\n", iblock);
             lc_readBlock(gfs, fs, iblock, ibuf);
             inode = ibuf;
-            if (inode->i_stat.st_ino == 0) {
-
-                /* XXX If there is a snapshot, add an inode with
-                 * i_removed set.
-                 */
+            if ((inode->i_stat.st_mode == 0) && (fs->fs_parent == NULL)) {
+                lc_freeLayerMetaBlocks(fs, iblock, 1);
                 fs->fs_inodeBlocks->ib_blks[i] = LC_INVALID_BLOCK;
                 flush = true;
                 continue;
@@ -205,6 +200,9 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
             /* XXX zero out just necessary fields */
             memset(inode, 0, sizeof(struct inode));
             memcpy(inode, ibuf, sizeof(struct dinode));
+            if (inode->i_stat.st_mode == 0) {
+                inode->i_removed = true;
+            }
             inode->i_block = iblock;
             pthread_rwlock_init(&inode->i_rwlock, NULL);
             pthread_rwlock_init(&inode->i_pglock, NULL);
@@ -243,9 +241,11 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
 
 /* Free an inode and associated resources */
 static void
-lc_freeInode(struct inode *inode, bool remove) {
+lc_freeInode(struct fs *fs, struct inode *inode, bool remove) {
+    bool dealloc = remove && (fs == lc_getGlobalFs(fs->fs_gfs));
+
     if (S_ISREG(inode->i_stat.st_mode)) {
-        lc_truncPages(inode, 0, remove);
+        lc_truncPages(inode, 0, false);
     } else if (S_ISDIR(inode->i_stat.st_mode)) {
         lc_dirFree(inode);
     } else if (S_ISLNK(inode->i_stat.st_mode)) {
@@ -259,14 +259,28 @@ lc_freeInode(struct inode *inode, bool remove) {
     lc_xattrFree(inode);
     pthread_rwlock_destroy(&inode->i_pglock);
     pthread_rwlock_destroy(&inode->i_rwlock);
+    lc_blockFreeExtents(fs, inode->i_bmapDirExtents, dealloc);
+    lc_blockFreeExtents(fs, inode->i_xattrExtents, dealloc);
+    if (dealloc && (inode->i_block != LC_INVALID_BLOCK)) {
+        lc_freeLayerMetaBlocks(fs, inode->i_block, 1);
+    }
     free(inode);
+}
+
+/* Flush dirty inodes */
+static void
+lc_flushInodePages(struct gfs *gfs, struct fs *fs) {
+    //lc_printf("lc_flushInodePages: flushing %ld inodes\n", fs->fs_inodePagesCount);
+    lc_flushPageCluster(gfs, fs, fs->fs_inodePages, fs->fs_inodePagesCount);
+    fs->fs_inodePages = NULL;
+    fs->fs_inodePagesCount = 0;
 }
 
 /* Flush a dirty inode to disk */
 int
 lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
+    struct page *page = NULL;
     bool written = false;
-    char *buf;
 
     assert(inode->i_fs == fs);
     if (inode->i_xattrdirty) {
@@ -283,35 +297,58 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
 
     /* Write out a dirty inode */
     if (inode->i_dirty) {
-        if (!inode->i_removed) {
+        if (inode->i_removed) {
+            assert(inode->i_extentLength == 0);
+
+            /* Free metadata blocks allocated to the inode */
+            lc_blockFreeExtents(fs, inode->i_bmapDirExtents, true);
+            inode->i_bmapDirBlock = LC_INVALID_BLOCK;
+            lc_blockFreeExtents(fs, inode->i_xattrExtents, true);
+            inode->i_xattrBlock = LC_INVALID_BLOCK;
+        }
+
+        /* Need to write removed inode when the layer has parent since child
+         * layers should not bypass the removed layer after remount.
+         */
+        if (fs->fs_parent || !inode->i_removed ||
+            (inode->i_block != LC_INVALID_BLOCK)) {
             if (inode->i_block == LC_INVALID_BLOCK) {
                 if ((fs->fs_inodeBlocks == NULL) ||
                     (fs->fs_inodeIndex >= LC_IBLOCK_MAX)) {
                     lc_newInodeBlock(gfs, fs);
                 }
-                inode->i_block = lc_blockAlloc(fs, 1, true);
+                if (fs->fs_blockInodesCount == 0) {
+                    fs->fs_blockInodesCount = LC_INODE_CLUSTER_SIZE;
+                    fs->fs_blockInodes = lc_blockAlloc(fs,
+                                                       fs->fs_blockInodesCount,
+                                                       true);
+                }
+                inode->i_block = fs->fs_blockInodes++;
+                fs->fs_blockInodesCount--;
                 fs->fs_inodeBlocks->ib_blks[fs->fs_inodeIndex++] = inode->i_block;
             }
+            written = true;
+
             //lc_printf("Writing inode %ld to block %ld\n", inode->i_stat.st_ino, inode->i_block);
-            posix_memalign((void **)&buf, LC_BLOCK_SIZE, LC_BLOCK_SIZE);
-            memcpy(buf, &inode->i_dinode, sizeof(struct dinode));
+            page = lc_getPageNewData(fs, inode->i_block);
+            memcpy(page->p_data, &inode->i_dinode, sizeof(struct dinode));
+            if (inode->i_removed) {
+                ((struct inode *)page->p_data)->i_stat.st_mode = 0;
+            }
             if (S_ISLNK(inode->i_stat.st_mode)) {
-                memcpy(&buf[sizeof(struct dinode)], inode->i_target,
+                memcpy(&page->p_data[sizeof(struct dinode)], inode->i_target,
                        inode->i_stat.st_size);
             }
-            lc_writeBlock(gfs, fs, buf, inode->i_block);
-            free(buf);
-            written = true;
-        } else {
-            /* XXX Record the fact the inode is removed for layers so that
-             * lookups will fail after remount.
-             */
-            if (inode->i_block != LC_INVALID_BLOCK) {
-                inode->i_stat.st_ino = 0;
-                posix_memalign((void **)&buf, LC_BLOCK_SIZE, LC_BLOCK_SIZE);
-                memcpy(buf, &inode->i_dinode, sizeof(struct dinode));
-                lc_writeBlock(gfs, fs, buf, inode->i_block);
-                free(buf);
+            page->p_dvalid = 1;
+            if (fs->fs_inodePages &&
+                (page->p_block != (fs->fs_inodePages->p_block + 1))) {
+                lc_flushInodePages(gfs, fs);
+            }
+            page->p_dnext = fs->fs_inodePages;
+            fs->fs_inodePages = page;
+            fs->fs_inodePagesCount++;
+            if (fs->fs_inodePagesCount >= LC_CLUSTER_SIZE) {
+                lc_flushInodePages(gfs, fs);
             }
         }
         inode->i_dirty = false;
@@ -339,14 +376,10 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs) {
             inode = inode->i_cnext;
         }
     }
-    if (fs->fs_inodeBlocks != NULL) {
-        assert(fs->fs_super->sb_inodeBlock != LC_INVALID_BLOCK);
-        lc_writeBlock(gfs, fs, fs->fs_inodeBlocks,
-                      fs->fs_super->sb_inodeBlock);
-        free(fs->fs_inodeBlocks);
-        fs->fs_inodeBlocks = NULL;
-        fs->fs_inodeIndex = 0;
+    if (fs->fs_inodePagesCount) {
+        lc_flushInodePages(gfs, fs);
     }
+    lc_flushInodeBlocks(gfs, fs);
     if (count) {
         __sync_add_and_fetch(&fs->fs_iwrite, count);
     }
@@ -371,7 +404,7 @@ lc_destroyInodes(struct fs *fs, bool remove) {
             if (!inode->i_removed) {
                 rcount++;
             }
-            lc_freeInode(inode, remove);
+            lc_freeInode(fs, inode, remove);
             icount++;
         }
         assert(fs->fs_icache[i].ic_head == NULL);

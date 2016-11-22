@@ -2,16 +2,13 @@
 
 /* Given a snapshot name, find its root inode */
 ino_t
-lc_getRootIno(struct fs *fs, ino_t parent, const char *name) {
-    struct inode *dir;
+lc_getRootIno(struct fs *fs, const char *name) {
+    ino_t parent = fs->fs_gfs->gfs_snap_root;
+    struct inode *dir = fs->fs_gfs->gfs_snap_rootInode;
     ino_t root;
 
     /* Lookup parent directory in global root file system */
-    dir = lc_getInode(fs, parent, NULL, false, false);
-    if (dir == NULL) {
-        lc_reportError(__func__, __LINE__, parent, ENOENT);
-        return LC_INVALID_INODE;
-    }
+    lc_inodeLock(dir, false);
     root = lc_dirLookup(fs, dir, name);
     lc_inodeUnlock(dir);
     if (root == LC_INVALID_INODE) {
@@ -49,7 +46,7 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     /* Get the global file system */
     rfs = lc_getfs(LC_ROOT_INODE, false);
     if (!base) {
-        pinum = lc_getRootIno(rfs, gfs->gfs_snap_root, pname);
+        pinum = lc_getRootIno(rfs, pname);
         if (pinum == LC_INVALID_INODE) {
             err = ENOENT;
             goto out;
@@ -71,12 +68,7 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     if (rw) {
         fs->fs_super->sb_flags |= LC_SUPER_RDWR;
     }
-    fs->fs_sblock = lc_blockAlloc(fs, 1, true);
     lc_rootInit(fs, fs->fs_root);
-    if (err != 0) {
-        lc_reportError(__func__, __LINE__, root, err);
-        goto out;
-    }
     if (base) {
         fs->fs_pcache = lc_pcache_init();
         fs->fs_ilock = malloc(sizeof(pthread_mutex_t));
@@ -112,32 +104,21 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
         lc_dirCopy(dir);
         lc_inodeUnlock(pdir);
         lc_inodeUnlock(dir);
-
-        /* Link this file system a snapshot of the parent */
-        nfs = pfs->fs_snap;
-        if (nfs == NULL) {
-            pfs->fs_snap = fs;
-            pfs->fs_super->sb_childSnap = fs->fs_sblock;
-            pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
-        }
         fs->fs_parent = pfs;
         fs->fs_pcache = pfs->fs_pcache;
         fs->fs_ilock = pfs->fs_ilock;
+        nfs = pfs->fs_snap;
     }
 
     /* Add this file system to global list of file systems */
-    lc_addfs(fs, nfs);
+    lc_addfs(fs, pfs, nfs);
     if (pfs) {
         lc_unlock(pfs);
     }
 
     /* Add the new directory to the parent directory */
-    pdir = lc_getInode(rfs, gfs->gfs_snap_root, NULL, false, true);
-    if (pdir == NULL) {
-        err = ENOENT;
-        lc_reportError(__func__, __LINE__, gfs->gfs_snap_root, err);
-        goto out;
-    }
+    pdir = gfs->gfs_snap_rootInode;
+    lc_inodeLock(pdir, true);
     lc_dirAdd(pdir, root, S_IFDIR, name, strlen(name));
     pdir->i_stat.st_nlink++;
     lc_markInodeDirty(pdir, true, true, false, false);
@@ -158,6 +139,7 @@ out:
     if (fs) {
         lc_unlock(fs);
         if (err) {
+            fs->fs_removed = true;
             lc_destroyFs(fs, true);
         }
     }
@@ -165,7 +147,8 @@ out:
 
 /* Remove a layer */
 void
-lc_removeClone(fuse_req_t req, struct gfs *gfs, ino_t ino, const char *name) {
+lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name) {
+    ino_t ino = gfs->gfs_snap_root;
     struct fs *fs = NULL, *rfs;
     struct timeval start;
     struct inode *pdir;
@@ -174,9 +157,8 @@ lc_removeClone(fuse_req_t req, struct gfs *gfs, ino_t ino, const char *name) {
 
     /* Find the inode in snapshot directory */
     lc_statsBegin(&start);
-    assert(ino == gfs->gfs_snap_root);
     rfs = lc_getfs(LC_ROOT_INODE, false);
-    root = lc_getRootIno(rfs, ino, name);
+    root = lc_getRootIno(rfs, name);
     if (root == LC_INVALID_INODE) {
         err = ENOENT;
         goto out;
@@ -205,18 +187,16 @@ lc_removeClone(fuse_req_t req, struct gfs *gfs, ino_t ino, const char *name) {
                fs->fs_parent ? fs->fs_parent->fs_root : - 1,
                fs->fs_root, fs->fs_gindex, name);
     fs->fs_removed = true;
+    fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
     lc_invalidateDirtyPages(gfs, fs);
 
     /* Remove the file system from the snapshot chain */
     lc_removeSnap(gfs, fs);
+    lc_blockFree(fs, fs->fs_sblock, 1);
 
     /* Remove the root directory */
-    pdir = lc_getInode(rfs, ino, NULL, false, true);
-    if (pdir == NULL) {
-        err = ENOENT;
-        lc_reportError(__func__, __LINE__, ino, err);
-        goto out;
-    }
+    pdir = gfs->gfs_snap_rootInode;
+    lc_inodeLock(pdir, true);
     lc_dirRemoveInode(pdir, fs->fs_root);
     assert(pdir->i_stat.st_nlink > 2);
     pdir->i_stat.st_nlink--;
@@ -266,7 +246,7 @@ lc_snap(struct gfs *gfs, const char *name, enum ioctl_cmd cmd) {
         lc_statsAdd(rfs, LC_CLEANUP, 0, &start);
         return 0;
     }
-    root = lc_getRootIno(rfs, gfs->gfs_snap_root, name);
+    root = lc_getRootIno(rfs, name);
     err = (root == LC_INVALID_INODE) ? ENOENT : 0;
     switch (cmd) {
     case SNAP_MOUNT:

@@ -11,6 +11,10 @@
 #define LC_PAGE_MAX    1200000
 static_assert(LC_PAGE_MAX >= LC_PCACHE_SIZE, "LC_PAGE_MAX <= LC_PCACHE_SIZE");
 
+#define LC_PAGECACHE_SIZE  32
+#define LC_CLUSTER_SIZE    256
+#define LC_PAGE_MAX        1200000
+
 /* Page cache header */
 struct pcache {
 

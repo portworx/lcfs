@@ -21,21 +21,56 @@ lc_newFs(struct gfs *gfs, bool rw) {
     return fs;
 }
 
+/* Flush inode block map pages */
+void
+lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs) {
+    uint64_t count, block, pcount = fs->fs_inodeBlockCount;
+    struct page *page, *fpage;
+    struct iblock *iblock;
+
+    if (pcount == 0) {
+        return;
+    }
+    if (fs->fs_inodeBlocks != NULL) {
+        fs->fs_inodeBlockPages = lc_getPageNoBlock(gfs, fs,
+                                                   (char *)fs->fs_inodeBlocks,
+                                                   fs->fs_inodeBlockPages);
+        fs->fs_inodeBlocks = NULL;
+    }
+    block = lc_blockAlloc(fs, pcount, true);
+    fpage = fs->fs_inodeBlockPages;
+    page = fpage;
+    count = pcount;
+    while (page) {
+        count--;
+        lc_addPageBlockHash(gfs, fs, page, block + count);
+        iblock = (struct iblock *)page->p_data;
+        iblock->ib_next = (page == fpage) ?
+                          fs->fs_super->sb_inodeBlock : block + count + 1;
+        page = page->p_dnext;
+    }
+    assert(count == 0);
+    lc_flushPageCluster(gfs, fs, fpage, pcount);
+    fs->fs_inodeBlockCount = 0;
+    fs->fs_inodeBlockPages = NULL;
+    fs->fs_super->sb_inodeBlock = block;
+}
+
 /* Allocate a new inode block */
 void
 lc_newInodeBlock(struct gfs *gfs, struct fs *fs) {
-    if (fs->fs_inodeBlocks != NULL) {
-        assert(fs->fs_super->sb_inodeBlock != LC_INVALID_BLOCK);
-        lc_writeBlock(gfs, fs, fs->fs_inodeBlocks,
-                       fs->fs_super->sb_inodeBlock);
-    } else {
-        posix_memalign((void **)&fs->fs_inodeBlocks, LC_BLOCK_SIZE,
-                       LC_BLOCK_SIZE);
+    if (fs->fs_inodeBlockCount >= LC_CLUSTER_SIZE) {
+        lc_flushInodeBlocks(gfs, fs);
     }
+    if (fs->fs_inodeBlocks != NULL) {
+        fs->fs_inodeBlockPages = lc_getPageNoBlock(gfs, fs,
+                                                   (char *)fs->fs_inodeBlocks,
+                                                   fs->fs_inodeBlockPages);
+    }
+    posix_memalign((void **)&fs->fs_inodeBlocks, LC_BLOCK_SIZE, LC_BLOCK_SIZE);
     memset(fs->fs_inodeBlocks, 0, LC_BLOCK_SIZE);
     fs->fs_inodeIndex = 0;
-    fs->fs_inodeBlocks->ib_next = fs->fs_super->sb_inodeBlock;
-    fs->fs_super->sb_inodeBlock = lc_blockAlloc(fs, 1, true);
+    fs->fs_inodeBlockCount++;
 }
 
 /* Delete a file system */
@@ -44,13 +79,26 @@ lc_destroyFs(struct fs *fs, bool remove) {
     struct gfs *gfs = fs->fs_gfs;
 
     lc_displayStats(fs);
-    assert(fs->fs_meta_next == 0);
+    assert(fs->fs_blockInodesCount == 0);
+    assert(fs->fs_blockMetaCount == 0);
     assert(fs->fs_dpcount == 0);
     assert(fs->fs_dpages == NULL);
+    assert(fs->fs_inodePagesCount == 0);
+    assert(fs->fs_inodePages == NULL);
+    assert(fs->fs_inodeBlockCount == 0);
+    assert(fs->fs_inodeBlockPages == NULL);
+    assert(fs->fs_inodeBlocks == NULL);
+    assert(fs->fs_extents == NULL);
+    assert(fs->fs_aextents == NULL);
+    assert(fs->fs_fextents == NULL);
     lc_destroyInodes(fs, remove);
     if (fs->fs_pcache && (fs->fs_parent == NULL)) {
         lc_destroy_pages(gfs, fs->fs_pcache, remove);
     }
+    if (fs->fs_mextents) {
+        lc_processFreedMetaBlocks(fs);
+    }
+    assert(fs->fs_mextents == NULL);
     if (fs->fs_ilock && (fs->fs_parent == NULL)) {
         pthread_mutex_destroy(fs->fs_ilock);
         free(fs->fs_ilock);
@@ -59,15 +107,15 @@ lc_destroyFs(struct fs *fs, bool remove) {
     pthread_mutex_destroy(&fs->fs_alock);
     pthread_rwlock_destroy(&fs->fs_rwlock);
     lc_statsDeinit(fs);
-    if (fs->fs_inodeBlocks) {
-        free(fs->fs_inodeBlocks);
-    }
-    free(fs->fs_super);
     assert(fs->fs_icount == 0);
     assert(fs->fs_pcount == 0);
     __sync_sub_and_fetch(&gfs->gfs_count, 1);
-    free(fs);
-    lc_printf("lc_destroyFs: destroyed file system %p\n", fs);
+    if (fs != lc_getGlobalFs(gfs)) {
+        free(fs->fs_super);
+        free(fs);
+    }
+    lc_printf("lc_destroyFs: fs %p, blocks allocated %ld freed %ld\n",
+              fs, fs->fs_blocks, fs->fs_freed);
 }
 
 /* Lock a file system in shared while starting a request.
@@ -128,7 +176,7 @@ lc_getfs(ino_t ino, bool exclusive) {
 
 /* Add a file system to global list of file systems */
 void
-lc_addfs(struct fs *fs, struct fs *snap) {
+lc_addfs(struct fs *fs, struct fs *pfs, struct fs *snap) {
     struct gfs *gfs = fs->fs_gfs;
     int i;
 
@@ -147,6 +195,7 @@ lc_addfs(struct fs *fs, struct fs *snap) {
         }
     }
     assert(i < LC_MAX);
+    fs->fs_sblock = lc_blockAlloc(fs, 1, true);
 
     /* Add this file system to the snapshot list or root file systems list */
     if (snap) {
@@ -155,6 +204,10 @@ lc_addfs(struct fs *fs, struct fs *snap) {
         fs->fs_super->sb_nextSnap = snap->fs_super->sb_nextSnap;
         snap->fs_super->sb_nextSnap = fs->fs_sblock;
         snap->fs_super->sb_flags |= LC_SUPER_DIRTY;
+    } else if (pfs) {
+        pfs->fs_snap = fs;
+        pfs->fs_super->sb_childSnap = fs->fs_sblock;
+        pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
     }
     pthread_mutex_unlock(&gfs->gfs_lock);
 }
@@ -416,10 +469,6 @@ lc_sync(struct gfs *gfs, struct fs *fs) {
         lc_lock(fs, true);
         lc_syncInodes(gfs, fs);
         lc_flushDirtyPages(gfs, fs);
-        lc_freeLayerBlocks(gfs, fs, false);
-        if (fs == lc_getGlobalFs(gfs)) {
-            lc_updateBlockMap(gfs);
-        }
 
         /* Flush everything to disk before marking file system clean */
         fsync(gfs->gfs_fd);
@@ -455,20 +504,25 @@ lc_unmount(struct gfs *gfs) {
             pthread_mutex_lock(&gfs->gfs_lock);
         }
     }
-    for (i = 0; i <= gfs->gfs_scount; i++) {
+    for (i = 1; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
         if (fs && !fs->fs_removed) {
             pthread_mutex_unlock(&gfs->gfs_lock);
-            if (i == 0) {
-                lc_sync(gfs, fs);
-            }
+            lc_freeLayerBlocks(gfs, fs, false);
             lc_destroyFs(fs, false);
             pthread_mutex_lock(&gfs->gfs_lock);
-        } else {
-            assert(i != 0);
         }
     }
     pthread_mutex_unlock(&gfs->gfs_lock);
+    fs = lc_getGlobalFs(gfs);
+
+    /* Combine sync and destroy */
+    lc_sync(gfs, fs);
+    lc_freeLayerBlocks(gfs, fs, false);
+    lc_destroyFs(fs, false);
+    lc_updateBlockMap(gfs);
+    lc_blockAllocatorDeinit(gfs);
+    lc_superWrite(gfs, fs);
     assert(gfs->gfs_count == 0);
     assert(gfs->gfs_pcount == 0);
     if (gfs->gfs_fd) {
@@ -476,7 +530,8 @@ lc_unmount(struct gfs *gfs) {
         close(gfs->gfs_fd);
     }
     lc_displayGlobalStats(gfs);
-    lc_blockAllocatorDeinit(gfs);
+    free(fs->fs_super);
+    free(fs);
     free(gfs->gfs_fs);
     free(gfs->gfs_roots);
     pthread_mutex_destroy(&gfs->gfs_lock);

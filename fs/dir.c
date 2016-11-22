@@ -152,6 +152,7 @@ lc_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf) {
 
     assert(S_ISDIR(dir->i_stat.st_mode));
     while (block != LC_INVALID_BLOCK) {
+        lc_addExtent(&dir->i_bmapDirExtents, block, 1);
         lc_readBlock(gfs, fs, block, dblock);
         dbuf = (char *)&dblock->db_dirent[0];
         remain = LC_BLOCK_SIZE - sizeof(struct dblock);
@@ -176,17 +177,37 @@ lc_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf) {
 
 /* Allocate a directory block and flush to disk */
 static uint64_t
-lc_dirFlushBlock(struct gfs *gfs, struct fs *fs, struct dblock *dblock,
-                  int remain) {
-    uint64_t block = lc_blockAlloc(fs, 1, true);
+lc_dirFlushBlocks(struct gfs *gfs, struct fs *fs,
+                  struct page *fpage, uint64_t pcount) {
+    uint64_t block, count = pcount;
+    struct page *page = fpage;
+    struct dblock *dblock;
+
+    block = lc_blockAlloc(fs, pcount, true);
+    while (page) {
+        count--;
+        lc_addPageBlockHash(gfs, fs, page, block + count);
+        dblock = (struct dblock *)page->p_data;
+        dblock->db_next = (page == fpage) ? LC_INVALID_BLOCK :
+                                            block + count + 1;
+        page = page->p_dnext;
+    }
+    assert(count == 0);
+    lc_flushPageCluster(gfs, fs, fpage, pcount);
+    return block;
+}
+
+/* Add a new page to the list of directory blocks */
+static struct page *
+lc_dirAddPage(struct gfs *gfs, struct fs *fs, struct dblock *dblock,
+              int remain, struct page *page) {
     char *buf;
 
     if (remain) {
         buf = (char *)dblock;
         memset(&buf[LC_BLOCK_SIZE - remain], 0, remain);
     }
-    lc_writeBlock(gfs, fs, dblock, block);
-    return block;
+    return lc_getPageNoBlock(gfs, fs, (char *)dblock, page);
 }
 
 /* Flush directory entries */
@@ -196,6 +217,7 @@ lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
     struct dirent *dirent = dir->i_dirent;
     int remain = 0, dsize, subdir = 2;
     struct dblock *dblock = NULL;
+    struct page *page = NULL;
     struct ddirent *ddirent;
     char *dbuf = NULL;
 
@@ -208,13 +230,9 @@ lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
         dsize = LC_MIN_DIRENT_SIZE + dirent->di_size;
         if (remain < dsize) {
             if (dblock) {
-                block = lc_dirFlushBlock(gfs, fs, dblock, remain);
+                page = lc_dirAddPage(gfs, fs, dblock, remain, page);
             }
-            if (dblock == NULL) {
-                posix_memalign((void **)&dblock, LC_BLOCK_SIZE,
-                               LC_BLOCK_SIZE);
-            }
-            dblock->db_next = block;
+            posix_memalign((void **)&dblock, LC_BLOCK_SIZE, LC_BLOCK_SIZE);
             dbuf = (char *)&dblock->db_dirent[0];
             remain = LC_BLOCK_SIZE - sizeof(struct dblock);
             count++;
@@ -234,8 +252,11 @@ lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
         dirent = dirent->di_next;
     }
     if (dblock) {
-        block = lc_dirFlushBlock(gfs, fs, dblock, remain);
-        free(dblock);
+        page = lc_dirAddPage(gfs, fs, dblock, remain, page);
+    }
+    if (count) {
+        block = lc_dirFlushBlocks(gfs, fs, page, count);
+        lc_addExtent(&dir->i_bmapDirExtents, block, count);
     }
     dir->i_bmapDirBlock = block;
     if (dir->i_stat.st_blocks) {
@@ -272,7 +293,7 @@ lc_removeTree(struct fs *fs, struct inode *dir) {
     struct dirent *dirent = dir->i_dirent;
 
     while (dirent != NULL) {
-        lc_printf("lc_removeTree: dir %ld nlink %ld removing %s inode %ld dir %d\n", dir->i_stat.st_ino, dir->i_stat.st_nlink, dirent->di_name, dirent->di_ino, S_ISDIR(dirent->di_mode));
+        //lc_printf("lc_removeTree: dir %ld nlink %ld removing %s inode %ld dir %d\n", dir->i_stat.st_ino, dir->i_stat.st_nlink, dirent->di_name, dirent->di_ino, S_ISDIR(dirent->di_mode));
         dremove(fs, dir, dirent->di_name, dirent->di_ino,
                 S_ISDIR(dirent->di_mode));
         dirent = dir->i_dirent;

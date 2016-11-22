@@ -91,25 +91,34 @@ lc_copyBmap(struct inode *inode) {
 
 /* Allocate a bmap block and flush to disk */
 static uint64_t
-lc_flushBmapBlock(struct gfs *gfs, struct fs *fs,
-                   struct bmapBlock *bblock, int count) {
-    uint64_t block = lc_blockAlloc(fs, 1, true);
+lc_flushBmapBlocks(struct gfs *gfs, struct fs *fs,
+                   struct page *fpage, uint64_t pcount) {
+    uint64_t count = pcount, block;
+    struct page *page = fpage;
+    struct bmapBlock *bblock;
 
-    if (count < LC_BMAP_BLOCK) {
-        memset(&bblock->bb_bmap[count], 0,
-               (LC_BMAP_BLOCK - count) * sizeof(struct bmap));
+    block = lc_blockAlloc(fs, pcount, true);
+    while (page) {
+        count--;
+        lc_addPageBlockHash(gfs, fs, page, block + count);
+        bblock = (struct bmapBlock *)page->p_data;
+        bblock->bb_next = (page == fpage) ?
+                          LC_INVALID_BLOCK : block + count + 1;
+        page = page->p_dnext;
     }
-    lc_writeBlock(gfs, fs, bblock, block);
+    assert(count == 0);
+    lc_flushPageCluster(gfs, fs, fpage, pcount);
     return block;
 }
 
 /* Flush blockmap of an inode */
 void
 lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
+    uint64_t i, bcount = 0, pcount = 0;
     uint64_t block = LC_INVALID_BLOCK;
     struct bmapBlock *bblock = NULL;
     int count = LC_BMAP_BLOCK;
-    uint64_t i, bcount = 0;
+    struct page *page = NULL;
     struct bmap *bmap;
 
     assert(S_ISREG(inode->i_stat.st_mode));
@@ -136,12 +145,10 @@ lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         }
         if (count >= LC_BMAP_BLOCK) {
             if (bblock) {
-                block = lc_flushBmapBlock(gfs, fs, bblock, count);
-            } else {
-                posix_memalign((void **)&bblock, LC_BLOCK_SIZE,
-                               LC_BLOCK_SIZE);
+                page = lc_getPageNoBlock(gfs, fs, (char *)bblock, page);
             }
-            bblock->bb_next = block;
+            posix_memalign((void **)&bblock, LC_BLOCK_SIZE, LC_BLOCK_SIZE);
+            pcount++;
             count = 0;
         }
         bcount++;
@@ -150,8 +157,14 @@ lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         bmap->b_block = inode->i_bmap[i];
     }
     if (bblock) {
-        block = lc_flushBmapBlock(gfs, fs, bblock, count);
-        free(bblock);
+        if (count < LC_BMAP_BLOCK) {
+            bblock->bb_bmap[count].b_block = 0;
+        }
+        page = lc_getPageNoBlock(gfs, fs, (char *)bblock, page);
+    }
+    if (pcount) {
+        block = lc_flushBmapBlocks(gfs, fs, page, pcount);
+        lc_addExtent(&inode->i_bmapDirExtents, block, pcount);
     }
     inode->i_stat.st_blocks = bcount;
 
@@ -188,6 +201,7 @@ lc_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
     block = inode->i_bmapDirBlock;
     while (block != LC_INVALID_BLOCK) {
         //lc_printf("Reading bmap block %ld\n", block);
+        lc_addExtent(&inode->i_bmapDirExtents, block, 1);
         lc_readBlock(gfs, fs, block, bblock);
         for (i = 0; i < LC_BMAP_BLOCK; i++) {
             bmap = &bblock->bb_bmap[i];
