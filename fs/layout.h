@@ -31,6 +31,9 @@ struct super {
     /* Root inode */
     uint64_t sb_root;
 
+    /* Allocated/free extent list */
+    uint64_t sb_extentBlock;
+
     /* Inode start block */
     uint64_t sb_inodeBlock;
 
@@ -57,9 +60,6 @@ struct super {
     /* Count of blocks in use */
     uint64_t sb_blocks;
 
-    /* Next block available for allocation */
-    uint64_t sb_nblock;
-
     /* Count of inodes in use */
     uint64_t sb_inodes;
 
@@ -73,6 +73,35 @@ struct super {
     uint8_t  sb_pad[LC_BLOCK_SIZE - 100];
 } __attribute__((packed));
 static_assert(sizeof(struct super) == LC_BLOCK_SIZE, "superblock size != LC_BLOCK_SIZE");
+
+/* Extent entry */
+struct dextent {
+    /* Starting block */
+    uint64_t de_start;
+
+    /* Count of blocks */
+    uint64_t de_count;
+};
+static_assert(sizeof(struct dextent) == 16, "dextent size != 16");
+
+/* Number of extent entries in a block */
+#define LC_EXTENT_BLOCK ((LC_BLOCK_SIZE / sizeof(struct dextent)) - 1)
+
+/* Extent block structure */
+struct dextentBlock {
+    /* Magic number */
+    uint32_t de_magic;
+
+    /* Checksum */
+    uint32_t de_crc;
+
+    /* Next block */
+    uint64_t de_next;
+
+    /* Extent entries in a block */
+    struct dextent de_extents[LC_EXTENT_BLOCK];
+};
+static_assert(sizeof(struct dextentBlock) == LC_BLOCK_SIZE, "dextent size != LC_BLOCK_SIZE");
 
 /* Disk inode structure */
 struct dinode {

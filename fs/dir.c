@@ -152,7 +152,7 @@ lc_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf) {
 
     assert(S_ISDIR(dir->i_stat.st_mode));
     while (block != LC_INVALID_BLOCK) {
-        lc_addExtent(&dir->i_bmapDirExtents, block, 1);
+        lc_addExtent(gfs, &dir->i_bmapDirExtents, block, 1);
         lc_readBlock(gfs, fs, block, dblock);
         dbuf = (char *)&dblock->db_dirent[0];
         remain = LC_BLOCK_SIZE - sizeof(struct dblock);
@@ -256,12 +256,9 @@ lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
     }
     if (count) {
         block = lc_dirFlushBlocks(gfs, fs, page, count);
-        lc_addExtent(&dir->i_bmapDirExtents, block, count);
+        lc_replaceMetaBlocks(fs, &dir->i_bmapDirExtents, block, count);
     }
     dir->i_bmapDirBlock = block;
-    if (dir->i_stat.st_blocks) {
-        /* XXX Free old blocks */
-    }
     assert(dir->i_stat.st_nlink == subdir);
     dir->i_stat.st_blocks = count;
     dir->i_stat.st_size = count * LC_BLOCK_SIZE;

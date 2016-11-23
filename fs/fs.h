@@ -160,6 +160,9 @@ struct fs {
     /* Metadata extents to be freed */
     struct extent *fs_mextents;
 
+    /* Blocks currently used to store extents */
+    struct extent *fs_dextents;
+
     /* Blocks reserved for Inodes */
     uint64_t fs_blockInodes;
 

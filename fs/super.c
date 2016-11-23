@@ -6,11 +6,11 @@ lc_superInit(struct super *super, size_t size, bool global) {
     memset(super, 0, sizeof(struct super));
     super->sb_magic = LC_SUPER_MAGIC;
     super->sb_inodeBlock = LC_INVALID_BLOCK;
+    super->sb_extentBlock = LC_INVALID_BLOCK;
     if (global) {
         super->sb_root = LC_ROOT_INODE;
         super->sb_version = LC_VERSION;
-        super->sb_nblock = LC_START_BLOCK;
-        super->sb_blocks = super->sb_nblock;
+        super->sb_blocks = LC_START_BLOCK;
         super->sb_ninode = LC_START_INODE;
         super->sb_tblocks = size / LC_BLOCK_SIZE;
     }

@@ -362,11 +362,9 @@ lc_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     }
     if (pcount) {
         block = lc_xattrFlushBlocks(gfs, fs, page, pcount);
-        lc_addExtent(&inode->i_xattrExtents, block, pcount);
+        lc_replaceMetaBlocks(fs, &inode->i_xattrExtents, block, pcount);
     }
     assert(size == 0);
-
-    /* XXX Free previously used blocks */
     inode->i_xattrBlock = block;
     inode->i_xattrdirty = false;
     inode->i_dirty = true;
@@ -382,8 +380,12 @@ lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
     struct dxattr *dxattr;
     char *xbuf;
 
+    if ((block != LC_INVALID_BLOCK) && !gfs->gfs_xattr_enabled) {
+        gfs->gfs_xattr_enabled = true;
+        lc_printf("Enabled extended attributes\n");
+    }
     while (block != LC_INVALID_BLOCK) {
-        lc_addExtent(&inode->i_xattrExtents, block, 1);
+        lc_addExtent(gfs, &inode->i_xattrExtents, block, 1);
         lc_readBlock(gfs, fs, block, xblock);
         xbuf = (char *)&xblock->xb_attr[0];
         remain = LC_BLOCK_SIZE - sizeof(struct xblock);

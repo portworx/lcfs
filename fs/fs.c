@@ -73,12 +73,13 @@ lc_newInodeBlock(struct gfs *gfs, struct fs *fs) {
     fs->fs_inodeBlockCount++;
 }
 
-/* Delete a file system */
+/* Free resources associated with a layer */
 void
-lc_destroyFs(struct fs *fs, bool remove) {
+lc_freeLayer(struct fs *fs, bool remove) {
     struct gfs *gfs = fs->fs_gfs;
 
-    lc_displayStats(fs);
+    lc_printf("lc_freeLayer: fs %p, blocks allocated %ld freed %ld\n",
+              fs, fs->fs_blocks, fs->fs_freed);
     assert(fs->fs_blockInodesCount == 0);
     assert(fs->fs_blockMetaCount == 0);
     assert(fs->fs_dpcount == 0);
@@ -91,31 +92,37 @@ lc_destroyFs(struct fs *fs, bool remove) {
     assert(fs->fs_extents == NULL);
     assert(fs->fs_aextents == NULL);
     assert(fs->fs_fextents == NULL);
-    lc_destroyInodes(fs, remove);
+    assert(fs->fs_mextents == NULL);
+    assert(fs->fs_dextents == NULL);
+    assert(fs->fs_icount == 0);
+    assert(fs->fs_pcount == 0);
+
     if (fs->fs_pcache && (fs->fs_parent == NULL)) {
         lc_destroy_pages(gfs, fs->fs_pcache, remove);
-    }
-    if (fs->fs_mextents) {
-        lc_processFreedMetaBlocks(fs);
     }
     assert(fs->fs_mextents == NULL);
     if (fs->fs_ilock && (fs->fs_parent == NULL)) {
         pthread_mutex_destroy(fs->fs_ilock);
         free(fs->fs_ilock);
     }
+    lc_displayStats(fs);
+    lc_statsDeinit(fs);
     pthread_mutex_destroy(&fs->fs_plock);
     pthread_mutex_destroy(&fs->fs_alock);
     pthread_rwlock_destroy(&fs->fs_rwlock);
-    lc_statsDeinit(fs);
-    assert(fs->fs_icount == 0);
-    assert(fs->fs_pcount == 0);
     __sync_sub_and_fetch(&gfs->gfs_count, 1);
     if (fs != lc_getGlobalFs(gfs)) {
         free(fs->fs_super);
         free(fs);
     }
-    lc_printf("lc_destroyFs: fs %p, blocks allocated %ld freed %ld\n",
-              fs, fs->fs_blocks, fs->fs_freed);
+}
+
+/* Delete a file system */
+void
+lc_destroyFs(struct fs *fs, bool remove) {
+    lc_destroyInodes(fs, remove);
+    lc_processFreedMetaBlocks(fs, false);
+    lc_freeLayer(fs, remove);
 }
 
 /* Lock a file system in shared while starting a request.
@@ -267,6 +274,7 @@ lc_removeSnap(struct gfs *gfs, struct fs *fs) {
 static void
 lc_format(struct gfs *gfs, struct fs *fs, size_t size) {
     lc_superInit(gfs->gfs_super, size, true);
+    lc_blockAllocatorInit(gfs);
     lc_rootInit(fs, fs->fs_root);
 }
 
@@ -437,6 +445,7 @@ lc_mount(char *device, struct gfs **gfsp) {
         for (i = 0; i <= gfs->gfs_scount; i++) {
             fs = gfs->gfs_fs[i];
             if (fs) {
+                lc_readExtents(gfs, fs);
                 err = lc_readInodes(gfs, fs);
                 if (err != 0) {
                     printf("Reading inodes failed, err %d\n", err);
@@ -447,7 +456,6 @@ lc_mount(char *device, struct gfs **gfsp) {
         fs = lc_getGlobalFs(gfs);
         lc_setupSpecialInodes(gfs, fs);
     }
-    lc_blockAllocatorInit(gfs);
 
     /* Write out the file system super block */
     gfs->gfs_super->sb_flags |= LC_SUPER_DIRTY | LC_SUPER_RDWR;
@@ -469,6 +477,7 @@ lc_sync(struct gfs *gfs, struct fs *fs) {
         lc_lock(fs, true);
         lc_syncInodes(gfs, fs);
         lc_flushDirtyPages(gfs, fs);
+        lc_processFreedMetaBlocks(fs, true);
 
         /* Flush everything to disk before marking file system clean */
         fsync(gfs->gfs_fd);
@@ -480,6 +489,33 @@ lc_sync(struct gfs *gfs, struct fs *fs) {
         }
         lc_unlock(fs);
     }
+}
+
+/* Sync and destroy root layer */
+static void
+lc_umountSync(struct gfs *gfs) {
+    struct fs *fs = lc_getGlobalFs(gfs);
+
+    /* XXX Combine sync and destroy */
+    lc_sync(gfs, fs);
+
+    /* Release freed and unused blocks */
+    lc_freeLayerBlocks(gfs, fs, false);
+
+    /* Destroy all inodes.  This also releases metadata blocks of removed
+     * inodes.
+     */
+    lc_destroyInodes(fs, false);
+
+    /* Free allocator data structures */
+    lc_blockAllocatorDeinit(gfs, fs);
+
+    lc_freeLayer(fs, false);
+
+    /* Finally update superblock */
+    lc_superWrite(gfs, fs);
+    free(fs->fs_super);
+    free(fs);
 }
 
 /* Free the global file system as part of unmount */
@@ -494,7 +530,7 @@ lc_unmount(struct gfs *gfs) {
 
     /* Flush dirty data before destroying file systems since layers may be out
      * of order in the file system table and parent layers should not be
-     * destroyed before child layers.
+     * destroyed before child layers as some data structures are shared.
      */
     for (i = 1; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
@@ -509,29 +545,21 @@ lc_unmount(struct gfs *gfs) {
         if (fs && !fs->fs_removed) {
             pthread_mutex_unlock(&gfs->gfs_lock);
             lc_freeLayerBlocks(gfs, fs, false);
+            lc_superWrite(gfs, fs);
             lc_destroyFs(fs, false);
             pthread_mutex_lock(&gfs->gfs_lock);
         }
     }
     pthread_mutex_unlock(&gfs->gfs_lock);
-    fs = lc_getGlobalFs(gfs);
-
-    /* Combine sync and destroy */
-    lc_sync(gfs, fs);
-    lc_freeLayerBlocks(gfs, fs, false);
-    lc_destroyFs(fs, false);
-    lc_updateBlockMap(gfs);
-    lc_blockAllocatorDeinit(gfs);
-    lc_superWrite(gfs, fs);
-    assert(gfs->gfs_count == 0);
+    assert(gfs->gfs_count == 1);
+    lc_umountSync(gfs);
     assert(gfs->gfs_pcount == 0);
     if (gfs->gfs_fd) {
         fsync(gfs->gfs_fd);
         close(gfs->gfs_fd);
     }
     lc_displayGlobalStats(gfs);
-    free(fs->fs_super);
-    free(fs);
+    assert(gfs->gfs_count == 0);
     free(gfs->gfs_fs);
     free(gfs->gfs_roots);
     pthread_mutex_destroy(&gfs->gfs_lock);

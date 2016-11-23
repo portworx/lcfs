@@ -164,11 +164,9 @@ lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     }
     if (pcount) {
         block = lc_flushBmapBlocks(gfs, fs, page, pcount);
-        lc_addExtent(&inode->i_bmapDirExtents, block, pcount);
+        lc_replaceMetaBlocks(fs, &inode->i_bmapDirExtents, block, pcount);
     }
     inode->i_stat.st_blocks = bcount;
-
-    /* XXX Free old bmap blocks */
     inode->i_bmapDirBlock = block;
     inode->i_bmapdirty = false;
     inode->i_dirty = true;
@@ -201,7 +199,7 @@ lc_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
     block = inode->i_bmapDirBlock;
     while (block != LC_INVALID_BLOCK) {
         //lc_printf("Reading bmap block %ld\n", block);
-        lc_addExtent(&inode->i_bmapDirExtents, block, 1);
+        lc_addExtent(gfs, &inode->i_bmapDirExtents, block, 1);
         lc_readBlock(gfs, fs, block, bblock);
         for (i = 0; i < LC_BMAP_BLOCK; i++) {
             bmap = &bblock->bb_bmap[i];

@@ -37,15 +37,19 @@ int lc_writeBlocks(struct gfs *gfs, struct fs *fs,
                     struct iovec *iov, int iovcnt, off_t block);
 
 void lc_blockAllocatorInit(struct gfs *gfs);
-void lc_blockAllocatorDeinit(struct gfs *gfs);
-void lc_addExtent(struct extent **extents, uint64_t block, uint64_t count);
+void lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs);
+void lc_addExtent(struct gfs *gfs, struct extent **extents,
+                  uint64_t block, uint64_t count);
 void lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool remove);
 uint64_t lc_blockAlloc(struct fs *fs, uint64_t count, bool meta);
 void lc_blockFree(struct fs *fs, uint64_t block, uint64_t count);
 void lc_freeLayerMetaBlocks(struct fs *fs, uint64_t block, uint64_t count);
-void lc_processFreedMetaBlocks(struct fs *fs);
-void lc_blockFreeExtents(struct fs *fs, struct extent *extents, bool efree);
-void lc_updateBlockMap(struct gfs *gfs);
+void lc_processFreedMetaBlocks(struct fs *fs, bool remove);
+void lc_blockFreeExtents(struct fs *fs, struct extent *extents,
+                         bool efree, bool flush);
+void lc_replaceMetaBlocks(struct fs *fs, struct extent **extents,
+                          uint64_t block, uint64_t count);
+void lc_readExtents(struct gfs *gfs, struct fs *fs);
 
 struct super *lc_superRead(struct gfs *gfs, uint64_t block);
 int lc_superWrite(struct gfs *gfs, struct fs *fs);

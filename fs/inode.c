@@ -241,9 +241,7 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
 
 /* Free an inode and associated resources */
 static void
-lc_freeInode(struct fs *fs, struct inode *inode, bool remove) {
-    bool dealloc = remove && (fs == lc_getGlobalFs(fs->fs_gfs));
-
+lc_freeInode(struct inode *inode) {
     if (S_ISREG(inode->i_stat.st_mode)) {
         lc_truncPages(inode, 0, false);
     } else if (S_ISDIR(inode->i_stat.st_mode)) {
@@ -259,11 +257,8 @@ lc_freeInode(struct fs *fs, struct inode *inode, bool remove) {
     lc_xattrFree(inode);
     pthread_rwlock_destroy(&inode->i_pglock);
     pthread_rwlock_destroy(&inode->i_rwlock);
-    lc_blockFreeExtents(fs, inode->i_bmapDirExtents, dealloc);
-    lc_blockFreeExtents(fs, inode->i_xattrExtents, dealloc);
-    if (dealloc && (inode->i_block != LC_INVALID_BLOCK)) {
-        lc_freeLayerMetaBlocks(fs, inode->i_block, 1);
-    }
+    lc_blockFreeExtents(NULL, inode->i_bmapDirExtents, false, false);
+    lc_blockFreeExtents(NULL, inode->i_xattrExtents, false, false);
     free(inode);
 }
 
@@ -301,10 +296,12 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             assert(inode->i_extentLength == 0);
 
             /* Free metadata blocks allocated to the inode */
-            lc_blockFreeExtents(fs, inode->i_bmapDirExtents, true);
+            lc_blockFreeExtents(fs, inode->i_bmapDirExtents, true, false);
+            inode->i_bmapDirExtents = NULL;
             inode->i_bmapDirBlock = LC_INVALID_BLOCK;
-            lc_blockFreeExtents(fs, inode->i_xattrExtents, true);
+            lc_blockFreeExtents(fs, inode->i_xattrExtents, true, false);
             inode->i_xattrBlock = LC_INVALID_BLOCK;
+            inode->i_xattrExtents = NULL;
         }
 
         /* Need to write removed inode when the layer has parent since child
@@ -404,7 +401,7 @@ lc_destroyInodes(struct fs *fs, bool remove) {
             if (!inode->i_removed) {
                 rcount++;
             }
-            lc_freeInode(fs, inode, remove);
+            lc_freeInode(inode);
             icount++;
         }
         assert(fs->fs_icache[i].ic_head == NULL);
