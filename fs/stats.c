@@ -121,12 +121,15 @@ lc_displayStats(struct fs *fs) {
     gettimeofday(&now, NULL);
     printf("\n\nStats for file system %p with root %ld index %d at %s\n",
            fs, fs->fs_root, fs->fs_gindex, ctime(&now.tv_sec));
-    printf("Layer  created at %s", ctime(&fs->fs_ctime));
-    printf("Last acccessed at %s\n", ctime(&fs->fs_atime));
+    printf("\tLayer  created at %s", ctime(&fs->fs_ctime));
+    printf("\tLast acccessed at %s\n", ctime(&fs->fs_atime));
+    if (stats == NULL) {
+        goto out;
+    }
     printf("\tRequest:\tTotal\t\tFailed\tAverage\t\tMax\t\tMin\n\n");
     for (i = 0; i < LC_REQUEST_MAX; i++) {
         if (stats->s_count[i]) {
-            printf("%15s: %10ld\t%10ld\t%2lds.%06ldu\t%2lds.%06ldu\t%2lds.%06ldu\n",
+            printf("\t%15s: %10ld\t%10ld\t%2lds.%06ldu\t%2lds.%06ldu\t%2lds.%06ldu\n",
                    requests[i], stats->s_count[i], stats->s_err[i],
                    stats->s_total[i].tv_sec / stats->s_count[i],
                    stats->s_total[i].tv_usec / stats->s_count[i],
@@ -135,8 +138,14 @@ lc_displayStats(struct fs *fs) {
         }
     }
     printf("\n\n");
-    printf("%ld inodes %ld pages\n", fs->fs_icount, fs->fs_pcount);
-    printf("%ld reads %ld writes (%ld inodes written)\n",
+
+out:
+    if (fs->fs_blocks) {
+        printf("\tblocks allocated %ld freed %ld\n",
+               fs->fs_blocks, fs->fs_freed);
+    }
+    printf("\t%ld inodes %ld pages\n", fs->fs_icount, fs->fs_pcount);
+    printf("\t%ld reads %ld writes (%ld inodes written)\n",
            fs->fs_reads, fs->fs_writes, fs->fs_iwrite);
     printf("\n\n");
 }
@@ -159,6 +168,13 @@ lc_displayStatsAll(struct gfs *gfs) {
 /* Display global stats */
 void
 lc_displayGlobalStats(struct gfs *gfs) {
+    uint64_t avail = gfs->gfs_super->sb_tblocks - gfs->gfs_super->sb_blocks;
+
+    printf("Blocks free %ld (%ld%%) used %ld (%ld%%) total %ld\n", avail,
+           (avail * 100ul) / gfs->gfs_super->sb_tblocks,
+           gfs->gfs_super->sb_blocks,
+           (gfs->gfs_super->sb_blocks * 100ul) / gfs->gfs_super->sb_tblocks,
+           gfs->gfs_super->sb_tblocks);
     printf("Total %ld reads %ld writes\n", gfs->gfs_reads, gfs->gfs_writes);
     printf("%ld inodes cloned\n", gfs->gfs_clones);
     printf("%ld pages hit %ld pages missed "

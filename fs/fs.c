@@ -78,8 +78,6 @@ void
 lc_freeLayer(struct fs *fs, bool remove) {
     struct gfs *gfs = fs->fs_gfs;
 
-    lc_printf("lc_freeLayer: fs %p, blocks allocated %ld freed %ld\n",
-              fs, fs->fs_blocks, fs->fs_freed);
     assert(fs->fs_blockInodesCount == 0);
     assert(fs->fs_blockMetaCount == 0);
     assert(fs->fs_dpcount == 0);
@@ -96,6 +94,7 @@ lc_freeLayer(struct fs *fs, bool remove) {
     assert(fs->fs_dextents == NULL);
     assert(fs->fs_icount == 0);
     assert(fs->fs_pcount == 0);
+    assert(!remove || (fs->fs_blocks == fs->fs_freed));
 
     if (fs->fs_pcache && (fs->fs_parent == NULL)) {
         lc_destroy_pages(gfs, fs->fs_pcache, remove);

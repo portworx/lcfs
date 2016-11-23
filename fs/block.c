@@ -142,8 +142,10 @@ lc_findFreeBlock(struct gfs *gfs, struct fs *fs,
                 lc_addExtent(gfs, &fs->fs_extents, block + count,
                              reserve - count);
             }
+            fs->fs_blocks += reserve;
         }
     }
+    assert(block != LC_INVALID_BLOCK);
     return block;
 }
 
@@ -167,6 +169,8 @@ lc_blockAlloc(struct fs *fs, uint64_t count, bool meta) {
                 lc_blockLayerFree(fs, fs->fs_blockMeta,
                                   fs->fs_blockMetaCount, true);
             }
+
+            /* XXX Deal with a fragmented file system */
             fs->fs_blockMetaCount = count > LC_META_RESERVE ?
                                 count : LC_META_RESERVE;
             fs->fs_blockMeta = lc_findFreeBlock(gfs, fs,
@@ -178,7 +182,6 @@ lc_blockAlloc(struct fs *fs, uint64_t count, bool meta) {
     } else {
         block = lc_findFreeBlock(gfs, fs, count);
     }
-    fs->fs_blocks += count;
     pthread_mutex_unlock(&fs->fs_alock);
     assert((block + count) < gfs->gfs_super->sb_tblocks);
     return block;
@@ -232,11 +235,11 @@ lc_flushExtentPages(struct gfs *gfs, struct page *fpage, uint64_t pcount,
     lc_flushPageCluster(gfs, fs, fpage, pcount);
 }
 
-/* Free an extent list */
-void
+/* Free an extent list, and optionally updating the list on disk */
+uint64_t
 lc_blockFreeExtents(struct fs *fs, struct extent *extents,
                     bool efree, bool flush) {
-    uint64_t count = LC_EXTENT_BLOCK, pcount = 0, block;
+    uint64_t count = LC_EXTENT_BLOCK, pcount = 0, block, freed = 0;
     struct extent *extent = extents, *tmp;
     struct dextentBlock *eblock = NULL;
     struct gfs *gfs = getfs();
@@ -260,6 +263,7 @@ lc_blockFreeExtents(struct fs *fs, struct extent *extents,
             dextent->de_start = extent->ex_start;
             dextent->de_count = extent->ex_count;
         } else if (efree && extent->ex_count) {
+            freed += extent->ex_count;
             lc_blockFree(fs, extent->ex_start, extent->ex_count);
         }
         extent = extent->ex_next;
@@ -271,6 +275,8 @@ lc_blockFreeExtents(struct fs *fs, struct extent *extents,
         }
         page = lc_getPageNoBlock(gfs, fs, (char *)eblock, page);
     }
+
+    /* Write out the allocated/free extent info to disk */
     if (flush) {
         if (pcount) {
             if (fs) {
@@ -284,6 +290,7 @@ lc_blockFreeExtents(struct fs *fs, struct extent *extents,
             fs->fs_super->sb_extentBlock = LC_INVALID_BLOCK;
         }
     }
+    return freed;
 }
 
 /* Read extents list */
@@ -468,7 +475,7 @@ lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool remove) {
     }
 
     /* Release any unused reserved blocks */
-    lc_blockFreeExtents(NULL, fs->fs_extents, true, false);
+    fs->fs_freed += lc_blockFreeExtents(NULL, fs->fs_extents, true, false);
     fs->fs_fextents = NULL;
     fs->fs_aextents = NULL;
     fs->fs_extents = NULL;
@@ -477,7 +484,9 @@ lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool remove) {
 /* Metadata extent for pending removal */
 void
 lc_freeLayerMetaBlocks(struct fs *fs, uint64_t block, uint64_t count) {
+    pthread_mutex_lock(&fs->fs_alock);
     lc_addExtent(fs->fs_gfs, &fs->fs_mextents, block, count);
+    pthread_mutex_unlock(&fs->fs_alock);
 }
 
 /* Replace the metadata list with the new extent */
@@ -522,7 +531,7 @@ lc_processFreedMetaBlocks(struct fs *fs, bool remove) {
 /* Update free space information to disk and free extent list */
 void
 lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs) {
-    uint64_t count = 0, pcount, block, bcount = 0;
+    uint64_t count = 0, pcount, block = LC_INVALID_BLOCK, bcount = 0;
     struct extent *extent;
 
     /* Free previously used blocks for storing free extent info */
@@ -554,11 +563,10 @@ lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs) {
         }
         extent = extent->ex_next;
     }
+    assert(block != LC_INVALID_BLOCK);
     assert((block + pcount) < gfs->gfs_super->sb_tblocks);
     gfs->gfs_super->sb_blocks += pcount;
     bcount -= pcount;
-    lc_printf("Total free blocks %ld used blocks %ld total blocks %ld\n",
-              bcount, gfs->gfs_super->sb_blocks, gfs->gfs_super->sb_tblocks);
     assert((bcount + gfs->gfs_super->sb_blocks + 1) ==
            gfs->gfs_super->sb_tblocks);
     gfs->gfs_super->sb_extentBlock = block;

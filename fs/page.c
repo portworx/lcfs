@@ -653,17 +653,27 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         }
     }
     assert(bcount);
+
+    /* XXX Deal with a fragmented file system by allocating smaller chunks */
     block = lc_blockAlloc(fs, bcount, false);
 
     /* Check if file has a single extent */
     if (single) {
-        inode->i_extentBlock = block;
-        inode->i_extentLength = bcount;
-        if (inode->i_bmap) {
+        if (inode->i_extentLength) {
+            lc_freeLayerMetaBlocks(fs, inode->i_extentBlock,
+                                   inode->i_extentLength);
+        } else if (inode->i_bmap) {
+            for (i = 0; i < inode->i_bcount; i++) {
+                if (inode->i_bmap[i]) {
+                    lc_freeLayerMetaBlocks(fs, inode->i_bmap[i], 1);
+                }
+            }
             free(inode->i_bmap);
             inode->i_bmap = NULL;
             inode->i_bcount = 0;
         }
+        inode->i_extentBlock = block;
+        inode->i_extentLength = bcount;
     } else {
         if (inode->i_extentLength) {
             lc_expandBmap(inode);
@@ -681,8 +691,10 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             }
             page->p_dnext = dpage;
             dpage = page;
-            /* XXX free the old block */
             if (!single) {
+                if (inode->i_bmap[i]) {
+                    lc_freeLayerMetaBlocks(fs, inode->i_bmap[i], 1);
+                }
                 lc_inodeBmapAdd(inode, i, block + count);
             }
             count++;

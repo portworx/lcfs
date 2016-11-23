@@ -205,6 +205,9 @@ struct fs {
     /* Set if readOnly snapshot */
     bool fs_readOnly;
 
+    /* Set if extended attributes are enabled */
+    bool fs_xattrEnabled;
+
     /* Set if layer is being removed */
     bool fs_removed;
 } __attribute__((packed));

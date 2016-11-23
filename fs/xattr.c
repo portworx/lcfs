@@ -49,8 +49,9 @@ lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
         goto out;
     }
 
-    if (!gfs->gfs_xattr_enabled) {
+    if (!fs->fs_xattrEnabled) {
         gfs->gfs_xattr_enabled = true;
+        fs->fs_xattrEnabled = true;
         lc_printf("Enabled extended attributes\n");
     }
     xattr = inode->i_xattr;
@@ -123,6 +124,11 @@ lc_xattrGet(fuse_req_t req, ino_t ino, const char *name,
 
     lc_statsBegin(&start);
     fs = lc_getfs(ino, false);
+    if (!fs->fs_xattrEnabled) {
+        fuse_reply_err(req, ENODATA);
+        err = ENODATA;
+        goto out;
+    }
     inode = lc_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
@@ -217,6 +223,11 @@ lc_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
         err = EROFS;
+        goto out;
+    }
+    if (!fs->fs_xattrEnabled) {
+        fuse_reply_err(req, ENODATA);
+        err = ENODATA;
         goto out;
     }
     inode = lc_getInode(fs, ino, NULL, true, true);
@@ -380,8 +391,9 @@ lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
     struct dxattr *dxattr;
     char *xbuf;
 
-    if ((block != LC_INVALID_BLOCK) && !gfs->gfs_xattr_enabled) {
+    if ((block != LC_INVALID_BLOCK) && !fs->fs_xattrEnabled) {
         gfs->gfs_xattr_enabled = true;
+        fs->fs_xattrEnabled = true;
         lc_printf("Enabled extended attributes\n");
     }
     while (block != LC_INVALID_BLOCK) {
