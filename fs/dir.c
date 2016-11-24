@@ -288,11 +288,76 @@ lc_dirFree(struct inode *dir) {
 void
 lc_removeTree(struct fs *fs, struct inode *dir) {
     struct dirent *dirent = dir->i_dirent;
+    bool rmdir;
 
     while (dirent != NULL) {
-        //lc_printf("lc_removeTree: dir %ld nlink %ld removing %s inode %ld dir %d\n", dir->i_stat.st_ino, dir->i_stat.st_nlink, dirent->di_name, dirent->di_ino, S_ISDIR(dirent->di_mode));
-        dremove(fs, dir, dirent->di_name, dirent->di_ino,
-                S_ISDIR(dirent->di_mode));
+        lc_printf("lc_removeTree: dir %ld nlink %ld removing %s inode %ld dir %d\n", dir->i_stat.st_ino, dir->i_stat.st_nlink, dirent->di_name, dirent->di_ino, S_ISDIR(dirent->di_mode));
+        rmdir = S_ISDIR(dirent->di_mode);
+        lc_removeInode(fs, dir, dirent->di_ino, rmdir, NULL);
+        if (rmdir) {
+            assert(dir->i_stat.st_nlink > 2);
+            dir->i_stat.st_nlink--;
+        } else {
+            assert(dir->i_stat.st_nlink >= 2);
+        }
+        dir->i_dirent = dirent->di_next;
+        free(dirent->di_name);
+        free(dirent);
         dirent = dir->i_dirent;
     }
+}
+
+/* Lookup an entry in the directory and remove that if present */
+int
+lc_dirRemoveName(struct fs *fs, struct inode *dir,
+                 const char *name, bool rmdir, void **fsp,
+                 int dremove(struct fs *, struct inode *, ino_t,
+                             bool, void **)) {
+    struct dirent *dirent = dir->i_dirent, *pdirent = NULL;
+    ino_t ino, parent = dir->i_stat.st_ino;
+    struct gfs *gfs = fs->fs_gfs;
+    int len = strlen(name), err;
+
+    assert(S_ISDIR(dir->i_stat.st_mode));
+    while (dirent != NULL) {
+        if ((len == dirent->di_size) &&
+            (strcmp(name, dirent->di_name) == 0)) {
+            ino = dirent->di_ino;
+            if (rmdir && (fsp == NULL) && (fs->fs_gindex == 0) &&
+               ((ino == gfs->gfs_snap_root) ||
+                ((gfs->gfs_snap_rootInode != NULL) &&
+                 (ino == gfs->gfs_snap_rootInode->i_parent)) ||
+                lc_getIndex(fs, parent, ino))) {
+                lc_reportError(__func__, __LINE__, parent, EEXIST);
+                err = EEXIST;
+            } else {
+                err = dremove(fs, dir, ino, rmdir, fsp);
+            }
+            if ((err == 0) || (err == ESTALE)) {
+                if (err == 0) {
+                    if (rmdir) {
+                        assert(dir->i_stat.st_nlink > 2);
+                        dir->i_stat.st_nlink--;
+                    } else {
+                        assert(dir->i_stat.st_nlink >= 2);
+                    }
+                    lc_updateInodeTimes(dir, false, false, true);
+                } else {
+                    err = 0;
+                }
+                lc_markInodeDirty(dir, true, true, false, false);
+                if (pdirent == NULL) {
+                    dir->i_dirent = dirent->di_next;
+                } else {
+                    pdirent->di_next = dirent->di_next;
+                }
+                free(dirent->di_name);
+                free(dirent);
+            }
+            return err;
+        }
+        pdirent = dirent;
+        dirent = dirent->di_next;
+    }
+    return ENOENT;
 }

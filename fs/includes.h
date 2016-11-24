@@ -57,7 +57,7 @@ void lc_superInit(struct super *super, size_t size, bool global);
 
 struct fs *lc_getfs(ino_t ino, bool exclusive);
 int lc_getIndex(struct fs *nfs, ino_t parent, ino_t ino);
-void lc_addfs(struct fs *fs, struct fs *pfs, struct fs *snap);
+void lc_addfs(struct fs *fs, struct fs *pfs);
 void lc_removefs(struct gfs *gfs, struct fs *fs);
 void lc_removeSnap(struct gfs *gfs, struct fs *fs);
 void lc_lock(struct fs *fs, bool exclusive);
@@ -100,6 +100,10 @@ void lc_dirCopy(struct inode *dir);
 void lc_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf);
 void lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir);
 void lc_removeTree(struct fs *fs, struct inode *dir);
+int lc_dirRemoveName(struct fs *fs, struct inode *dir,
+                     const char *name, bool rmdir, void **fsp,
+                     int dremove(struct fs *, struct inode *, ino_t,
+                                 bool, void **));
 void lc_dirFree(struct inode *dir);
 
 uint64_t lc_inodeBmapLookup(struct inode *inode, uint64_t page);
@@ -131,8 +135,8 @@ void lc_releaseReadPages(struct gfs *gfs, struct fs *fs, struct page **pages,
                          uint64_t pcount);
 void lc_invalidateDirtyPages(struct gfs *gfs, struct fs *fs);
 
-int dremove(struct fs *fs, struct inode *dir, const char *name,
-            ino_t ino, bool rmdir);
+int lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
+               void **fsp);
 
 void lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
                   const char *value, size_t size, int flags);
@@ -145,7 +149,6 @@ void lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
                    void *buf);
 void lc_xattrFree(struct inode *inode);
 
-ino_t lc_getRootIno(struct fs *fs, const char *name);
 void lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
                   const char *parent, size_t size, bool rw);
 void lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name);

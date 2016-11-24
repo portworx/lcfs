@@ -182,8 +182,9 @@ lc_getfs(ino_t ino, bool exclusive) {
 
 /* Add a file system to global list of file systems */
 void
-lc_addfs(struct fs *fs, struct fs *pfs, struct fs *snap) {
+lc_addfs(struct fs *fs, struct fs *pfs) {
     struct gfs *gfs = fs->fs_gfs;
+    struct fs *snap;
     int i;
 
     /* Find a free slot and insert the new file system */
@@ -202,6 +203,7 @@ lc_addfs(struct fs *fs, struct fs *pfs, struct fs *snap) {
     }
     assert(i < LC_MAX);
     fs->fs_sblock = lc_blockAlloc(fs, 1, true);
+    snap = pfs ? pfs->fs_snap : lc_getGlobalFs(gfs);
 
     /* Add this file system to the snapshot list or root file systems list */
     if (snap) {

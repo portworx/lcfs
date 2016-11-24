@@ -5,9 +5,9 @@ fusermount -u $MNT
 mkdir $MNT
 
 DEVICE=/tmp/lcfs-testdevice
-dd if=/dev/zero of=$DEVICE count=10000 bs=4096
+dd if=/dev/zero of=$DEVICE count=50000 bs=4096
 
-./lcfs $DEVICE $MNT &
+./lcfs $DEVICE $MNT -f &
 sleep 10
 cd $MNT
 
@@ -63,6 +63,13 @@ mv file1 dir/file1
 ls -liR
 
 rm -fr $MNT/*
+
+mkdir -p dir/dir1/dir2
+touch dir/file
+touch dir/dir1/file
+touch dir/dir1/dir2/file
+rmdir dir
+
 cp /etc/passwd .
 cat passwd > /dev/null
 
@@ -94,6 +101,8 @@ docker rmi hello-world
 cat /var/run/docker.pid | xargs kill
 sleep 10
 service docker start
+
+rmdir $MNT/lcfs
 
 df -k $MNT
 df -i $MNT

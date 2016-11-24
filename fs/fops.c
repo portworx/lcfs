@@ -70,26 +70,22 @@ lc_truncate(struct inode *inode, off_t size) {
     inode->i_stat.st_size = size;
 }
 
-/* Remove a directory entry */
+/* Remove an inode */
 int
-dremove(struct fs *fs, struct inode *dir, const char *name,
-        ino_t ino, bool rmdir) {
-    struct inode * inode = lc_getInode(fs, ino, NULL, true, true);
+lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
+               void **fsp) {
     bool removed = false;
-    ino_t parent;
-    int err = 0;
+    struct inode *inode;
 
     assert(S_ISDIR(dir->i_stat.st_mode));
+    inode = lc_getInode(fs, ino, NULL, true, true);
     if (inode == NULL) {
         lc_reportError(__func__, __LINE__, ino, ESTALE);
-        err = ESTALE;
-        goto out;
+        return ESTALE;
     }
     assert(inode->i_stat.st_nlink);
     if (rmdir) {
-        assert(dir->i_stat.st_nlink > 2);
-        parent =  dir->i_stat.st_ino;
-        assert(inode->i_parent == parent);
+        assert(inode->i_parent == dir->i_stat.st_ino);
 
         /* Allow directory removals from the root file system even when
          * directories are not empty.
@@ -102,12 +98,10 @@ dremove(struct fs *fs, struct inode *dir, const char *name,
             //lc_reportError(__func__, __LINE__, ino, EEXIST);
             return EEXIST;
         }
-        dir->i_stat.st_nlink--;
         assert(inode->i_stat.st_nlink == 2);
         inode->i_removed = true;
         removed = true;
     } else {
-        assert(dir->i_stat.st_nlink >= 2);
         inode->i_stat.st_nlink--;
 
         /* Flag a file as removed on last unlink */
@@ -119,29 +113,20 @@ dremove(struct fs *fs, struct inode *dir, const char *name,
             removed = true;
         }
     }
-
-out:
-    lc_dirRemove(dir, name);
-    if (inode) {
-        lc_updateInodeTimes(dir, false, false, true);
-        lc_markInodeDirty(inode, true, rmdir, S_ISREG(inode->i_stat.st_mode),
-                           false);
-        lc_inodeUnlock(inode);
-    }
-    lc_markInodeDirty(dir, true, true, false, false);
+    lc_markInodeDirty(inode, true, rmdir, S_ISREG(inode->i_stat.st_mode),
+                      false);
+    lc_inodeUnlock(inode);
     if (removed) {
         __sync_sub_and_fetch(&fs->fs_gfs->gfs_super->sb_inodes, 1);
     }
-    return err;
+    return 0;
 }
 
 /* Remove a directory entry */
 static int
 lc_remove(struct fs *fs, ino_t parent, const char *name, bool rmdir) {
     struct inode *dir;
-    struct gfs *gfs;
-    int err = 0;
-    ino_t ino;
+    int err;
 
     if (fs->fs_snap) {
         lc_reportError(__func__, __LINE__, parent, EROFS);
@@ -156,29 +141,13 @@ lc_remove(struct fs *fs, ino_t parent, const char *name, bool rmdir) {
     if (dir->i_shared) {
         lc_dirCopy(dir);
     }
-    /* XXX Combine lookup and removal */
-    ino = lc_dirLookup(fs, dir, name);
-    if (ino == LC_INVALID_INODE) {
-        lc_reportError(__func__, __LINE__, parent, ESTALE);
-        err = ESTALE;
-    } else {
-        if (rmdir && (fs->fs_gindex == 0)) {
-            gfs = fs->fs_gfs;
-
-            /* Do not allow removing a snapshot root */
-            if ((ino == fs->fs_gfs->gfs_snap_root) ||
-                ((gfs->gfs_snap_rootInode != NULL) &&
-                 (ino == gfs->gfs_snap_rootInode->i_parent)) ||
-                lc_getIndex(fs, parent, ino)) {
-                lc_reportError(__func__, __LINE__, parent, EEXIST);
-                err = EEXIST;
-            }
-        }
-        if (!err) {
-            err = dremove(fs, dir, name, ino, rmdir);
+    err = lc_dirRemoveName(fs, dir, name, rmdir, NULL, lc_removeInode);
+    lc_inodeUnlock(dir);
+    if (err) {
+        if (err != EEXIST) {
+            lc_reportError(__func__, __LINE__, parent, err);
         }
     }
-    lc_inodeUnlock(dir);
     return err;
 }
 
@@ -500,9 +469,9 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
            fuse_ino_t newparent, const char *newname) {
     struct inode *inode, *sdir, *tdir = NULL;
     struct timeval start;
-    ino_t ino, target;
     struct fs *fs;
     int err = 0;
+    ino_t ino;
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, parent, newparent, name);
@@ -536,17 +505,6 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
         goto out;
     }
     assert(S_ISDIR(sdir->i_stat.st_mode));
-    if (parent < newparent) {
-        tdir = lc_getInode(fs, newparent, NULL, true, true);
-        if (tdir == NULL) {
-            lc_inodeUnlock(sdir);
-            lc_reportError(__func__, __LINE__, newparent, ENOENT);
-            fuse_reply_err(req, ENOENT);
-            err = ENOENT;
-            goto out;
-        }
-        assert(S_ISDIR(tdir->i_stat.st_mode));
-    }
     ino = lc_dirLookup(fs, sdir, name);
     if (ino == LC_INVALID_INODE) {
         lc_inodeUnlock(sdir);
@@ -561,16 +519,25 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
     if (sdir->i_shared) {
         lc_dirCopy(sdir);
     }
-    target = lc_dirLookup(fs, tdir ? tdir : sdir, newname);
+    if (parent < newparent) {
+        tdir = lc_getInode(fs, newparent, NULL, true, true);
+        if (tdir == NULL) {
+            lc_inodeUnlock(sdir);
+            lc_reportError(__func__, __LINE__, newparent, ENOENT);
+            fuse_reply_err(req, ENOENT);
+            err = ENOENT;
+            goto out;
+        }
+        assert(S_ISDIR(tdir->i_stat.st_mode));
+    }
+    if (tdir && tdir->i_shared) {
+        lc_dirCopy(tdir);
+    }
+    lc_dirRemoveName(fs, tdir ? tdir : sdir, newname, false,
+                     NULL, lc_removeInode);
 
     /* Renaming to another directory */
     if (parent != newparent) {
-        if (tdir->i_shared) {
-            lc_dirCopy(tdir);
-        }
-        if (target != LC_INVALID_INODE) {
-            dremove(fs, tdir, newname, target, false);
-        }
         inode = lc_getInode(fs, ino, NULL, true, true);
         if (inode == NULL) {
             lc_inodeUnlock(sdir);
@@ -595,19 +562,16 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
     } else {
 
         /* Rename within the directory */
-        if (target != LC_INVALID_INODE) {
-            dremove(fs, sdir, newname, target, false);
-        }
         lc_dirRename(sdir, ino, name, newname);
     }
     lc_updateInodeTimes(sdir, false, true, true);
     lc_markInodeDirty(sdir, true, true, false, false);
+    lc_inodeUnlock(sdir);
     if (tdir) {
         lc_updateInodeTimes(tdir, false, true, true);
         lc_markInodeDirty(tdir, true, true, false, false);
         lc_inodeUnlock(tdir);
     }
-    lc_inodeUnlock(sdir);
     fuse_reply_err(req, 0);
 
 out:
