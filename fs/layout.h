@@ -16,8 +16,9 @@
 #define LC_XATTR_MAGIC 0xBDEF4389
 
 /* Superblock Flags */
-#define LC_SUPER_DIRTY     0x00000001  // Snapshot is dirty
-#define LC_SUPER_RDWR      0x00000002  // Snapshot is readwrite
+#define LC_SUPER_DIRTY     0x00000001  // Layer is dirty
+#define LC_SUPER_RDWR      0x00000002  // Layer is readwrite
+#define LC_SUPER_MOUNTED   0x00000004  // Layer is mounted
 
 /* File system superblock */
 struct super {

@@ -564,6 +564,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
         /* Rename within the directory */
         lc_dirRename(sdir, ino, name, newname);
     }
+    fuse_reply_err(req, 0);
     lc_updateInodeTimes(sdir, false, true, true);
     lc_markInodeDirty(sdir, true, true, false, false);
     lc_inodeUnlock(sdir);
@@ -572,7 +573,6 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
         lc_markInodeDirty(tdir, true, true, false, false);
         lc_inodeUnlock(tdir);
     }
-    fuse_reply_err(req, 0);
 
 out:
     lc_statsAdd(fs, LC_RENAME, err, &start);
@@ -905,12 +905,12 @@ lc_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
         }
         dirent = dirent->di_next;
     }
-    lc_inodeUnlock(dir);
     if (csize) {
         fuse_reply_buf(req, buf, csize);
     } else {
         fuse_reply_buf(req, NULL, 0);
     }
+    lc_inodeUnlock(dir);
 
 out:
     lc_statsAdd(fs, LC_READDIR, err, &start);
@@ -1046,11 +1046,11 @@ lc_create(fuse_req_t req, fuse_ino_t parent, const char *name,
 /* IOCTLs for certain operations.  Supported only on layer root directory */
 static void
 lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
-          struct fuse_file_info *fi, unsigned flags,
-          const void *in_buf, size_t in_bufsz, size_t out_bufsz) {
+         struct fuse_file_info *fi, unsigned flags,
+         const void *in_buf, size_t in_bufsz, size_t out_bufsz) {
     char name[in_bufsz + 1], *snap, *parent;
     struct gfs *gfs = getfs();
-    int len, op, err = ENOSYS;
+    int len, op;
 
     lc_displayEntry(__func__, ino, cmd, NULL);
     op = _IOC_NR(cmd);
@@ -1093,14 +1093,12 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
     case SNAP_UMOUNT:
     case UMOUNT_ALL:
     case CLEAR_STAT:
-        err = lc_snap(gfs, name, op);
-        break;
-    }
-    if (err) {
-        lc_reportError(__func__, __LINE__, ino, err);
-        fuse_reply_err(req, err);
-    } else {
-        fuse_reply_ioctl(req, 0, NULL, 0);
+        lc_snapIoctl(req, gfs, name, op);
+        return;
+
+    default:
+        lc_reportError(__func__, __LINE__, ino, ENOSYS);
+        fuse_reply_err(req, ENOSYS);
     }
 }
 
@@ -1145,10 +1143,10 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
         inode->i_stat.st_size = endoffset;
     }
     lc_addPages(inode, off, size, bufv, dst);
+    fuse_reply_write(req, size);
     lc_updateInodeTimes(inode, false, true, true);
     lc_markInodeDirty(inode, true, false, true, false);
     lc_inodeUnlock(inode);
-    fuse_reply_write(req, size);
 
 out:
     lc_statsAdd(fs, LC_WRITE_BUF, err, &start);

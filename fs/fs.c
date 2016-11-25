@@ -246,6 +246,7 @@ lc_removeSnap(struct gfs *gfs, struct fs *fs) {
     assert(fs->fs_snap == NULL);
     assert(fs->fs_gindex > 0);
     assert(fs->fs_gindex < LC_MAX);
+    assert(!(fs->fs_super->sb_flags & LC_SUPER_MOUNTED));
     pthread_mutex_lock(&gfs->gfs_lock);
     pfs = fs->fs_parent;
     if (pfs && (pfs->fs_snap == fs)) {
@@ -459,7 +460,8 @@ lc_mount(char *device, struct gfs **gfsp) {
     }
 
     /* Write out the file system super block */
-    gfs->gfs_super->sb_flags |= LC_SUPER_DIRTY | LC_SUPER_RDWR;
+    gfs->gfs_super->sb_flags |= LC_SUPER_DIRTY | LC_SUPER_RDWR |
+                                LC_SUPER_MOUNTED;
     err = lc_superWrite(gfs, fs);
     if (err != 0) {
         printf("Superblock write failed, err %d\n", err);
@@ -470,15 +472,18 @@ lc_mount(char *device, struct gfs **gfsp) {
 }
 
 /* Sync a dirty file system */
-static void
+void
 lc_sync(struct gfs *gfs, struct fs *fs) {
     int err;
 
     if (fs && (fs->fs_super->sb_flags & LC_SUPER_DIRTY)) {
-        lc_lock(fs, true);
-        lc_syncInodes(gfs, fs);
-        lc_flushDirtyPages(gfs, fs);
-        lc_processFreedMetaBlocks(fs, true);
+        lc_lock(fs, false);
+        if (fs->fs_super->sb_flags & LC_SUPER_MOUNTED) {
+            fs->fs_super->sb_flags &= ~LC_SUPER_MOUNTED;
+            lc_syncInodes(gfs, fs);
+            lc_flushDirtyPages(gfs, fs);
+            lc_processFreedMetaBlocks(fs, true);
+        }
 
         /* Flush everything to disk before marking file system clean */
         fsync(gfs->gfs_fd);
@@ -515,7 +520,10 @@ lc_umountSync(struct gfs *gfs) {
 
     /* Finally update superblock */
     lc_superWrite(gfs, fs);
+    lc_displayGlobalStats(gfs);
+    gfs->gfs_super = NULL;
     free(fs->fs_super);
+    gfs->gfs_fs[0] = NULL;
     free(fs);
 }
 
@@ -549,6 +557,7 @@ lc_unmount(struct gfs *gfs) {
             lc_superWrite(gfs, fs);
             lc_destroyFs(fs, false);
             pthread_mutex_lock(&gfs->gfs_lock);
+            gfs->gfs_fs[i] = NULL;
         }
     }
     pthread_mutex_unlock(&gfs->gfs_lock);
@@ -559,7 +568,6 @@ lc_unmount(struct gfs *gfs) {
         fsync(gfs->gfs_fd);
         close(gfs->gfs_fd);
     }
-    lc_displayGlobalStats(gfs);
     assert(gfs->gfs_count == 0);
     free(gfs->gfs_fs);
     free(gfs->gfs_roots);

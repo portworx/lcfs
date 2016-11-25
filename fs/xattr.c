@@ -68,23 +68,23 @@ lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
                 err = EEXIST;
                 goto out;
             } else {
+                fuse_reply_err(req, 0);
 
                 /* Replace the attribute with new value */
-                assert(flags == XATTR_REPLACE);
-                if (xattr->x_value) {
+                if (xattr->x_value && (size != xattr->x_size)) {
                     free(xattr->x_value);
+                    xattr->x_value = NULL;
                 }
                 if (size) {
-                    xattr->x_value = malloc(size);
+                    if (xattr->x_value == NULL) {
+                        xattr->x_value = malloc(size);
+                    }
                     memcpy(xattr->x_value, value, size);
-                } else {
-                    xattr->x_value = NULL;
                 }
                 xattr->x_size = size;
                 lc_updateInodeTimes(inode, false, false, true);
                 lc_markInodeDirty(inode, true, false, false, true);
                 lc_inodeUnlock(inode);
-                fuse_reply_err(req, 0);
                 goto out;
             }
         }
@@ -101,11 +101,11 @@ lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
         err = ENODATA;
         goto out;
     }
+    fuse_reply_err(req, 0);
     lc_xattrLink(inode, name, len, value, size);
     lc_updateInodeTimes(inode, false, false, true);
     lc_markInodeDirty(inode, true, false, false, true);
     lc_inodeUnlock(inode);
-    fuse_reply_err(req, 0);
 
 out:
     lc_statsAdd(fs, LC_SETXATTR, err, &start);
@@ -198,9 +198,9 @@ lc_xattrList(fuse_req_t req, ino_t ino, size_t size) {
         i += strlen(xattr->x_name) + 1;
         xattr = xattr->x_next;
     }
+    fuse_reply_buf(req, buf, inode->i_xsize);
     assert(i == inode->i_xsize);
     lc_inodeUnlock(inode);
-    fuse_reply_buf(req, buf, inode->i_xsize);
     free(buf);
 
 out:
@@ -214,8 +214,8 @@ lc_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
     struct xattr *xattr, *pxattr = NULL;
     struct timeval start;
     struct inode *inode;
+    int err = 0, len;
     struct fs *fs;
-    int err = 0;
 
     lc_statsBegin(&start);
     fs = lc_getfs(ino, false);
@@ -241,6 +241,7 @@ lc_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
     xattr = inode->i_xattr;
     while (xattr) {
         if (strcmp(name, xattr->x_name) == 0) {
+            fuse_reply_err(req, 0);
             if (pxattr) {
                 pxattr->x_next = xattr->x_next;
             } else {
@@ -251,18 +252,20 @@ lc_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
                 free(xattr->x_value);
             }
             free(xattr);
+            len = strlen(name) + 1;
+            assert(inode->i_xsize >= len);
+            inode->i_xsize -= len;
             lc_updateInodeTimes(inode, false, false, true);
             lc_markInodeDirty(inode, true, false, false, true);
             lc_inodeUnlock(inode);
-            fuse_reply_err(req, 0);
             goto out;
         }
         pxattr = xattr;
         xattr = xattr->x_next;
     }
+    fuse_reply_err(req, ENODATA);
     lc_inodeUnlock(inode);
     //lc_reportError(__func__, __LINE__, ino, ENODATA);
-    fuse_reply_err(req, ENODATA);
     err = ENODATA;
 
 out:

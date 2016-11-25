@@ -76,7 +76,7 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     fs->fs_super = super;
     fs->fs_root = root;
     fs->fs_super->sb_root = root;
-    fs->fs_super->sb_flags |= LC_SUPER_DIRTY;
+    fs->fs_super->sb_flags |= LC_SUPER_DIRTY | LC_SUPER_MOUNTED;
     if (rw) {
         fs->fs_super->sb_flags |= LC_SUPER_RDWR;
     }
@@ -184,7 +184,9 @@ lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name) {
         fuse_reply_err(req, err);
         goto out;
     }
+
     /* Remove the file system from the snapshot chain */
+    fs->fs_super->sb_flags &= ~(LC_SUPER_DIRTY | LC_SUPER_MOUNTED);
     lc_removeSnap(gfs, fs);
     lc_inodeUnlock(pdir);
     fuse_reply_ioctl(req, 0, NULL, 0);
@@ -194,7 +196,6 @@ lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name) {
                fs->fs_parent ? fs->fs_parent->fs_root : - 1,
                fs->fs_root, fs->fs_gindex, name);
     fs->fs_removed = true;
-    fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
     lc_invalidateDirtyPages(gfs, fs);
     lc_blockFree(fs, fs->fs_sblock, 1);
 
@@ -218,30 +219,33 @@ out:
 }
 
 /* Mount, unmount, stat a snapshot */
-int
-lc_snap(struct gfs *gfs, const char *name, enum ioctl_cmd cmd) {
+void
+lc_snapIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
+             enum ioctl_cmd cmd) {
     struct timeval start;
     struct fs *fs, *rfs;
     ino_t root;
     int err;
 
     lc_statsBegin(&start);
-    rfs = lc_getGlobalFs(gfs);
+    rfs = lc_getfs(LC_ROOT_INODE, false);
 
     /* Unmount all layers */
     if (cmd == UMOUNT_ALL) {
-        /* XXX Do this in the background */
+        fuse_reply_ioctl(req, 0, NULL, 0);
         lc_umountAll(gfs);
         lc_statsAdd(rfs, LC_CLEANUP, 0, &start);
-        return 0;
+        lc_unlock(rfs);
+        return;
     }
     root = lc_getRootIno(rfs, name, NULL);
     err = (root == LC_INVALID_INODE) ? ENOENT : 0;
     switch (cmd) {
     case SNAP_MOUNT:
         if (err == 0) {
+            fuse_reply_ioctl(req, 0, NULL, 0);
             fs = lc_getfs(root, true);
-            fs->fs_super->sb_flags |= LC_SUPER_DIRTY;
+            fs->fs_super->sb_flags |= LC_SUPER_DIRTY | LC_SUPER_MOUNTED;
             lc_unlock(fs);
         }
         lc_statsAdd(rfs, LC_MOUNT, err, &start);
@@ -250,9 +254,13 @@ lc_snap(struct gfs *gfs, const char *name, enum ioctl_cmd cmd) {
     case SNAP_STAT:
     case SNAP_UMOUNT:
         if (err == 0) {
+            fuse_reply_ioctl(req, 0, NULL, 0);
             fs = lc_getfs(root, false);
             lc_displayStats(fs);
             lc_unlock(fs);
+            if ((cmd == SNAP_UMOUNT) && fs->fs_readOnly) {
+                lc_sync(gfs, fs);
+            }
         }
         lc_statsAdd(rfs, cmd == SNAP_UMOUNT ? LC_UMOUNT : LC_STAT,
                      err, &start);
@@ -260,6 +268,7 @@ lc_snap(struct gfs *gfs, const char *name, enum ioctl_cmd cmd) {
 
     case CLEAR_STAT:
         if (err == 0) {
+            fuse_reply_ioctl(req, 0, NULL, 0);
             fs = lc_getfs(root, true);
             lc_displayStats(fs);
             lc_statsDeinit(fs);
@@ -271,6 +280,10 @@ lc_snap(struct gfs *gfs, const char *name, enum ioctl_cmd cmd) {
     default:
         err = EINVAL;
     }
-    return err;
+    if (err) {
+        lc_reportError(__func__, __LINE__, root, err);
+        fuse_reply_err(req, err);
+    }
+    lc_unlock(rfs);
 }
 

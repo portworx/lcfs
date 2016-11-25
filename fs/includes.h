@@ -65,6 +65,7 @@ void lc_unlock(struct fs *fs);
 int lc_mount(char *device, struct gfs **gfsp);
 void lc_newInodeBlock(struct gfs *gfs, struct fs *fs);
 void lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs);
+void lc_sync(struct gfs *gfs, struct fs *fs);
 void lc_unmount(struct gfs *gfs);
 void lc_umountAll(struct gfs *gfs);
 struct fs *lc_newFs(struct gfs *gfs, bool rw);
@@ -152,7 +153,8 @@ void lc_xattrFree(struct inode *inode);
 void lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
                   const char *parent, size_t size, bool rw);
 void lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name);
-int lc_snap(struct gfs *gfs, const char *name, enum ioctl_cmd cmd);
+void lc_snapIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
+                  enum ioctl_cmd cmd);
 
 struct stats *lc_statsNew();
 void lc_statsBegin(struct timeval *start);
