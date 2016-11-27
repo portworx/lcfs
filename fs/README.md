@@ -1,11 +1,23 @@
 This file system driver is implemented using fuse low level API.
 
+*  Download this directory
+
+    git clone git@github.com:portworx/px-graph
+
 *  Download docker sources and add files for this driver.
    Build docker and install that. (TODO: Use docker plugin)
 
     git clone git@github.com:docker/docker
     
     cd docker
+
+    mkdir daemon/graphdriver/lcfs
+
+    cp ../px-graph/docker/daemon/graphdriver/lcfs/* daemon/graphdriver/lcfs
+
+    cp ../px-graph/docker/daemon/graphdriver/register/lcfs* daemon/graphdriver/register
+
+    git add --all
     
     make build && make binary
     
@@ -26,19 +38,21 @@ This file system driver is implemented using fuse low level API.
     sudo service docker start
 
 *  Install fuse library.
-Download fuse library from the following link.
+    Download fuse library from the following link.
 
-https://github.com/libfuse/libfuse/releases/download/fuse-2.9.7/fuse-2.9.7.tar.gz
+    https://github.com/libfuse/libfuse/releases/download/fuse-2.9.7/fuse-2.9.7.tar.gz
 
-Untar it and build/install using following commands:
+    Untar it and build/install using following commands:
 
-./configure
-make -j8
-make install
+    ./configure
+
+    make -j8
+
+    make install
 
 *  Install tcmalloc or remove that from Makefile.
     On ubuntu, run "sudo apt-get install libgoogle-perftools-dev"
-*  Build this directory by running make.
+*  Build this directory by running make. (cd ../px-graph/fs; make)
 *  Mount a device/file - "sudo ./lcfs 'device' 'mnt'".
    For debugging, options -f or -d could be specified.
 *  Stop docker and start docker with arguments "-s lcfs -g 'mnt'".
