@@ -1,5 +1,20 @@
 This file system driver is implemented using fuse low level API.
 
+*  Download docker sources and add files for this driver.
+   Build docker and install that. (TODO: Use docker plugin)
+
+    git clone git@github.com:docker/docker
+    cd docker
+    make build && make binary
+    sudo service docker stop
+    sudo cp bundles/latest/binary-client/docker /usr/bin
+    sudo cp bundles/latest/binary-daemon/dockerd /usr/bin/dockerd
+    sudo cp bundles/latest/binary-daemon/docker-runc /usr/bin
+    sudo cp bundles/latest/binary-daemon/docker-containerd /usr/bin
+    sudo cp bundles/latest/binary-daemon/docker-containerd-ctr /usr/bin
+    sudo cp bundles/latest/binary-daemon/docker-containerd-shim /usr/bin
+    sudo service docker start
+
 *  Install fuse library.
 Download fuse library from the following link.
 
@@ -14,14 +29,16 @@ make install
 *  Install tcmalloc or remove that from Makefile.
     On ubuntu, run "sudo apt-get install libgoogle-perftools-dev"
 *  Build this directory by running make.
-*  Download docker sources and add files for this driver.
-   Build docker and install that. (TODO: Use docker plugin)
 *  Mount a device/file - "sudo ./lcfs 'device' 'mnt'".
+   For debugging, options -f or -d could be specified.
 *  Stop docker and start docker with arguments "-s lcfs -g 'mnt'".
    -g argument is needed only if 'mnt' is not /var/lib/docker.
+   These options could be configured in file /etc/default/docker or
+   specified as arguments like "sudo dockerd -g 'mnt' -s lcfs".
 *  Run experiments, stop docker, umount - "sudo fusermount -u 'mnt'"
 *  For displaying stats, run "cstat 'id' [-c]" from 'mnt'/lcfs directory.
    Make sure fuse mount is running in forground mode (-d/-f option).
+   Otherwise, stats are displayed whenever a layer is unmounted.
 
 Portworx Graphdriver
 

@@ -87,10 +87,15 @@ dd if=/dev/zero of=file count=10 bs=4096 seek=2 conv=fdatasync
 dd if=/dev/zero of=file count=10 bs=4096 seek=10 conv=fsync
 ls -l file
 
-rm -fr file passwd
+dd if=/dev/zero of=file1 count=1 bs=1024 seek=23 conv=notrunc
+dd if=/dev/zero of=file1 count=1 bs=1024 seek=23 conv=notrunc
+dd if=/dev/zero of=file1 count=1 bs=1024 seek=22 conv=notrunc
+dd if=/dev/zero of=file1 count=1 bs=1024 seek=24 conv=notrunc
+
+rm -fr file file1 passwd
 
 ls -ltRi
-cd
+cd -
 
 service docker stop
 dockerd -s lcfs -g $MNT 2>/dev/null &
@@ -108,5 +113,18 @@ df -k $MNT
 df -i $MNT
 
 fusermount -u $MNT
+
+./lcfs $DEVICE $MNT -f &
+sleep 10
+cd $MNT
+
+ls -ltRi > /dev/null
+touch file
+dd if=/dev/zero of=file count=10 bs=4096
+rm -fr $MNT/*
+cd -
+
+fusermount -u $MNT
+
 rm -fr $MNT $DEVICE
 wait
