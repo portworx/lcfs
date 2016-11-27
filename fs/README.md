@@ -4,15 +4,25 @@ This file system driver is implemented using fuse low level API.
    Build docker and install that. (TODO: Use docker plugin)
 
     git clone git@github.com:docker/docker
+    
     cd docker
+    
     make build && make binary
+    
     sudo service docker stop
+    
     sudo cp bundles/latest/binary-client/docker /usr/bin
+    
     sudo cp bundles/latest/binary-daemon/dockerd /usr/bin/dockerd
+    
     sudo cp bundles/latest/binary-daemon/docker-runc /usr/bin
+    
     sudo cp bundles/latest/binary-daemon/docker-containerd /usr/bin
+    
     sudo cp bundles/latest/binary-daemon/docker-containerd-ctr /usr/bin
+    
     sudo cp bundles/latest/binary-daemon/docker-containerd-shim /usr/bin
+    
     sudo service docker start
 
 *  Install fuse library.
