@@ -9,7 +9,7 @@ lc_readBlock(struct gfs *gfs, struct fs *fs, off_t block, void *dbuf) {
     //lc_printf("Reading block %ld\n", block);
     assert((block == LC_SUPER_BLOCK) || (block < gfs->gfs_super->sb_tblocks));
     if (dbuf == NULL) {
-        posix_memalign(&buf, LC_BLOCK_SIZE, LC_BLOCK_SIZE);
+        malloc_aligned((void **)&buf);
     } else {
         buf = dbuf;
     }

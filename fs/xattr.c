@@ -353,7 +353,7 @@ lc_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             if (xblock) {
                 page = lc_xattrAddPage(gfs, fs, xblock, remain, page);
             }
-            posix_memalign((void **)&xblock, LC_BLOCK_SIZE, LC_BLOCK_SIZE);
+            malloc_aligned((void **)&xblock);
             xbuf = (char *)&xblock->xb_attr[0];
             remain = LC_BLOCK_SIZE - sizeof(struct xblock);
             pcount++;

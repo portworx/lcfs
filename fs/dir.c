@@ -232,7 +232,7 @@ lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
             if (dblock) {
                 page = lc_dirAddPage(gfs, fs, dblock, remain, page);
             }
-            posix_memalign((void **)&dblock, LC_BLOCK_SIZE, LC_BLOCK_SIZE);
+            malloc_aligned((void **)&dblock);
             dbuf = (char *)&dblock->db_dirent[0];
             remain = LC_BLOCK_SIZE - sizeof(struct dblock);
             count++;

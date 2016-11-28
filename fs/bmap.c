@@ -147,7 +147,7 @@ lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             if (bblock) {
                 page = lc_getPageNoBlock(gfs, fs, (char *)bblock, page);
             }
-            posix_memalign((void **)&bblock, LC_BLOCK_SIZE, LC_BLOCK_SIZE);
+            malloc_aligned((void **)&bblock);
             pcount++;
             count = 0;
         }

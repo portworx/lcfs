@@ -58,4 +58,16 @@ struct page {
 
 } __attribute__((packed));
 
+/* Page structure used for caching dirty pages of an inode */
+struct dpage {
+
+    /* Data associated with page of the file */
+    char *dp_data;
+
+    /* Offset at which valid data starts */
+    uint16_t dp_poffset;
+
+    /* Size of valid data starting from dp_poffset */
+    uint16_t dp_psize;
+} __attribute__((packed));
 #endif

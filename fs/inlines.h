@@ -1,8 +1,12 @@
 #ifndef _INLINES_H
 #define _INLINES_H
 
-static inline uint64_t lc_getFsHandle(uint64_t fh);
-static inline ino_t lc_getInodeHandle(uint64_t fh);
+/* Allocate block aligned memory */
+static inline void
+malloc_aligned(void **memptr) {
+    int err = posix_memalign(memptr, LC_BLOCK_SIZE, LC_BLOCK_SIZE);
+    assert(err == 0);
+}
 
 #if 0
 #define lc_printf  printf

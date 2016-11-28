@@ -71,7 +71,7 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     /* Initialize the new layer */
     fs = lc_newFs(gfs, rw);
     lc_lock(fs, true);
-    posix_memalign(&super, LC_BLOCK_SIZE, LC_BLOCK_SIZE);
+    malloc_aligned((void **)&super);
     lc_superInit(super, 0, false);
     fs->fs_super = super;
     fs->fs_root = root;
@@ -143,7 +143,7 @@ lc_removeLayer(struct fs *rfs, struct inode *dir, ino_t ino, bool rmdir,
         lc_reportError(__func__, __LINE__, root, ENOENT);
         return ENOENT;
     }
-    fs = lc_getfs(root, true);
+    fs = lc_getfs(root, false);
     if (fs == NULL) {
         lc_reportError(__func__, __LINE__, root, ENOENT);
         return ENOENT;
@@ -158,6 +158,11 @@ lc_removeLayer(struct fs *rfs, struct inode *dir, ino_t ino, bool rmdir,
         lc_reportError(__func__, __LINE__, root, EEXIST);
         return EEXIST;
     }
+    fs->fs_removed = true;
+    lc_unlock(fs);
+    fs = lc_getfs(root, true);
+    assert(fs->fs_root == ino);
+    assert(fs->fs_removed);
     *fsp = fs;
     return 0;
 }
@@ -195,8 +200,9 @@ lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name) {
     lc_printf("Removing fs with parent %ld root %ld index %d name %s\n",
                fs->fs_parent ? fs->fs_parent->fs_root : - 1,
                fs->fs_root, fs->fs_gindex, name);
-    fs->fs_removed = true;
     lc_invalidateDirtyPages(gfs, fs);
+    lc_invalidateInodePages(gfs, fs);
+    lc_invalidateInodeBlocks(gfs, fs);
     lc_blockFree(fs, fs->fs_sblock, 1);
 
 out:

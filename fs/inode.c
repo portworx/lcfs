@@ -30,7 +30,6 @@ lc_newInode(struct fs *fs) {
     inode->i_bmapDirBlock = LC_INVALID_BLOCK;
     inode->i_xattrBlock = LC_INVALID_BLOCK;
     pthread_rwlock_init(&inode->i_rwlock, NULL);
-    pthread_rwlock_init(&inode->i_pglock, NULL);
 
     /* XXX This accounting is not correct after restart */
     __sync_add_and_fetch(&fs->fs_gfs->gfs_super->sb_inodes, 1);
@@ -41,6 +40,9 @@ lc_newInode(struct fs *fs) {
 /* Take the lock on inode in the specified mode */
 void
 lc_inodeLock(struct inode *inode, bool exclusive) {
+    if (inode->i_fs->fs_frozen) {
+        return;
+    }
     if (exclusive) {
         pthread_rwlock_wrlock(&inode->i_rwlock);
     } else {
@@ -51,6 +53,9 @@ lc_inodeLock(struct inode *inode, bool exclusive) {
 /* Unlock the inode */
 void
 lc_inodeUnlock(struct inode *inode) {
+    if (inode->i_fs->fs_frozen) {
+        return;
+    }
     pthread_rwlock_unlock(&inode->i_rwlock);
 }
 
@@ -169,9 +174,8 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
     lc_printf("Reading inodes for fs %d %ld\n", fs->fs_gindex, fs->fs_root);
     assert(fs->fs_inodeBlocks == NULL);
     if (block != LC_INVALID_BLOCK) {
-        posix_memalign((void **)&fs->fs_inodeBlocks, LC_BLOCK_SIZE,
-                       LC_BLOCK_SIZE);
-        posix_memalign((void **)&ibuf, LC_BLOCK_SIZE, LC_BLOCK_SIZE);
+        malloc_aligned((void **)&fs->fs_inodeBlocks);
+        malloc_aligned((void **)&ibuf);
     }
     while (block != LC_INVALID_BLOCK) {
         //lc_printf("Reading inode table from block %ld\n", block);
@@ -205,7 +209,6 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
             }
             inode->i_block = iblock;
             pthread_rwlock_init(&inode->i_rwlock, NULL);
-            pthread_rwlock_init(&inode->i_pglock, NULL);
             lc_addInode(fs, inode);
             if (S_ISREG(inode->i_stat.st_mode)) {
                 lc_bmapRead(gfs, fs, inode, ibuf);
@@ -255,11 +258,23 @@ lc_freeInode(struct inode *inode) {
     assert(inode->i_page == NULL);
     assert(inode->i_bmap == NULL);
     lc_xattrFree(inode);
-    pthread_rwlock_destroy(&inode->i_pglock);
     pthread_rwlock_destroy(&inode->i_rwlock);
     lc_blockFreeExtents(NULL, inode->i_bmapDirExtents, false, false);
     lc_blockFreeExtents(NULL, inode->i_xattrExtents, false, false);
     free(inode);
+}
+
+/* Invalidate dirty inode pages */
+void
+lc_invalidateInodePages(struct gfs *gfs, struct fs *fs) {
+    struct page *page;
+
+    if (fs->fs_inodePagesCount) {
+        page = fs->fs_inodePages;
+        fs->fs_inodePages = NULL;
+        fs->fs_inodePagesCount = 0;
+        lc_releasePages(gfs, fs, page);
+    }
 }
 
 /* Flush dirty inodes */
@@ -363,20 +378,19 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs) {
     lc_printf("Syncing inodes for fs %d %ld\n", fs->fs_gindex, fs->fs_root);
     for (i = 0; i < LC_ICACHE_SIZE; i++) {
         inode = fs->fs_icache[i].ic_head;
-        if (inode == NULL) {
-            continue;
-        }
-        while (inode) {
+        while (inode && !fs->fs_removed) {
             if (lc_inodeDirty(inode)) {
                 count += lc_flushInode(gfs, fs, inode);
             }
             inode = inode->i_cnext;
         }
     }
-    if (fs->fs_inodePagesCount) {
+    if (fs->fs_inodePagesCount && !fs->fs_removed) {
         lc_flushInodePages(gfs, fs);
     }
-    lc_flushInodeBlocks(gfs, fs);
+    if (!fs->fs_removed) {
+        lc_flushInodeBlocks(gfs, fs);
+    }
     if (count) {
         __sync_add_and_fetch(&fs->fs_iwrite, count);
     }
@@ -570,7 +584,7 @@ lc_inodeInit(struct fs *fs, mode_t mode, uid_t uid, gid_t gid,
         inode->i_target[len] = 0;
         inode->i_stat.st_size = len;
     }
-    lc_inodeLock(inode, true);
     lc_addInode(fs, inode);
+    lc_inodeLock(inode, true);
     return inode;
 }

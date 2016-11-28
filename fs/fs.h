@@ -205,12 +205,40 @@ struct fs {
     /* Set if readOnly snapshot */
     bool fs_readOnly;
 
+    /* No more changes in the file system */
+    bool fs_frozen;
+
     /* Set if extended attributes are enabled */
     bool fs_xattrEnabled;
 
     /* Set if layer is being removed */
     bool fs_removed;
 } __attribute__((packed));
+
+/* Set up inode handle using inode number and file system id */
+static inline uint64_t
+lc_setHandle(uint64_t gindex, ino_t ino) {
+    assert(gindex < LC_MAX);
+    return (gindex << 32) | ino;
+}
+
+/* Get the file system id from the file handle */
+static inline uint64_t
+lc_getFsHandle(uint64_t handle) {
+    int gindex = handle >> 32;
+
+    assert(gindex < LC_MAX);
+    return gindex;
+}
+
+/* Get inode number corresponding to the file handle */
+static inline ino_t
+lc_getInodeHandle(uint64_t handle) {
+    if (handle <= LC_ROOT_INODE) {
+        return LC_ROOT_INODE;
+    }
+    return handle & 0xFFFFFFFF;
+}
 
 /* Check if specified inode belongs in global file system outside any layers */
 static inline bool

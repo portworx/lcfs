@@ -21,13 +21,13 @@
 #include <linux/ioctl.h>
 
 #include "lcfs.h"
-#include "inlines.h"
 #include "layout.h"
-#include "fs.h"
 #include "inode.h"
+#include "fs.h"
 #include "block.h"
 #include "page.h"
 #include "stats.h"
+#include "inlines.h"
 
 struct gfs *getfs();
 
@@ -65,6 +65,7 @@ void lc_unlock(struct fs *fs);
 int lc_mount(char *device, struct gfs **gfsp);
 void lc_newInodeBlock(struct gfs *gfs, struct fs *fs);
 void lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs);
+void lc_invalidateInodeBlocks(struct gfs *gfs, struct fs *fs);
 void lc_sync(struct gfs *gfs, struct fs *fs);
 void lc_unmount(struct gfs *gfs);
 void lc_umountAll(struct gfs *gfs);
@@ -89,6 +90,7 @@ void lc_syncInodes(struct gfs *gfs, struct fs *fs);
 void lc_inodeLock(struct inode *inode, bool exclusive);
 void lc_inodeUnlock(struct inode *inode);
 int lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode);
+void lc_invalidateInodePages(struct gfs *gfs, struct fs *fs);
 
 ino_t lc_dirLookup(struct fs *fs, struct inode *dir, const char *name);
 void lc_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,
@@ -120,10 +122,13 @@ struct page *lc_getPageNoBlock(struct gfs *gfs, struct fs *fs, char *data,
 struct page *lc_getPageNewData(struct fs *fs, uint64_t block);
 void lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
                          struct page *page, uint64_t block);
-void lc_addPages(struct inode *inode, off_t off, size_t size,
-                 struct fuse_bufvec *bufv, struct fuse_bufvec *dst);
-int lc_readPages(struct inode *inode, off_t soffset, off_t endoffset,
-                 struct page **pages, struct fuse_bufvec *bufv);
+uint64_t lc_copyPages(off_t off, size_t size, struct dpage *dpages,
+                      struct fuse_bufvec *bufv, struct fuse_bufvec *dst);
+uint64_t lc_addPages(struct inode *inode, off_t off, size_t size,
+                     struct dpage *dpages, uint64_t pcount);
+void lc_readPages(fuse_req_t req, struct inode *inode, off_t soffset,
+                  off_t endoffset, struct page **pages,
+                  struct fuse_bufvec *bufv);
 void lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
                          struct page *head, uint64_t count);
 void lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode);
@@ -132,9 +137,8 @@ void lc_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
                  void *buf);
 void lc_truncPages(struct inode *inode, off_t size, bool remove);
 void lc_flushDirtyPages(struct gfs *gfs, struct fs *fs);
-void lc_releaseReadPages(struct gfs *gfs, struct fs *fs, struct page **pages,
-                         uint64_t pcount);
 void lc_invalidateDirtyPages(struct gfs *gfs, struct fs *fs);
+void lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head);
 
 int lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
                void **fsp);

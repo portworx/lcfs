@@ -228,9 +228,12 @@ Locking
 Each layer has a read-write lock, which is taken in shared mode while
 reading/writing to the layer (all file operations).  That lock is taken in exclusive
 mode while unmounting the layer,  when creating a new layer or while deleting a layer.
+
 Each inode has a read-write lock.  Operations which can be run in shared mode (read,
 readdir, getattr etc), take that lock in shared mode, while other operations which
-modify the inode hold that lock in exclusive mode.
+modify the inode hold that lock in exclusive mode.  This lock is not taken once
+a layer is frozen (meaning, a new layer is created on top of that layer and no
+more changes are allowed in the layer).
 
 Layers
 
@@ -275,6 +278,10 @@ files involved in those operations in the appropriate mode.
 
 Certain operations like hardlink, rename etc. are not supported across layers
 of the file system.
+
+Writes
+
+Writes are returned immediately after copying new data to inode page table.
 
 Fsync
 

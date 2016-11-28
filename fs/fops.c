@@ -22,7 +22,7 @@ create(struct fs *fs, ino_t parent, const char *name, mode_t mode,
     struct inode *dir, *inode;
     ino_t ino;
 
-    if (fs->fs_snap) {
+    if (fs->fs_frozen) {
         lc_reportError(__func__, __LINE__, parent, EROFS);
         return EROFS;
     }
@@ -128,7 +128,7 @@ lc_remove(struct fs *fs, ino_t parent, const char *name, bool rmdir) {
     struct inode *dir;
     int err;
 
-    if (fs->fs_snap) {
+    if (fs->fs_frozen) {
         lc_reportError(__func__, __LINE__, parent, EROFS);
         return EROFS;
     }
@@ -260,7 +260,7 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
     lc_statsBegin(&start);
     lc_displayEntry(__func__, ino, 0, NULL);
     fs = lc_getfs(ino, false);
-    if (fs->fs_snap) {
+    if (fs->fs_frozen) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
         err = EROFS;
@@ -476,7 +476,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
     lc_statsBegin(&start);
     lc_displayEntry(__func__, parent, newparent, name);
     fs = lc_getfs(parent, false);
-    if (fs->fs_snap) {
+    if (fs->fs_frozen) {
         lc_reportError(__func__, __LINE__, parent, EROFS);
         fuse_reply_err(req, EROFS);
         err = EROFS;
@@ -592,7 +592,7 @@ lc_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
     lc_statsBegin(&start);
     lc_displayEntry(__func__, newparent, ino, newname);
     fs = lc_getfs(ino, false);
-    if (fs->fs_snap) {
+    if (fs->fs_frozen) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
         err = EROFS;
@@ -646,7 +646,7 @@ lc_openInode(struct fs *fs, fuse_ino_t ino, struct fuse_file_info *fi) {
 
     fi->fh = 0;
     modify = (fi->flags & (O_WRONLY | O_RDWR));
-    if (modify && fs->fs_snap) {
+    if (modify && fs->fs_frozen) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
         return EROFS;
     }
@@ -697,13 +697,13 @@ lc_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
 /* Read from a file */
 static void
 lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
-         struct fuse_file_info *fi) {
+        struct fuse_file_info *fi) {
     struct fuse_bufvec *bufv;
     struct timeval start;
     struct inode *inode;
     struct page **pages;
-    uint64_t pcount;
     off_t endoffset;
+    uint64_t pcount;
     struct fs *fs;
     size_t fsize;
     int err = 0;
@@ -714,10 +714,10 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
         fuse_reply_buf(req, NULL, 0);
         return;
     }
-    fsize = sizeof(struct fuse_bufvec) +
-            (sizeof(struct fuse_buf) * ((size / LC_BLOCK_SIZE) + 2));
+    pcount = (size / LC_BLOCK_SIZE) + 2;
+    fsize = sizeof(struct fuse_bufvec) + (sizeof(struct fuse_buf) * pcount);
     bufv = alloca(fsize);
-    pages = alloca(sizeof(struct page *) * ((size / LC_BLOCK_SIZE) + 2));
+    pages = alloca(sizeof(struct page *) * pcount);
     memset(bufv, 0, fsize);
     fs = lc_getfs(ino, false);
     inode = lc_getInode(fs, ino, (struct inode *)fi->fh, false, false);
@@ -740,9 +740,7 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     if (endoffset > fsize) {
         endoffset = fsize;
     }
-    pcount = lc_readPages(inode, off, endoffset, pages, bufv);
-    fuse_reply_data(req, bufv, FUSE_BUF_SPLICE_MOVE);
-    lc_releaseReadPages(fs->fs_gfs, fs, pages, pcount);
+    lc_readPages(req, inode, off, endoffset, pages, bufv);
     lc_inodeUnlock(inode);
 
 out:
@@ -1107,23 +1105,27 @@ static void
 lc_write_buf(fuse_req_t req, fuse_ino_t ino,
               struct fuse_bufvec *bufv, off_t off, struct fuse_file_info *fi) {
     struct fuse_bufvec *dst;
+    uint64_t pcount, added;
     struct timeval start;
     struct inode *inode;
+    struct dpage *dpages;
     size_t size, wsize;
-    off_t endoffset;
     struct fs *fs;
     int err = 0;
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, ino, 0, NULL);
     size = bufv->buf[bufv->idx].size;
-    wsize = sizeof(struct fuse_bufvec) +
-           (sizeof(struct fuse_buf) * ((size / LC_BLOCK_SIZE) + 2));
+    pcount = (size / LC_BLOCK_SIZE) + 2;
+    wsize = sizeof(struct fuse_bufvec) + (sizeof(struct fuse_buf) * pcount);
     dst = alloca(wsize);
     memset(dst, 0, wsize);
-    endoffset = off + size;
+    dpages = alloca(pcount * sizeof(struct dpage));
+
+    /* Copy in the data before taking the lock */
+    pcount = lc_copyPages(off, size, dpages, bufv, dst);
     fs = lc_getfs(ino, false);
-    if (fs->fs_snap) {
+    if (fs->fs_frozen) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
         err = EROFS;
@@ -1136,19 +1138,27 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
         err = ENOENT;
         goto out;
     }
+
+    /* Now the write cannot fail, so respond success */
+    fuse_reply_write(req, size);
     assert(S_ISREG(inode->i_stat.st_mode));
 
-    /* Update inode size if needed */
-    if (endoffset > inode->i_stat.st_size) {
-        inode->i_stat.st_size = endoffset;
-    }
-    lc_addPages(inode, off, size, bufv, dst);
-    fuse_reply_write(req, size);
+    /* Link the dirty pages to the inode and update times */
+    added = lc_addPages(inode, off, size, dpages, pcount);
     lc_updateInodeTimes(inode, false, true, true);
     lc_markInodeDirty(inode, true, false, true, false);
     lc_inodeUnlock(inode);
+    if (added) {
+        __sync_add_and_fetch(&fs->fs_pcount, added);
+    }
 
 out:
+    if (err) {
+        while (pcount) {
+            pcount--;
+            free(dpages[pcount].dp_data);
+        }
+    }
     lc_statsAdd(fs, LC_WRITE_BUF, err, &start);
     lc_unlock(fs);
 }

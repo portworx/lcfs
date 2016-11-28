@@ -21,6 +21,23 @@ lc_newFs(struct gfs *gfs, bool rw) {
     return fs;
 }
 
+/* Invalidate inode bmap blocks */
+void
+lc_invalidateInodeBlocks(struct gfs *gfs, struct fs *fs) {
+    struct page *page;
+
+    if (fs->fs_inodeBlockCount) {
+        page = fs->fs_inodeBlockPages;
+        fs->fs_inodeBlockPages = NULL;
+        fs->fs_inodeBlockCount = 0;
+        lc_releasePages(gfs, fs, page);
+    }
+    if (fs->fs_inodeBlocks) {
+        free(fs->fs_inodeBlocks);
+        fs->fs_inodeBlocks = NULL;
+    }
+}
+
 /* Flush inode block map pages */
 void
 lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs) {
@@ -67,7 +84,7 @@ lc_newInodeBlock(struct gfs *gfs, struct fs *fs) {
                                                    (char *)fs->fs_inodeBlocks,
                                                    fs->fs_inodeBlockPages);
     }
-    posix_memalign((void **)&fs->fs_inodeBlocks, LC_BLOCK_SIZE, LC_BLOCK_SIZE);
+    malloc_aligned((void **)&fs->fs_inodeBlocks);
     memset(fs->fs_inodeBlocks, 0, LC_BLOCK_SIZE);
     fs->fs_inodeIndex = 0;
     fs->fs_inodeBlockCount++;
@@ -213,6 +230,7 @@ lc_addfs(struct fs *fs, struct fs *pfs) {
         snap->fs_super->sb_nextSnap = fs->fs_sblock;
         snap->fs_super->sb_flags |= LC_SUPER_DIRTY;
     } else if (pfs) {
+        pfs->fs_frozen = true;
         pfs->fs_snap = fs;
         pfs->fs_super->sb_childSnap = fs->fs_sblock;
         pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
@@ -312,6 +330,7 @@ lc_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
         /* First child layer of the parent */
         assert(pfs->fs_snap == NULL);
         pfs->fs_snap = fs;
+        pfs->fs_frozen = true;
         fs->fs_parent = pfs;
         fs->fs_pcache = pfs->fs_pcache;
         fs->fs_ilock = pfs->fs_ilock;
@@ -486,12 +505,14 @@ lc_sync(struct gfs *gfs, struct fs *fs) {
         }
 
         /* Flush everything to disk before marking file system clean */
-        fsync(gfs->gfs_fd);
-        fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
-        err = lc_superWrite(gfs, fs);
-        if (err) {
-            printf("Superblock update error %d for fs index %d root %ld\n",
-                   err, fs->fs_gindex, fs->fs_root);
+        if (!fs->fs_removed) {
+            fsync(gfs->gfs_fd);
+            fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
+            err = lc_superWrite(gfs, fs);
+            if (err) {
+                printf("Superblock update error %d for fs index %d root %ld\n",
+                       err, fs->fs_gindex, fs->fs_root);
+            }
         }
         lc_unlock(fs);
     }
