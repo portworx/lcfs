@@ -1,10 +1,13 @@
 set -x
 
 MNT=/tmp/lcfs-testmountpoint
+XATTR=$PWD/testxattr
 fusermount -u $MNT
+rm -fr $MNT
 mkdir $MNT
 
 DEVICE=/tmp/lcfs-testdevice
+rm $DEVICE
 dd if=/dev/zero of=$DEVICE count=50000 bs=4096
 
 ./lcfs $DEVICE $MNT -f &
@@ -73,7 +76,7 @@ rmdir dir
 cp /etc/passwd .
 cat passwd > /dev/null
 
-dd if=/dev/zero of=file count=10000 bs=4096
+dd if=/dev/zero of=file count=1000 bs=4096
 cat file > /dev/null
 
 dd if=/dev/zero of=file count=10 bs=4096
@@ -91,6 +94,8 @@ dd if=/dev/zero of=file1 count=1 bs=1024 seek=23 conv=notrunc
 dd if=/dev/zero of=file1 count=1 bs=1024 seek=23 conv=notrunc
 dd if=/dev/zero of=file1 count=1 bs=1024 seek=22 conv=notrunc
 dd if=/dev/zero of=file1 count=1 bs=1024 seek=24 conv=notrunc
+
+$XATTR
 
 rm -fr file file1 passwd
 
