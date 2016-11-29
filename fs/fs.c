@@ -433,6 +433,11 @@ lc_mount(char *device, struct gfs **gfsp) {
         perror("lseek");
         return errno;
     }
+    if ((size / LC_BLOCK_SIZE) < LC_MIN_BLOCKS) {
+        printf("Device is too small. Minimum size required is %ld\n",
+               LC_MIN_BLOCKS * LC_BLOCK_SIZE);
+        return EINVAL;
+    }
     gfs = lc_gfsAlloc(fd);
 
     /* Initialize a file system structure in memory */

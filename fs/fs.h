@@ -30,6 +30,9 @@ struct gfs {
     /* fuse channel */
     struct fuse_chan *gfs_ch;
 
+    /* Number of blocks reserved */
+    uint64_t gfs_blocksReserved;
+
     /* Free extents */
     struct extent *gfs_extents;
 
@@ -181,7 +184,7 @@ struct fs {
     /* Count of inodes */
     uint64_t fs_icount;
 
-    /* Count of pages */
+    /* Count of dirty pages */
     uint64_t fs_pcount;
 
     /* Count of blocks allocated */

@@ -49,6 +49,10 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
 
     /* Get the global file system */
     rfs = lc_getfs(LC_ROOT_INODE, false);
+    if (!lc_hasSpace(gfs, LC_LAYER_MIN_BLOCKS)) {
+        err = ENOSPC;
+        goto out;
+    }
     root = lc_inodeAlloc(rfs);
     pdir = gfs->gfs_snap_rootInode;
     lc_inodeLock(pdir, true);

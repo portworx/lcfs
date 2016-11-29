@@ -38,6 +38,7 @@ int lc_writeBlocks(struct gfs *gfs, struct fs *fs,
 
 void lc_blockAllocatorInit(struct gfs *gfs);
 void lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs);
+bool lc_hasSpace(struct gfs *gfs, uint64_t blocks);
 void lc_addExtent(struct gfs *gfs, struct extent **extents,
                   uint64_t block, uint64_t count);
 void lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool remove);

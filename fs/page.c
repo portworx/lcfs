@@ -346,6 +346,21 @@ lc_readPages(fuse_req_t req, struct inode *inode, off_t soffset,
     lc_releaseReadPages(fs->fs_gfs, fs, pages, pcount);
 }
 
+/* Free blocks in the extent list */
+static void
+lc_freeInodeDataBlocks(struct fs *fs, struct inode *inode,
+                       struct extent **extents) {
+    struct extent *extent = *extents, *tmp;
+
+    while (extent) {
+        lc_freeLayerDataBlocks(fs, extent->ex_start, extent->ex_count,
+                               inode->i_private);
+        tmp = extent;
+        extent = extent->ex_next;
+        free(tmp);
+    }
+}
+
 /* Flush dirty pages of an inode */
 void
 lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
@@ -353,6 +368,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     struct page *page, *dpage = NULL, *tpage = NULL;
     bool single = true, ended = false;
     uint64_t i, lpage, pcount, block;
+    struct extent *extents = NULL;
     char *pdata;
 
     assert(S_ISREG(inode->i_stat.st_mode));
@@ -403,8 +419,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         } else if (inode->i_bmap) {
             for (i = 0; i < inode->i_bcount; i++) {
                 if (inode->i_bmap[i]) {
-                    lc_freeLayerDataBlocks(fs, inode->i_bmap[i], 1,
-                                           inode->i_private);
+                    lc_addExtent(gfs, &extents, inode->i_bmap[i], 1);
                 }
             }
             free(inode->i_bmap);
@@ -434,8 +449,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             dpage = page;
             if (!single) {
                 if (inode->i_bmap[i]) {
-                    lc_freeLayerDataBlocks(fs, inode->i_bmap[i], 1,
-                                           inode->i_private);
+                    lc_addExtent(gfs, &extents, inode->i_bmap[i], 1);
                 }
                 lc_inodeBmapAdd(inode, i, block + count);
             }
@@ -473,6 +487,9 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         inode->i_page = NULL;
         inode->i_pcount = 0;
     }
+    if (extents) {
+        lc_freeInodeDataBlocks(fs, inode, &extents);
+    }
     if (count) {
         pcount = __sync_fetch_and_sub(&inode->i_fs->fs_pcount, count);
         assert(pcount >= count);
@@ -483,10 +500,12 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
 void
 lc_truncPages(struct inode *inode, off_t size, bool remove) {
     uint64_t pg = size / LC_BLOCK_SIZE, lpage;
+    struct extent *extents = NULL;
     uint64_t i, bcount = 0, pcount;
     struct fs *fs = inode->i_fs;
     bool truncated = false;
     struct dpage *dpage;
+    struct gfs *gfs;
     int freed = 0;
     off_t poffset;
     char *pdata;
@@ -523,6 +542,7 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
         lc_copyBmap(inode);
     }
     assert(!inode->i_shared);
+    gfs = fs->fs_gfs;
 
     /* Take care of files with single extent */
     lpage = (inode->i_stat.st_size + LC_BLOCK_SIZE - 1) / LC_BLOCK_SIZE;
@@ -534,8 +554,8 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
         } else {
             if (inode->i_extentLength > pg) {
                 bcount = inode->i_extentLength - pg;
-                lc_freeLayerDataBlocks(fs, inode->i_extentBlock + pg, bcount,
-                                       inode->i_private);
+                lc_addExtent(gfs, &extents,
+                             inode->i_extentBlock + pg, bcount);
                 inode->i_extentLength = pg;
             }
             if (inode->i_extentLength == 0) {
@@ -574,9 +594,7 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
                 }
                 truncated = true;
             } else {
-                /* XXX Try to coalesce this */
-                lc_freeLayerDataBlocks(fs, inode->i_bmap[i], 1,
-                                       inode->i_private);
+                lc_addExtent(gfs, &extents, inode->i_bmap[i], 1);
                 inode->i_bmap[i] = 0;
                 bcount++;
             }
@@ -611,6 +629,9 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
                 freed++;
             }
         }
+    }
+    if (extents) {
+        lc_freeInodeDataBlocks(fs, inode, &extents);
     }
     if (freed) {
         pcount = __sync_fetch_and_sub(&fs->fs_pcount, freed);

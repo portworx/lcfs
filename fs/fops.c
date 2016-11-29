@@ -1104,8 +1104,8 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
 static void
 lc_write_buf(fuse_req_t req, fuse_ino_t ino,
               struct fuse_bufvec *bufv, off_t off, struct fuse_file_info *fi) {
+    uint64_t pcount, reserved;
     struct fuse_bufvec *dst;
-    uint64_t pcount, added;
     struct timeval start;
     struct inode *inode;
     struct dpage *dpages;
@@ -1131,6 +1131,13 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
         err = EROFS;
         goto out;
     }
+    reserved = __sync_add_and_fetch(&fs->fs_pcount, pcount);
+    if (!lc_hasSpace(getfs(), reserved)) {
+        lc_reportError(__func__, __LINE__, ino, ENOSPC);
+        fuse_reply_err(req, ENOSPC);
+        err = ENOSPC;
+        goto out;
+    }
     inode = lc_getInode(fs, ino, (struct inode *)fi->fh, true, true);
     if (inode == NULL) {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
@@ -1144,15 +1151,15 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
     assert(S_ISREG(inode->i_stat.st_mode));
 
     /* Link the dirty pages to the inode and update times */
-    added = lc_addPages(inode, off, size, dpages, pcount);
+    pcount -= lc_addPages(inode, off, size, dpages, pcount);
     lc_updateInodeTimes(inode, false, true, true);
     lc_markInodeDirty(inode, true, false, true, false);
-    if (added) {
-        __sync_add_and_fetch(&fs->fs_pcount, added);
-    }
     lc_inodeUnlock(inode);
 
 out:
+    if (pcount) {
+        __sync_sub_and_fetch(&fs->fs_pcount, pcount);
+    }
     if (err) {
         while (pcount) {
             pcount--;

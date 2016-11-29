@@ -38,6 +38,7 @@ This file system driver is implemented using fuse low level API.
     sudo service docker start
 
 *  Install fuse library.
+
     Download fuse library from the following link.
 
     https://github.com/libfuse/libfuse/releases/download/fuse-2.9.7/fuse-2.9.7.tar.gz
@@ -50,16 +51,26 @@ This file system driver is implemented using fuse low level API.
 
     make install
 
+    If needed, export PKG_CONFIG_PATH with /usr/local/lib/pkgconfig.
+
 *  Install tcmalloc or remove that from Makefile.
+
     On ubuntu, run "sudo apt-get install libgoogle-perftools-dev"
+
+    On Centos, run "sudo yum install gperftools"
+
 *  Build this directory by running make. (cd ../px-graph/fs; make)
+
 *  Mount a device/file - "sudo ./lcfs 'device' 'mnt'".
    For debugging, options -f or -d could be specified.
+
 *  Stop docker and start docker with arguments "-s lcfs -g 'mnt'".
    -g argument is needed only if 'mnt' is not /var/lib/docker.
    These options could be configured in file /etc/default/docker or
    specified as arguments like "sudo dockerd -g 'mnt' -s lcfs".
+
 *  Run experiments, stop docker, umount - "sudo fusermount -u 'mnt'"
+
 *  For displaying stats, run "cstat 'id' [-c]" from 'mnt'/lcfs directory.
    Make sure fuse mount is running in forground mode (-d/-f option).
    Otherwise, stats are displayed whenever a layer is unmounted.
@@ -267,6 +278,10 @@ well).
 As for shared space between layers, a layer will free space in the global pool
 only if the space was originally allocated in the layer, not if the space was
 inherited from a previous layer.
+
+There should be a minimum size for the device to be formatted/mounted as a file
+system.  Operations like writes and creating new layers are failed when file
+system free space goes below a certain threshold.
 
 TODO: Handling space fragmentation
 

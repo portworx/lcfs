@@ -1,5 +1,6 @@
 #include "includes.h"
 
+#define LC_RESERVED_BLOCKS  10ul
 #define LC_META_RESERVE     1024
 #define LC_BLOCK_RESERVE    8192
 
@@ -13,6 +14,15 @@ lc_blockAllocatorInit(struct gfs *gfs) {
     extent->ex_count = gfs->gfs_super->sb_tblocks - LC_START_BLOCK - 1;
     extent->ex_next = NULL;
     gfs->gfs_extents = extent;
+    gfs->gfs_blocksReserved = (gfs->gfs_super->sb_tblocks *
+                               LC_RESERVED_BLOCKS) / 100ul;
+}
+
+/* Check if file system has enough space for the operation to proceed */
+bool
+lc_hasSpace(struct gfs *gfs, uint64_t blocks) {
+    return gfs->gfs_super->sb_tblocks >
+           (gfs->gfs_super->sb_blocks + gfs->gfs_blocksReserved + blocks);
 }
 
 /* Merge nearby extents */
@@ -131,6 +141,10 @@ lc_findFreeBlock(struct gfs *gfs, struct fs *fs,
         }
         pthread_mutex_lock(&gfs->gfs_alock);
         block = lc_findFreeBlock(gfs, NULL, reserve);
+        if ((block == LC_INVALID_BLOCK) && (count < reserve)) {
+            reserve = count;
+            block = lc_findFreeBlock(gfs, NULL, reserve);
+        }
         pthread_mutex_unlock(&gfs->gfs_alock);
         if (block != LC_INVALID_BLOCK) {
             if (fs != lc_getGlobalFs(gfs)) {
@@ -143,9 +157,10 @@ lc_findFreeBlock(struct gfs *gfs, struct fs *fs,
                              reserve - count);
             }
             fs->fs_blocks += reserve;
+        } else {
+            assert(block != LC_INVALID_BLOCK);
         }
     }
-    assert(block != LC_INVALID_BLOCK);
     return block;
 }
 
