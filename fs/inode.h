@@ -135,7 +135,7 @@ struct inode {
 #define i_parent        i_dinode.di_parent
 #define i_bmapDirBlock  i_dinode.di_bmapdir
 #define i_xattrBlock    i_dinode.di_xattr
-#define i_pcache        i_dinode.di_pcache
+#define i_private       i_dinode.di_private
 #define i_extentBlock   i_dinode.di_bmapdir
 #define i_extentLength  i_dinode.di_extentLength
 

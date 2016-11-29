@@ -398,12 +398,13 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
 
         /* Free any old blocks present */
         if (inode->i_extentLength) {
-            lc_freeLayerMetaBlocks(fs, inode->i_extentBlock,
-                                   inode->i_extentLength);
+            lc_freeLayerDataBlocks(fs, inode->i_extentBlock,
+                                   inode->i_extentLength, inode->i_private);
         } else if (inode->i_bmap) {
             for (i = 0; i < inode->i_bcount; i++) {
                 if (inode->i_bmap[i]) {
-                    lc_freeLayerMetaBlocks(fs, inode->i_bmap[i], 1);
+                    lc_freeLayerDataBlocks(fs, inode->i_bmap[i], 1,
+                                           inode->i_private);
                 }
             }
             free(inode->i_bmap);
@@ -433,7 +434,8 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             dpage = page;
             if (!single) {
                 if (inode->i_bmap[i]) {
-                    lc_freeLayerMetaBlocks(fs, inode->i_bmap[i], 1);
+                    lc_freeLayerDataBlocks(fs, inode->i_bmap[i], 1,
+                                           inode->i_private);
                 }
                 lc_inodeBmapAdd(inode, i, block + count);
             }
@@ -498,7 +500,7 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
         assert(inode->i_pcount == 0);
         assert(inode->i_page == NULL);
         assert(!inode->i_shared);
-        inode->i_pcache = true;
+        inode->i_private = true;
         return;
     }
 
@@ -508,7 +510,7 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
             if (remove) {
                 inode->i_stat.st_blocks = 0;
                 inode->i_shared = false;
-                inode->i_pcache = true;
+                inode->i_private = true;
                 inode->i_extentBlock = 0;
                 inode->i_extentLength = 0;
             }
@@ -532,7 +534,8 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
         } else {
             if (inode->i_extentLength > pg) {
                 bcount = inode->i_extentLength - pg;
-                lc_blockFree(fs, inode->i_extentBlock + pg, bcount);
+                lc_freeLayerDataBlocks(fs, inode->i_extentBlock + pg, bcount,
+                                       inode->i_private);
                 inode->i_extentLength = pg;
             }
             if (inode->i_extentLength == 0) {
@@ -572,7 +575,8 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
                 truncated = true;
             } else {
                 /* XXX Try to coalesce this */
-                lc_blockFree(fs, inode->i_bmap[i], 1);
+                lc_freeLayerDataBlocks(fs, inode->i_bmap[i], 1,
+                                       inode->i_private);
                 inode->i_bmap[i] = 0;
                 bcount++;
             }
@@ -634,6 +638,6 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
         }
         assert(inode->i_pcount == 0);
         assert(inode->i_bcount == 0);
-        inode->i_pcache = true;
+        inode->i_private = true;
     }
 }

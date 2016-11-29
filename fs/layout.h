@@ -124,7 +124,7 @@ struct dinode {
     uint64_t di_parent;
 
     /* Set if blocks are newly allocated and not inherited */
-    uint8_t di_pcache;
+    uint8_t di_private;
 } __attribute__((packed));
 static_assert(sizeof(struct dinode) == 177, "dinode size != 177");
 

@@ -116,7 +116,6 @@ lc_freeLayer(struct fs *fs, bool remove) {
     if (fs->fs_pcache && (fs->fs_parent == NULL)) {
         lc_destroy_pages(gfs, fs->fs_pcache, remove);
     }
-    assert(fs->fs_mextents == NULL);
     if (fs->fs_ilock && (fs->fs_parent == NULL)) {
         pthread_mutex_destroy(fs->fs_ilock);
         free(fs->fs_ilock);
@@ -137,7 +136,7 @@ lc_freeLayer(struct fs *fs, bool remove) {
 void
 lc_destroyFs(struct fs *fs, bool remove) {
     lc_destroyInodes(fs, remove);
-    lc_processFreedMetaBlocks(fs, false);
+    lc_processFreedBlocks(fs, false);
     lc_freeLayer(fs, remove);
 }
 
@@ -501,7 +500,7 @@ lc_sync(struct gfs *gfs, struct fs *fs) {
             fs->fs_super->sb_flags &= ~LC_SUPER_MOUNTED;
             lc_syncInodes(gfs, fs);
             lc_flushDirtyPages(gfs, fs);
-            lc_processFreedMetaBlocks(fs, true);
+            lc_processFreedBlocks(fs, true);
         }
 
         /* Flush everything to disk before marking file system clean */

@@ -44,7 +44,9 @@ void lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool remove);
 uint64_t lc_blockAlloc(struct fs *fs, uint64_t count, bool meta);
 void lc_blockFree(struct fs *fs, uint64_t block, uint64_t count);
 void lc_freeLayerMetaBlocks(struct fs *fs, uint64_t block, uint64_t count);
-void lc_processFreedMetaBlocks(struct fs *fs, bool remove);
+void lc_freeLayerDataBlocks(struct fs *fs, uint64_t block, uint64_t count,
+                            bool allocated);
+void lc_processFreedBlocks(struct fs *fs, bool remove);
 uint64_t lc_blockFreeExtents(struct fs *fs, struct extent *extents,
                          bool efree, bool flush);
 void lc_replaceMetaBlocks(struct fs *fs, struct extent **extents,

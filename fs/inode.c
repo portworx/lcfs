@@ -455,7 +455,7 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
             }
             inode->i_shared = true;
         } else {
-            inode->i_pcache = true;
+            inode->i_private = true;
         }
     } else if (S_ISDIR(inode->i_stat.st_mode)) {
         if (parent->i_dirent) {
@@ -575,7 +575,7 @@ lc_inodeInit(struct fs *fs, mode_t mode, uid_t uid, gid_t gid,
     inode->i_stat.st_rdev = rdev;
     inode->i_stat.st_blksize = LC_BLOCK_SIZE;
     inode->i_parent = lc_getInodeHandle(parent);
-    inode->i_pcache = S_ISREG(mode);
+    inode->i_private = S_ISREG(mode);
     lc_updateInodeTimes(inode, true, true, true);
     if (target != NULL) {
         len = strlen(target);

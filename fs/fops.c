@@ -666,7 +666,7 @@ lc_openInode(struct fs *fs, fuse_ino_t ino, struct fuse_file_info *fi) {
     /* Increment open count if inode is private to this layer.
      */
     if (inode->i_fs == fs) {
-        fi->keep_cache = inode->i_pcache;
+        fi->keep_cache = inode->i_private;
         inode->i_ocount++;
     }
     fi->fh = (uint64_t)inode;
@@ -791,7 +791,7 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
     /* Invalidate pages of shared files in kernel page cache */
     if (inval) {
         *inval = (inode->i_ocount == 0) && (inode->i_stat.st_size > 0) &&
-                 (!inode->i_pcache || fs->fs_readOnly ||
+                 (!inode->i_private || fs->fs_readOnly ||
                   (fs->fs_snap != NULL));
     }
     fuse_reply_err(req, 0);
@@ -1147,10 +1147,10 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
     added = lc_addPages(inode, off, size, dpages, pcount);
     lc_updateInodeTimes(inode, false, true, true);
     lc_markInodeDirty(inode, true, false, true, false);
-    lc_inodeUnlock(inode);
     if (added) {
         __sync_add_and_fetch(&fs->fs_pcount, added);
     }
+    lc_inodeUnlock(inode);
 
 out:
     if (err) {
