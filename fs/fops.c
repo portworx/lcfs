@@ -1104,7 +1104,7 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
 static void
 lc_write_buf(fuse_req_t req, fuse_ino_t ino,
               struct fuse_bufvec *bufv, off_t off, struct fuse_file_info *fi) {
-    uint64_t pcount, reserved;
+    uint64_t pcount, reserved = 0;
     struct fuse_bufvec *dst;
     struct timeval start;
     struct inode *inode;
@@ -1157,7 +1157,7 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
     lc_inodeUnlock(inode);
 
 out:
-    if (pcount) {
+    if (pcount && reserved) {
         __sync_sub_and_fetch(&fs->fs_pcount, pcount);
     }
     if (err) {

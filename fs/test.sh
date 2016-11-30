@@ -8,7 +8,7 @@ mkdir $MNT
 
 DEVICE=/tmp/lcfs-testdevice
 rm $DEVICE
-dd if=/dev/zero of=$DEVICE count=50000 bs=4096
+dd if=/dev/zero of=$DEVICE count=60000 bs=4096
 
 ./lcfs $DEVICE $MNT -f &
 sleep 10

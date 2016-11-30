@@ -276,9 +276,6 @@ lc_addPages(struct inode *inode, off_t off, size_t size,
     if (inode->i_shared) {
         lc_copyBmap(inode);
     }
-    if (inode->i_extentLength) {
-        lc_expandBmap(inode);
-    }
     lc_inodeAllocPages(inode);
 
     /* Link the dirty pages to the inode, merging with any existing ones */
@@ -548,7 +545,6 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
     lpage = (inode->i_stat.st_size + LC_BLOCK_SIZE - 1) / LC_BLOCK_SIZE;
     if (remove && inode->i_extentLength) {
         assert(inode->i_bcount == 0);
-        assert(inode->i_pcount == 0);
         if (size % LC_BLOCK_SIZE) {
             lc_expandBmap(inode);
         } else {

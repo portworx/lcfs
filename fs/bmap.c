@@ -76,15 +76,12 @@ lc_copyBmap(struct inode *inode) {
     uint64_t *bmap;
     uint64_t size;
 
-    if (inode->i_extentLength) {
-        lc_expandBmap(inode);
-    } else {
-        bmap = inode->i_bmap;
-        size = inode->i_bcount * sizeof(uint64_t);
-        assert(inode->i_stat.st_blocks <= inode->i_bcount);
-        inode->i_bmap = malloc(size);
-        memcpy(inode->i_bmap, bmap, size);
-    }
+    assert(inode->i_extentLength == 0);
+    bmap = inode->i_bmap;
+    size = inode->i_bcount * sizeof(uint64_t);
+    assert(inode->i_stat.st_blocks <= inode->i_bcount);
+    inode->i_bmap = malloc(size);
+    memcpy(inode->i_bmap, bmap, size);
     inode->i_shared = false;
 }
 
@@ -129,6 +126,9 @@ lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         assert(inode->i_page == NULL);
         inode->i_bmapdirty = false;
         return;
+    }
+    if (inode->i_shared) {
+        lc_copyBmap(inode);
     }
     lc_flushPages(gfs, fs, inode);
     if (inode->i_bcount) {

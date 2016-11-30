@@ -452,8 +452,8 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
                 inode->i_bmap = parent->i_bmap;
                 inode->i_bcount = parent->i_bcount;
                 inode->i_bmapdirty = true;
+                inode->i_shared = true;
             }
-            inode->i_shared = true;
         } else {
             inode->i_private = true;
         }
