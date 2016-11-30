@@ -331,9 +331,9 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
                 }
                 if (fs->fs_blockInodesCount == 0) {
                     fs->fs_blockInodesCount = LC_INODE_CLUSTER_SIZE;
-                    fs->fs_blockInodes = lc_blockAlloc(fs,
+                    fs->fs_blockInodes = lc_blockAllocExact(fs,
                                                        fs->fs_blockInodesCount,
-                                                       true);
+                                                       true, true);
                 }
                 inode->i_block = fs->fs_blockInodes++;
                 fs->fs_blockInodesCount--;

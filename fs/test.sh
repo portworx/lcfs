@@ -118,6 +118,7 @@ df -k $MNT
 df -i $MNT
 
 fusermount -u $MNT
+sleep 10
 
 ./lcfs $DEVICE $MNT -f &
 sleep 10
@@ -129,7 +130,10 @@ dd if=/dev/zero of=file count=10 bs=4096
 rm -fr $MNT/*
 cd -
 
+df -k $MNT
+df -i $MNT
 fusermount -u $MNT
+sleep 10
 
 rm -fr $MNT $DEVICE
 wait

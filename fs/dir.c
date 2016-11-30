@@ -183,7 +183,7 @@ lc_dirFlushBlocks(struct gfs *gfs, struct fs *fs,
     struct page *page = fpage;
     struct dblock *dblock;
 
-    block = lc_blockAlloc(fs, pcount, true);
+    block = lc_blockAllocExact(fs, pcount, true, true);
     while (page) {
         count--;
         lc_addPageBlockHash(gfs, fs, page, block + count);

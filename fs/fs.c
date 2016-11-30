@@ -54,7 +54,7 @@ lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs) {
                                                    fs->fs_inodeBlockPages);
         fs->fs_inodeBlocks = NULL;
     }
-    block = lc_blockAlloc(fs, pcount, true);
+    block = lc_blockAllocExact(fs, pcount, true, true);
     fpage = fs->fs_inodeBlockPages;
     page = fpage;
     count = pcount;
@@ -218,7 +218,7 @@ lc_addfs(struct fs *fs, struct fs *pfs) {
         }
     }
     assert(i < LC_MAX);
-    fs->fs_sblock = lc_blockAlloc(fs, 1, true);
+    fs->fs_sblock = lc_blockAllocExact(fs, 1, true, false);
     snap = pfs ? pfs->fs_snap : lc_getGlobalFs(gfs);
 
     /* Add this file system to the snapshot list or root file systems list */

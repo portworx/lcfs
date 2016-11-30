@@ -362,9 +362,9 @@ lc_freeInodeDataBlocks(struct fs *fs, struct inode *inode,
 void
 lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     uint64_t count = 0, bcount = 0, start, end = 0, fcount = 0;
+    uint64_t i, lpage, pcount, block, tcount = 0, rcount;
     struct page *page, *dpage = NULL, *tpage = NULL;
     bool single = true, ended = false;
-    uint64_t i, lpage, pcount, block;
     struct extent *extents = NULL;
     char *pdata;
 
@@ -403,8 +403,19 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     }
     assert(bcount);
 
-    /* XXX Deal with a fragmented file system by allocating smaller chunks */
-    block = lc_blockAlloc(fs, bcount, false);
+    rcount = bcount;
+    do {
+        block = lc_blockAlloc(fs, rcount, false, true);
+        if (block != LC_INVALID_BLOCK) {
+            break;
+        }
+        rcount /= 2;
+    } while ((block == LC_INVALID_BLOCK) && rcount);
+    assert(block != LC_INVALID_BLOCK);
+    if (bcount != rcount) {
+        lc_printf("File system fragmented. Inode %ld is fragmented\n", inode->i_stat.st_ino);
+        single = false;
+    }
 
     /* Check if file has a single extent */
     if (single) {
@@ -436,8 +447,26 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
      * allocated blocks
      */
     for (i = start; i <= end; i++) {
+        if ((count == rcount) && (bcount > tcount)) {
+            assert(!single);
+            lc_addPageForWriteBack(gfs, fs, dpage, tpage, fcount);
+            dpage = NULL;
+            tpage = NULL;
+            fcount = 0;
+            rcount = bcount - tcount;
+            do {
+                block = lc_blockAlloc(fs, rcount, false, true);
+                if (block != LC_INVALID_BLOCK) {
+                    break;
+                }
+                rcount /= 2;
+            } while (rcount);
+            assert(block != LC_INVALID_BLOCK);
+            count = 0;
+        }
         pdata = lc_removeDirtyPage(inode, i, false);
         if (pdata) {
+            assert(count < rcount);
             page = lc_getPageNew(gfs, fs, block + count, pdata);
             if (tpage == NULL) {
                 tpage = page;
@@ -452,6 +481,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             }
             count++;
             fcount++;
+            tcount++;
 
             /* Issue write after accumulating certain number of pages,
              * otherwise queue the page for later flushing.
@@ -476,7 +506,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     if (fcount) {
         lc_addPageForWriteBack(gfs, fs, dpage, tpage, fcount);
     }
-    assert(bcount == count);
+    assert(bcount == tcount);
 
     /* Free dirty page list as all pages are in block cache */
     if (inode->i_page) {
@@ -487,9 +517,9 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     if (extents) {
         lc_freeInodeDataBlocks(fs, inode, &extents);
     }
-    if (count) {
-        pcount = __sync_fetch_and_sub(&inode->i_fs->fs_pcount, count);
-        assert(pcount >= count);
+    if (tcount) {
+        pcount = __sync_fetch_and_sub(&inode->i_fs->fs_pcount, tcount);
+        assert(pcount >= tcount);
     }
 }
 

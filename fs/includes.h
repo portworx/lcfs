@@ -42,7 +42,9 @@ bool lc_hasSpace(struct gfs *gfs, uint64_t blocks);
 void lc_addExtent(struct gfs *gfs, struct extent **extents,
                   uint64_t block, uint64_t count);
 void lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool remove);
-uint64_t lc_blockAlloc(struct fs *fs, uint64_t count, bool meta);
+uint64_t lc_blockAlloc(struct fs *fs, uint64_t count, bool meta, bool reserve);
+uint64_t lc_blockAllocExact(struct fs *fs, uint64_t count,
+                            bool meta, bool reserve);
 void lc_blockFree(struct fs *fs, uint64_t block, uint64_t count);
 void lc_freeLayerMetaBlocks(struct fs *fs, uint64_t block, uint64_t count);
 void lc_freeLayerDataBlocks(struct fs *fs, uint64_t block, uint64_t count,
