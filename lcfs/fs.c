@@ -254,11 +254,9 @@ lc_getfsForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
 
         /* Remove from the common parent list */
         nfs = fs->fs_prev;
-        if (nfs) {
-            nfs->fs_next = fs->fs_next;
-            nfs->fs_super->sb_nextSnap = fs->fs_super->sb_nextSnap;
-            nfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
-        }
+        nfs->fs_next = fs->fs_next;
+        nfs->fs_super->sb_nextSnap = fs->fs_super->sb_nextSnap;
+        nfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
         if (fs->fs_next) {
             fs->fs_next->fs_prev = fs->fs_prev;
         }

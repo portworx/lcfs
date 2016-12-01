@@ -101,7 +101,6 @@ ino_t lc_dirLookup(struct fs *fs, struct inode *dir, const char *name);
 void lc_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,
                 int nsize);
 void lc_dirRemove(struct inode *dir, const char *name);
-void lc_dirRemoveInode(struct inode *dir, ino_t ino);
 void lc_dirRename(struct inode *dir, ino_t ino,
                    const char *name, const char *newname);
 void lc_dirCopy(struct inode *dir);

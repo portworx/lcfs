@@ -87,31 +87,6 @@ lc_dirRemove(struct inode *dir, const char *name) {
     assert(false);
 }
 
-/* Remove a directory entry by inode number */
-void
-lc_dirRemoveInode(struct inode *dir, ino_t ino) {
-    struct dirent *dirent = dir->i_dirent;
-    struct dirent *pdirent = NULL;
-
-    assert(S_ISDIR(dir->i_stat.st_mode));
-    assert(!dir->i_shared);
-    while (dirent != NULL) {
-        if (dirent->di_ino == ino) {
-            if (pdirent == NULL) {
-                dir->i_dirent = dirent->di_next;
-            } else {
-                pdirent->di_next = dirent->di_next;
-            }
-            free(dirent->di_name);
-            free(dirent);
-            return;
-        }
-        pdirent = dirent;
-        dirent = dirent->di_next;
-    }
-    assert(false);
-}
-
 /* Rename a directory entry with a new name */
 void
 lc_dirRename(struct inode *dir, ino_t ino,

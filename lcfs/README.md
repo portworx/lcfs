@@ -81,22 +81,24 @@ Introduction
 
 Portworx Graphdriver is a custom built file system to meet the needs
 of a docker graphdriver, similar to AUFS and Overlay graphdrivers.
-Unlike, AUFS and Overlay, this new graphdriver is a native file
+Unlike AUFS and Overlay, this new graphdriver is a native file
 system, which means it does not operate on top of another file system,
 but operate directly on top of block devices.  Thus this file system
 does not have the inefficiencies of merged file systems.
 
 This new file system is a user level file system developed using FUSE
-and does not require any kernel modifications, making it a portable
+in C and does not require any kernel modifications, making it a portable
 file system.  It is a POSIX compliant file system.
 Given the ephemeral (temporary) nature of data stored in a graphdriver,
 it is implemented without having some of the complexities of a general
 purpose file system (for example, journal and transactions).  Most
-file systems in use today are optimized towards persistent data.
+file systems in use today are optimized towards persistent data,
+provide ACID properties for system calls and attempts to work well with
+random read-write workloads.
 
 This file system is not a union file system, but uses snapshot technologies.
 Similar to other graphdrivers, this graphdriver also create layers for
-images and read-write layers on top of those for containers.   Each image
+images and read-write layers on top of those for containers. Each image
 will have a base layer, in which files of the image are populated initially.
 Additional layers are created on top of the base layer for each additional
 layer in the image being extracted.  Each layer shares data from the
@@ -128,12 +130,12 @@ read-write layer.
 Layers are first class citizen in this graphdriver.  Everything except some
 docker configuration data, are part of some layer. Traditional file systems
 need to provide ACID properties for every system call, but for a graphdriver,
-that is required only when a layer is created/deleted.  This graphdriver is
-hosting the docker database with information about various images and
-containers and as long as that database is consistent with the images and
-containers in the graphdriver, things would correctly.  The reason for that
-being any image/container can be restarted from scratch if not present in the
-graphdriver.
+that is required only when a layer is created/deleted or persisted.
+This graphdriver is hosting the docker database with information about
+various images and containers and as long as that database is consistent
+with the images and containers in the graphdriver, things would correctly.
+The reason for that being any image/container can be restarted from scratch
+if not present in the graphdriver.
 
 Snapshots are implemented without using any reference counts and thus allows
 supporting unlimited number of layers.  The time to create a snapshot is
@@ -166,6 +168,10 @@ in the middle/beginning of the chain is a lot more complex to get working.
 For example, each layer easily track space allocated for storing data
 created/modified by the layer and any such space can be freed without worrying
 about some other layer sharing any such data.
+
+Also layers are not for rolling back, thus it does not have to incur some of
+the complexities of snapshots in a traditional file system.  There is also no
+need to provide any block level differences between any two layers.
 
 Layout
 
@@ -262,7 +268,7 @@ Locking
 
 Each layer has a read-write lock, which is taken in shared mode while
 reading/writing to the layer (all file operations).  That lock is taken in exclusive
-mode while unmounting the layer,  when creating a new layer or while deleting a layer.
+mode while unmounting the root layer or while deleting any other layer.
 
 Each inode has a read-write lock.  Operations which can be run in shared mode (read,
 readdir, getattr etc), take that lock in shared mode, while other operations which
@@ -272,10 +278,9 @@ more changes are allowed in the layer).
 
 Layers
 
-New layers are added after locking the parent layer in exclusive mode, if there
-is a parent layer.  That makes sure no operations are in progress on the parent
-layer.  The newly created layer will be linked to the parent layer.  All the layers
-taken on a parent layer are linked together as well.
+New layers are added after locking the parent layer in shared mode, if there
+is a parent layer.  The newly created layer will be linked to the parent layer.
+All the layers taken on a parent layer are linked together as well.
 
 A layer is removed after locking that layer in exclusive mode.  That makes sure all
 operations on that layer are drained.
@@ -284,20 +289,23 @@ A layer with no parent layer forms a base layer.  Base layer for any layer can b
 reached by traversing the parent layers starting from that layer.  All layers with
 same base layer form a “chain of layers” or “group of layers”.
 
+Root layer is locked in shared mode while creating/deleting layers.  Root layer
+is locked exclusive while unmounting the file system.
+
 Space management/reclamation
 
 Each layer will allocate space in chunks of a few blocks and then files within
-that layer will consume space from that chunk.  This kind of eliminates the
-complexities associated with space management in traditional file systems.
+that layer will consume space from those chunks.  This kind of eliminates
+many of the complexities associated with space management in traditional file systems.
 
-Thus the global pool does not have to be locked down for every allocation in every
-layer and space allocated in layers will not be fragmented between concurrent
-allocations happening in various layers.
+The global pool does not have to be locked down for various allocations
+happening concurrently across various layers in the file system.
+Another advantage being space allocated in layers will not be fragmented.
 
 Every layer keeps track of space allocated within that layer and all that space
 can be returned to the global pool when the layer is deleted.  Also any unused
-space in reserved chunks returned as well (this happens as part of unmount as
-well).
+space in reserved chunks returned as well (this happens as part of sync and
+unmount as well).
 
 As for shared space between layers, a layer will free space in the global pool
 only if the space was originally allocated in the layer, not if the space was
@@ -307,16 +315,17 @@ There should be a minimum size for the device to be formatted/mounted as a file
 system.  Operations like writes and creating new layers are failed when file
 system free space goes below a certain threshold.
 
-TODO: Handling space fragmentation
+TODO: Handling space fragmentation due to chunk reservation
 
 File operations
 
 All file operations take the shared lock on the layer the files they want to
 operate on belong to.  They could then proceed after taking the locks on the
-files involved in those operations in the appropriate mode.
+files involved in those operations in the appropriate mode. For reading shared
+data, no lock on any inode is needed.
 
 Certain operations like hardlink, rename etc. are not supported across layers
-of the file system.
+of the file system (if attempted manually).
 
 Writes
 
@@ -389,7 +398,7 @@ recently modified.  These pages are written out when the file is closed or when
 the file system unmounted/persisted.  Also each regular file inode maintains a
 bmap table indexed by the page number, if the file is fragmented on disk.
 
-User data can be cached in chunks of size 4KB, called pages in block cache.
+Blocks can be cached in chunks of size 4KB, called pages in block cache.
 Pages are cached until layer is unmounted or layer is deleted.  This block
 cache has an upper limit for entries and pages are recycled when the cache
 hits that limit.  The block cache is shared all the layers in a layer chain as
