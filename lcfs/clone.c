@@ -168,10 +168,6 @@ lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name) {
         goto out;
     }
     assert(fs->fs_removed);
-
-    /* Remove the file system from the snapshot chain */
-    fs->fs_super->sb_flags &= ~(LC_SUPER_DIRTY | LC_SUPER_MOUNTED);
-    lc_removeSnap(gfs, fs);
     lc_inodeUnlock(pdir);
     fuse_reply_ioctl(req, 0, NULL, 0);
     root = fs->fs_root;

@@ -210,7 +210,7 @@ uint64_t
 lc_getfsForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
     ino_t ino = lc_getInodeHandle(root);
     int gindex = lc_getFsHandle(root);
-    struct fs *fs;
+    struct fs *fs, *pfs, *nfs;
 
     assert(gindex < LC_MAX);
     pthread_mutex_lock(&gfs->gfs_lock);
@@ -240,6 +240,29 @@ lc_getfsForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
         gfs->gfs_scount--;
     }
     fs->fs_gindex = -1;
+    pfs = fs->fs_parent;
+    if (pfs && (pfs->fs_snap == fs)) {
+
+        /* Parent points to this layer */
+        pfs->fs_snap = fs->fs_next;
+        if (fs->fs_next) {
+            fs->fs_next->fs_prev = NULL;
+        }
+        pfs->fs_super->sb_childSnap = fs->fs_super->sb_nextSnap;
+        pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
+    } else {
+
+        /* Remove from the common parent list */
+        nfs = fs->fs_prev;
+        if (nfs) {
+            nfs->fs_next = fs->fs_next;
+            nfs->fs_super->sb_nextSnap = fs->fs_super->sb_nextSnap;
+            nfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
+        }
+        if (fs->fs_next) {
+            fs->fs_next->fs_prev = fs->fs_prev;
+        }
+    }
     pthread_mutex_unlock(&gfs->gfs_lock);
     lc_lock(fs, true);
     assert(fs->fs_root == ino);
@@ -275,6 +298,10 @@ lc_addfs(struct fs *fs, struct fs *pfs) {
 
     /* Add this file system to the snapshot list or root file systems list */
     if (snap) {
+        fs->fs_prev = snap;
+        if (snap->fs_next) {
+            snap->fs_next->fs_prev = fs;
+        }
         fs->fs_next = snap->fs_next;
         snap->fs_next = fs;
         fs->fs_super->sb_nextSnap = snap->fs_super->sb_nextSnap;
@@ -285,38 +312,6 @@ lc_addfs(struct fs *fs, struct fs *pfs) {
         pfs->fs_snap = fs;
         pfs->fs_super->sb_childSnap = fs->fs_sblock;
         pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
-    }
-    pthread_mutex_unlock(&gfs->gfs_lock);
-}
-
-/* Remove the file system from the snapshot list */
-void
-lc_removeSnap(struct gfs *gfs, struct fs *fs) {
-    struct fs *pfs, *nfs;
-
-    assert(fs->fs_snap == NULL);
-    assert(!(fs->fs_super->sb_flags & LC_SUPER_MOUNTED));
-    pthread_mutex_lock(&gfs->gfs_lock);
-    pfs = fs->fs_parent;
-    if (pfs && (pfs->fs_snap == fs)) {
-
-        /* Parent points to this layer */
-        pfs->fs_snap = fs->fs_next;
-        pfs->fs_super->sb_childSnap = fs->fs_super->sb_nextSnap;
-        pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
-    } else {
-
-        /* Remove from the common parent list */
-        nfs = pfs ? pfs->fs_snap : lc_getGlobalFs(gfs);
-        while (nfs) {
-            if (nfs->fs_next == fs) {
-                nfs->fs_next = fs->fs_next;
-                nfs->fs_super->sb_nextSnap = fs->fs_super->sb_nextSnap;
-                nfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
-                break;
-            }
-            nfs = nfs->fs_next;
-        }
     }
     pthread_mutex_unlock(&gfs->gfs_lock);
 }
@@ -369,6 +364,7 @@ lc_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
 
         /* Base layer */
         assert(pfs->fs_next == NULL);
+        fs->fs_prev = pfs;
         pfs->fs_next = fs;
         fs->fs_pcache = lc_pcache_init();
         fs->fs_ilock = malloc(sizeof(pthread_mutex_t));
@@ -377,6 +373,7 @@ lc_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
 
         /* Layer with common parent */
         assert(pfs->fs_next == NULL);
+        fs->fs_prev = pfs;
         pfs->fs_next = fs;
         fs->fs_pcache = pfs->fs_pcache;
         fs->fs_parent = pfs->fs_parent;

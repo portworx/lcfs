@@ -112,6 +112,9 @@ struct fs {
     /* Next file system in the snapshot chain of the parent fs */
     struct fs *fs_next;
 
+    /* Previous file system in the snapshot chain of the parent fs */
+    struct fs *fs_prev;
+
     /* Lock taken in shared mode by all file system operations.
      * This lock is taken in exclusive mode when snapshots are created/deleted.
      */

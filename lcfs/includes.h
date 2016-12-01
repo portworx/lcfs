@@ -65,7 +65,6 @@ struct fs *lc_getfs(ino_t ino, bool exclusive);
 uint64_t lc_getfsForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp);
 int lc_getIndex(struct fs *nfs, ino_t parent, ino_t ino);
 void lc_addfs(struct fs *fs, struct fs *pfs);
-void lc_removeSnap(struct gfs *gfs, struct fs *fs);
 void lc_lock(struct fs *fs, bool exclusive);
 void lc_unlock(struct fs *fs);
 int lc_mount(char *device, struct gfs **gfsp);
