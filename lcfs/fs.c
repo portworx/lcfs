@@ -203,6 +203,8 @@ lc_addfs(struct fs *fs, struct fs *pfs) {
     struct fs *snap;
     int i;
 
+    fs->fs_sblock = lc_blockAllocExact(fs, 1, true, false);
+
     /* Find a free slot and insert the new file system */
     pthread_mutex_lock(&gfs->gfs_lock);
     for (i = 1; i < LC_MAX; i++) {
@@ -218,7 +220,6 @@ lc_addfs(struct fs *fs, struct fs *pfs) {
         }
     }
     assert(i < LC_MAX);
-    fs->fs_sblock = lc_blockAllocExact(fs, 1, true, false);
     snap = pfs ? pfs->fs_snap : lc_getGlobalFs(gfs);
 
     /* Add this file system to the snapshot list or root file systems list */
@@ -506,6 +507,7 @@ lc_sync(struct gfs *gfs, struct fs *fs) {
             lc_syncInodes(gfs, fs);
             lc_flushDirtyPages(gfs, fs);
             lc_processFreedBlocks(fs, true);
+            lc_freeLayerBlocks(gfs, fs, false, false);
         }
 
         /* Flush everything to disk before marking file system clean */
@@ -531,7 +533,7 @@ lc_umountSync(struct gfs *gfs) {
     lc_sync(gfs, fs);
 
     /* Release freed and unused blocks */
-    lc_freeLayerBlocks(gfs, fs, false);
+    lc_freeLayerBlocks(gfs, fs, true, false);
 
     /* Destroy all inodes.  This also releases metadata blocks of removed
      * inodes.
@@ -578,7 +580,7 @@ lc_unmount(struct gfs *gfs) {
         fs = gfs->gfs_fs[i];
         if (fs && !fs->fs_removed) {
             pthread_mutex_unlock(&gfs->gfs_lock);
-            lc_freeLayerBlocks(gfs, fs, false);
+            lc_freeLayerBlocks(gfs, fs, true, false);
             lc_superWrite(gfs, fs);
             lc_destroyFs(fs, false);
             pthread_mutex_lock(&gfs->gfs_lock);

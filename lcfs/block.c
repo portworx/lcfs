@@ -230,7 +230,7 @@ lc_blockFreeExtents(struct fs *fs, struct extent *extents,
         assert(pcount);
         if (fs) {
             block = lc_blockAllocExact(lc_getGlobalFs(gfs), pcount,
-                                       true, true);
+                                       true, false);
             fs->fs_super->sb_extentBlock = block;
         } else {
             block = gfs->gfs_super->sb_extentBlock;
@@ -465,8 +465,8 @@ lc_blockFree(struct fs *fs, uint64_t block, uint64_t count) {
 
 /* Free blocks allocated/reserved by a layer */
 void
-lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool remove) {
-    struct extent *extent = NULL;
+lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount, bool remove) {
+    struct extent *extent;
 
     /* Free unused blocks from the inode pool */
     if (fs->fs_blockInodesCount) {
@@ -486,7 +486,7 @@ lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool remove) {
      * layer, otherwise free the list
      */
     extent = fs->fs_aextents;
-    if (extent) {
+    if (unmount && extent) {
         fs->fs_aextents = NULL;
         assert(fs != lc_getGlobalFs(gfs));
         lc_blockFreeExtents(fs, extent, remove, !remove);

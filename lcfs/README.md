@@ -125,6 +125,16 @@ when any existing data is modified, the data is not modified in the image
 layer, but a private copy with new data is made available for the
 read-write layer.
 
+Layers are first class citizen in this graphdriver.  Everything except some
+docker configuration data, are part of some layer. Traditional file systems
+need to provide ACID properties for every system call, but for a graphdriver,
+that is required only when a layer is created/deleted.  This graphdriver is
+hosting the docker database with information about various images and
+containers and as long as that database is consistent with the images and
+containers in the graphdriver, things would correctly.  The reason for that
+being any image/container can be restarted from scratch if not present in the
+graphdriver.
+
 Snapshots are implemented without using any reference counts and thus allows
 supporting unlimited number of layers.  The time to create a snapshot is
 independent of the size of the file system (devices), size of the data set,
@@ -132,6 +142,14 @@ or the number of layers present in the file system. Snapshots are deleted
 in the background and processing time depends on the amount of data actually
 created/modified in the snapshot.  Thus creation and deletion of layers
 can be done instantanously.
+
+The layers on which new layers are created are read-only after those are
+populated and creating a new layer does not have to worry about stopping any
+modification operations in progress on the parent layer.  That is not the case
+with snapshots in traditional file systems.  In a graphdriver, creating a new
+layer or removing a layer does not have to lock down anything to stop any in
+progress operations and thus creating/removing images and containers can
+proceed without any noticeable impact on any other running containers.
 
 Operations within a layer is independent of the total number of layers
 present in the file system.  Many snapshot implementations in other file
@@ -145,6 +163,9 @@ one created just before that.  A layer in the middle of chain or the base layer
 cannot be deleted when there is a newer layer on top of that layer still
 around.  This simplifies the overall snapshot design since deleting a snapshot
 in the middle/beginning of the chain is a lot more complex to get working.
+For example, each layer easily track space allocated for storing data
+created/modified by the layer and any such space can be freed without worrying
+about some other layer sharing any such data.
 
 Layout
 
@@ -187,7 +208,10 @@ that file like stat info, dirty data not flushed to disk etc.  Each inode has
 a unique identifier in the file system called inode number.  Inodes are written
 to disk and as of now, each inode takes 4KB of space on disk.  It is possible
 to combine multiple inodes to a single disk block in future, as a single inode
-does not need that much space on disk.
+does not need that much space on disk. Inodes need to be preserved even after
+corresponding files are deleted, as a newer layer may lookup on such inodes
+(Can this really happen since there are no directory references to deleted
+files?)
 
 All UNIX file types are supported.  For symbolic links, the target name is also
 stored in the same block where inode is written.  For directories, separate blocks
@@ -409,6 +433,12 @@ as well.  As the graphdriver manages both docker database and images/containers,
 those are kept in consistent state by using checkpointing technologies.  Thus
 this file system does not have the complexity of journaling schemes typically
 used in file systems to provide crash consistency.
+
+Layer Diff (for docker build)
+
+Finding differences between any two layers is simply finding inodes present in
+layers between the old layer and new layer (inclusive).  As of now, this work
+is pending and the graphdriver is using the default NaiveDiffDriver.
 
 Stats
 

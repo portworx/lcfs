@@ -216,7 +216,7 @@ out:
         if (!err) {
             fuse_lowlevel_notify_delete(gfs->gfs_ch, ino, root, name,
                                         strlen(name));
-            lc_freeLayerBlocks(gfs, fs, true);
+            lc_freeLayerBlocks(gfs, fs, true, true);
             lc_removefs(gfs, fs);
         }
         lc_unlock(fs);
