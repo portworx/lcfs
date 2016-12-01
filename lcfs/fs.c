@@ -152,6 +152,13 @@ lc_lock(struct fs *fs, bool exclusive) {
     }
 }
 
+/* Trylock variant of the above */
+static int
+lc_tryLock(struct fs *fs, bool exclusive) {
+    return exclusive ? pthread_rwlock_trywrlock(&fs->fs_rwlock) :
+                       pthread_rwlock_tryrdlock(&fs->fs_rwlock);
+}
+
 /* Unlock the file system */
 void
 lc_unlock(struct fs *fs) {
@@ -196,6 +203,50 @@ lc_getfs(ino_t ino, bool exclusive) {
     return fs;
 }
 
+/* Lock a layer exclusive for removal, after taking it off the global
+ * list.
+ */
+uint64_t
+lc_getfsForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
+    ino_t ino = lc_getInodeHandle(root);
+    int gindex = lc_getFsHandle(root);
+    struct fs *fs;
+
+    assert(gindex < LC_MAX);
+    pthread_mutex_lock(&gfs->gfs_lock);
+    fs = gfs->gfs_fs[gindex];
+    if (fs == NULL) {
+        pthread_mutex_unlock(&gfs->gfs_lock);
+        lc_reportError(__func__, __LINE__, root, EBUSY);
+        return EBUSY;
+    }
+    assert(fs->fs_gindex == gindex);
+    if (fs->fs_root != ino) {
+        pthread_mutex_unlock(&gfs->gfs_lock);
+        lc_reportError(__func__, __LINE__, root, EINVAL);
+        return EINVAL;
+    }
+    if (fs->fs_snap) {
+        pthread_mutex_unlock(&gfs->gfs_lock);
+        lc_reportError(__func__, __LINE__, root, EEXIST);
+        return EEXIST;
+    }
+    fs->fs_removed = true;
+    assert(gfs->gfs_roots[gindex] == ino);
+    gfs->gfs_fs[gindex] = NULL;
+    gfs->gfs_roots[gindex] = 0;
+    if (gfs->gfs_scount == gindex) {
+        assert(gfs->gfs_scount > 0);
+        gfs->gfs_scount--;
+    }
+    fs->fs_gindex = -1;
+    pthread_mutex_unlock(&gfs->gfs_lock);
+    lc_lock(fs, true);
+    assert(fs->fs_root == ino);
+    *fsp = fs;
+    return 0;
+}
+
 /* Add a file system to global list of file systems */
 void
 lc_addfs(struct fs *fs, struct fs *pfs) {
@@ -238,32 +289,12 @@ lc_addfs(struct fs *fs, struct fs *pfs) {
     pthread_mutex_unlock(&gfs->gfs_lock);
 }
 
-/* Remove a file system from the global list */
-void
-lc_removefs(struct gfs *gfs, struct fs *fs) {
-    assert(fs->fs_snap == NULL);
-    assert(fs->fs_gindex > 0);
-    assert(fs->fs_gindex < LC_MAX);
-    assert(gfs->gfs_fs[fs->fs_gindex] == fs);
-    pthread_mutex_lock(&gfs->gfs_lock);
-    gfs->gfs_fs[fs->fs_gindex] = NULL;
-    gfs->gfs_roots[fs->fs_gindex] = 0;
-    if (gfs->gfs_scount == fs->fs_gindex) {
-        assert(gfs->gfs_scount > 0);
-        gfs->gfs_scount--;
-    }
-    pthread_mutex_unlock(&gfs->gfs_lock);
-    fs->fs_gindex = -1;
-}
-
 /* Remove the file system from the snapshot list */
 void
 lc_removeSnap(struct gfs *gfs, struct fs *fs) {
     struct fs *pfs, *nfs;
 
     assert(fs->fs_snap == NULL);
-    assert(fs->fs_gindex > 0);
-    assert(fs->fs_gindex < LC_MAX);
     assert(!(fs->fs_super->sb_flags & LC_SUPER_MOUNTED));
     pthread_mutex_lock(&gfs->gfs_lock);
     pfs = fs->fs_parent;
@@ -500,8 +531,7 @@ void
 lc_sync(struct gfs *gfs, struct fs *fs) {
     int err;
 
-    if (fs && (fs->fs_super->sb_flags & LC_SUPER_DIRTY)) {
-        lc_lock(fs, false);
+    if (fs->fs_super->sb_flags & LC_SUPER_DIRTY) {
         if (fs->fs_super->sb_flags & LC_SUPER_MOUNTED) {
             fs->fs_super->sb_flags &= ~LC_SUPER_MOUNTED;
             lc_syncInodes(gfs, fs);
@@ -520,7 +550,6 @@ lc_sync(struct gfs *gfs, struct fs *fs) {
                        err, fs->fs_gindex, fs->fs_root);
             }
         }
-        lc_unlock(fs);
     }
 }
 
@@ -528,6 +557,8 @@ lc_sync(struct gfs *gfs, struct fs *fs) {
 static void
 lc_umountSync(struct gfs *gfs) {
     struct fs *fs = lc_getGlobalFs(gfs);
+
+    lc_lock(fs, true);
 
     /* XXX Combine sync and destroy */
     lc_sync(gfs, fs);
@@ -547,11 +578,31 @@ lc_umountSync(struct gfs *gfs) {
 
     /* Finally update superblock */
     lc_superWrite(gfs, fs);
+    lc_unlock(fs);
     lc_displayGlobalStats(gfs);
     gfs->gfs_super = NULL;
     free(fs->fs_super);
     gfs->gfs_fs[0] = NULL;
     free(fs);
+}
+
+/* Sync dirty data from all layers */
+void
+lc_syncAllLayers(struct gfs *gfs) {
+    struct fs *fs;
+    int i;
+
+    pthread_mutex_lock(&gfs->gfs_lock);
+    for (i = 1; i <= gfs->gfs_scount; i++) {
+        fs = gfs->gfs_fs[i];
+        if (fs && !lc_tryLock(fs, false)) {
+            pthread_mutex_unlock(&gfs->gfs_lock);
+            lc_sync(gfs, fs);
+            lc_unlock(fs);
+            pthread_mutex_lock(&gfs->gfs_lock);
+        }
+    }
+    pthread_mutex_unlock(&gfs->gfs_lock);
 }
 
 /* Free the global file system as part of unmount */
@@ -562,29 +613,23 @@ lc_unmount(struct gfs *gfs) {
 
     lc_printf("lc_unmount: gfs_scount %d gfs_pcount %ld\n",
                gfs->gfs_scount, gfs->gfs_pcount);
-    pthread_mutex_lock(&gfs->gfs_lock);
 
     /* Flush dirty data before destroying file systems since layers may be out
      * of order in the file system table and parent layers should not be
      * destroyed before child layers as some data structures are shared.
      */
+    lc_syncAllLayers(gfs);
+    pthread_mutex_lock(&gfs->gfs_lock);
     for (i = 1; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
-        if (fs && !fs->fs_removed) {
-            pthread_mutex_unlock(&gfs->gfs_lock);
-            lc_sync(gfs, fs);
-            pthread_mutex_lock(&gfs->gfs_lock);
-        }
-    }
-    for (i = 1; i <= gfs->gfs_scount; i++) {
-        fs = gfs->gfs_fs[i];
-        if (fs && !fs->fs_removed) {
+        if (fs && !lc_tryLock(fs, false)) {
+            gfs->gfs_fs[i] = NULL;
             pthread_mutex_unlock(&gfs->gfs_lock);
             lc_freeLayerBlocks(gfs, fs, true, false);
             lc_superWrite(gfs, fs);
+            lc_unlock(fs);
             lc_destroyFs(fs, false);
             pthread_mutex_lock(&gfs->gfs_lock);
-            gfs->gfs_fs[i] = NULL;
         }
     }
     pthread_mutex_unlock(&gfs->gfs_lock);
@@ -602,12 +647,3 @@ lc_unmount(struct gfs *gfs) {
     pthread_mutex_destroy(&gfs->gfs_alock);
 }
 
-/* Write out superblocks of all file systems */
-void
-lc_umountAll(struct gfs *gfs) {
-    int i;
-
-    for (i = 1; i <= gfs->gfs_scount; i++) {
-        lc_sync(gfs, gfs->gfs_fs[i]);
-    }
-}

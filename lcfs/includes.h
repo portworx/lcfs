@@ -62,9 +62,9 @@ int lc_superWrite(struct gfs *gfs, struct fs *fs);
 void lc_superInit(struct super *super, size_t size, bool global);
 
 struct fs *lc_getfs(ino_t ino, bool exclusive);
+uint64_t lc_getfsForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp);
 int lc_getIndex(struct fs *nfs, ino_t parent, ino_t ino);
 void lc_addfs(struct fs *fs, struct fs *pfs);
-void lc_removefs(struct gfs *gfs, struct fs *fs);
 void lc_removeSnap(struct gfs *gfs, struct fs *fs);
 void lc_lock(struct fs *fs, bool exclusive);
 void lc_unlock(struct fs *fs);
@@ -74,7 +74,7 @@ void lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs);
 void lc_invalidateInodeBlocks(struct gfs *gfs, struct fs *fs);
 void lc_sync(struct gfs *gfs, struct fs *fs);
 void lc_unmount(struct gfs *gfs);
-void lc_umountAll(struct gfs *gfs);
+void lc_syncAllLayers(struct gfs *gfs);
 struct fs *lc_newFs(struct gfs *gfs, bool rw);
 void lc_destroyFs(struct fs *fs, bool remove);
 

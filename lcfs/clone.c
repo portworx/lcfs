@@ -138,37 +138,11 @@ out:
 static int
 lc_removeLayer(struct fs *rfs, struct inode *dir, ino_t ino, bool rmdir,
                void **fsp) {
-    struct fs *fs;
     ino_t root;
 
     /* There should be a file system rooted on this directory */
     root = lc_setHandle(lc_getIndex(rfs, dir->i_stat.st_ino, ino), ino);
-    if (lc_getFsHandle(root) == 0) {
-        lc_reportError(__func__, __LINE__, root, ENOENT);
-        return ENOENT;
-    }
-    fs = lc_getfs(root, false);
-    if (fs == NULL) {
-        lc_reportError(__func__, __LINE__, root, ENOENT);
-        return ENOENT;
-    }
-    if (fs->fs_root != ino) {
-        lc_unlock(fs);
-        lc_reportError(__func__, __LINE__, root, EINVAL);
-        return EINVAL;
-    }
-    if (fs->fs_snap) {
-        lc_unlock(fs);
-        lc_reportError(__func__, __LINE__, root, EEXIST);
-        return EEXIST;
-    }
-    fs->fs_removed = true;
-    lc_unlock(fs);
-    fs = lc_getfs(root, true);
-    assert(fs->fs_root == ino);
-    assert(fs->fs_removed);
-    *fsp = fs;
-    return 0;
+    return lc_getfsForRemoval(rfs->fs_gfs, root, (struct fs **)fsp);
 }
 
 /* Remove a layer */
@@ -193,6 +167,7 @@ lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name) {
         fuse_reply_err(req, err);
         goto out;
     }
+    assert(fs->fs_removed);
 
     /* Remove the file system from the snapshot chain */
     fs->fs_super->sb_flags &= ~(LC_SUPER_DIRTY | LC_SUPER_MOUNTED);
@@ -208,22 +183,15 @@ lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name) {
     lc_invalidateInodePages(gfs, fs);
     lc_invalidateInodeBlocks(gfs, fs);
     lc_blockFree(fs, fs->fs_sblock, 1);
+    lc_freeLayerBlocks(gfs, fs, true, true);
+
+    /* Notify VFS about removal of a directory */
+    fuse_lowlevel_notify_delete(gfs->gfs_ch, ino, root,
+                                name, strlen(name));
+    lc_unlock(fs);
+    lc_destroyFs(fs, true);
 
 out:
-    if (fs) {
-
-        /* Remove the file system from the global list and notify VFS layer */
-        if (!err) {
-            fuse_lowlevel_notify_delete(gfs->gfs_ch, ino, root, name,
-                                        strlen(name));
-            lc_freeLayerBlocks(gfs, fs, true, true);
-            lc_removefs(gfs, fs);
-        }
-        lc_unlock(fs);
-        if (!err) {
-            lc_destroyFs(fs, true);
-        }
-    }
     lc_statsAdd(rfs, LC_CLONE_REMOVE, err, &start);
     lc_unlock(rfs);
 }
@@ -243,7 +211,7 @@ lc_snapIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
     /* Unmount all layers */
     if (cmd == UMOUNT_ALL) {
         fuse_reply_ioctl(req, 0, NULL, 0);
-        lc_umountAll(gfs);
+        lc_syncAllLayers(gfs);
         lc_statsAdd(rfs, LC_CLEANUP, 0, &start);
         lc_unlock(rfs);
         return;
@@ -267,10 +235,10 @@ lc_snapIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
             fuse_reply_ioctl(req, 0, NULL, 0);
             fs = lc_getfs(root, false);
             lc_displayStats(fs);
-            lc_unlock(fs);
             if ((cmd == SNAP_UMOUNT) && fs->fs_readOnly) {
                 lc_sync(gfs, fs);
             }
+            lc_unlock(fs);
         }
         lc_statsAdd(rfs, cmd == SNAP_UMOUNT ? LC_UMOUNT : LC_STAT,
                      err, &start);
