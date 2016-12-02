@@ -186,13 +186,14 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
                 break;
             }
             if (iblock == LC_INVALID_BLOCK) {
-                assert(fs->fs_parent == NULL);
+
+                /* XXX Try to remove these entries */
                 continue;
             }
             //lc_printf("Reading inode from block %ld\n", iblock);
             lc_readBlock(gfs, fs, iblock, ibuf);
             inode = ibuf;
-            if ((inode->i_stat.st_mode == 0) && (fs->fs_parent == NULL)) {
+            if (inode->i_stat.st_mode == 0) {
                 lc_freeLayerMetaBlocks(fs, iblock, 1);
                 fs->fs_inodeBlocks->ib_blks[i] = LC_INVALID_BLOCK;
                 flush = true;
@@ -204,9 +205,6 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
             /* XXX zero out just necessary fields */
             memset(inode, 0, sizeof(struct inode));
             memcpy(inode, ibuf, sizeof(struct dinode));
-            if (inode->i_stat.st_mode == 0) {
-                inode->i_removed = true;
-            }
             inode->i_block = iblock;
             pthread_rwlock_init(&inode->i_rwlock, NULL);
             lc_addInode(fs, inode);
@@ -319,11 +317,10 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             inode->i_xattrExtents = NULL;
         }
 
-        /* Need to write removed inode when the layer has parent since child
-         * layers should not bypass the removed layer after remount.
+        /* An removed inode with a disk copy, needs to be written out so that
+         * it would be considered removed when the layer is remounted.
          */
-        if (fs->fs_parent || !inode->i_removed ||
-            (inode->i_block != LC_INVALID_BLOCK)) {
+        if (!inode->i_removed || (inode->i_block != LC_INVALID_BLOCK)) {
             if (inode->i_block == LC_INVALID_BLOCK) {
                 if ((fs->fs_inodeBlocks == NULL) ||
                     (fs->fs_inodeIndex >= LC_IBLOCK_MAX)) {

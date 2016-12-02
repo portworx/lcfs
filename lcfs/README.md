@@ -214,10 +214,10 @@ that file like stat info, dirty data not flushed to disk etc.  Each inode has
 a unique identifier in the file system called inode number.  Inodes are written
 to disk and as of now, each inode takes 4KB of space on disk.  It is possible
 to combine multiple inodes to a single disk block in future, as a single inode
-does not need that much space on disk. Inodes need to be preserved even after
-corresponding files are deleted, as a newer layer may lookup on such inodes
-(Can this really happen since there are no directory references to deleted
-files?)
+does not need that much space on disk.  Files deleted in a layer does not have
+to maintain any whiteouts like in some union file systems, as their references
+from the directories are gone in that layer along with.  Inode numbers are not
+reused even after a file is deleted.
 
 All UNIX file types are supported.  For symbolic links, the target name is also
 stored in the same block where inode is written.  For directories, separate blocks
@@ -235,6 +235,8 @@ structures like B-trees etc in future.
 
 All the inodes in a layer can be reached from the superblock of the layer.
 Every inode block is tracked in blocks linked from the superblock.
+Inodes are not stored in any particular oder on disk and inodes have their
+inode number within the inode.
 
 All metadata (superblocks, inodes, directories, bmap, extended attributes etc) are
 cached in memory always (this may change in future).  They are read from disk when
@@ -287,7 +289,7 @@ operations on that layer are drained.
 
 A layer with no parent layer forms a base layer.  Base layer for any layer can be
 reached by traversing the parent layers starting from that layer.  All layers with
-same base layer form a “chain of layers” or “group of layers”.
+same base layer form a “tree of layers”.
 
 Root layer is locked in shared mode while creating/deleting layers.  Root layer
 is locked exclusive while unmounting the file system.
@@ -324,6 +326,7 @@ operate on belong to.  They could then proceed after taking the locks on the
 files involved in those operations in the appropriate mode. For reading shared
 data, no lock on any inode is needed.
 
+Unlike some other graphdrivers, atomic rename is supported.
 Certain operations like hardlink, rename etc. are not supported across layers
 of the file system (if attempted manually).
 
@@ -362,7 +365,9 @@ Copying Up(COW, Redirect-On-Write)
 
 When a shared file is modified in a layer, its metadata is copied up
 completely which includes the inode, whole directory or whole bmap depending
-on the type of file, all the extended attributes etc).
+on the type of file, all the extended attributes etc). Shared metadata may
+still be shared in cache, but separate copies are made on disk when dirty inode
+is flushed to disk.
 
 Initially after a copy up of an inode, user data of file is shared between
 newly copied up inode and original inode and copy-up of user data happens in
@@ -377,7 +382,8 @@ Caching
 
 As of now, all metadata (inodes, directories, bmap, extended attributes etc),
 stay in memory until the layer is unmounted or layer/file is deleted.
-There is no upper limit on how many of those could be cached.
+There is no upper limit on how many of those could be cached. Actual amount of
+metadata is cached, not page aligned metadata.
 
 Each layer maintains a hash table for its inodes using a hash generated using
 the inode number.  This hash table is private to that layer.
