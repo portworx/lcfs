@@ -38,6 +38,7 @@ lc_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,
     dirent->di_size = nsize;
     dirent->di_mode = mode & S_IFMT;
     dirent->di_next = dir->i_dirent;
+    dirent->di_index = dir->i_dirent ? (dir->i_dirent->di_index + 1) : 1;
     dir->i_dirent = dirent;
 }
 

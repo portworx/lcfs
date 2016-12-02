@@ -29,6 +29,9 @@ struct dirent {
     /* Inode number */
     ino_t di_ino;
 
+    /* Index of this entry in the directory */
+    uint64_t di_index;
+
     /* Next entry in the directory */
     struct dirent *di_next;
 

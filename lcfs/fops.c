@@ -861,7 +861,6 @@ lc_opendir(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
 static void
 lc_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
             struct fuse_file_info *fi) {
-    int count = 0, err = 0;
     struct dirent *dirent;
     struct timeval start;
     size_t esize, csize;
@@ -869,6 +868,7 @@ lc_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     char buf[size];
     struct stat st;
     struct fs *fs;
+    int err = 0;
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, ino, 0, NULL);
@@ -882,20 +882,18 @@ lc_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     }
     assert(S_ISDIR(dir->i_stat.st_mode));
     dirent = dir->i_dirent;
-    while ((count < off) && dirent) {
+    while (off && dirent && (dirent->di_index >= off)) {
         dirent = dirent->di_next;
-        count++;
     }
     memset(&st, 0, sizeof(struct stat));
     csize = 0;
     while (dirent != NULL) {
         assert(dirent->di_ino > LC_ROOT_INODE);
-        count++;
         st.st_ino = lc_setHandle(lc_getIndex(fs, ino, dirent->di_ino),
                                   dirent->di_ino);
         st.st_mode = dirent->di_mode;
         esize = fuse_add_direntry(req, &buf[csize], size - csize,
-                                  dirent->di_name, &st, count);
+                                  dirent->di_name, &st, dirent->di_index);
         csize += esize;
         if (csize >= size) {
             csize -= esize;
