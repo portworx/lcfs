@@ -35,6 +35,9 @@ lc_inodeBmapAdd(struct inode *inode, uint64_t page, uint64_t block) {
     assert(!inode->i_shared);
     assert(inode->i_extentLength == 0);
     assert(page < inode->i_bcount);
+    if (inode->i_bmap[page] == 0) {
+        inode->i_stat.st_blocks++;
+    }
     inode->i_bmap[page] = block;
 }
 
@@ -124,6 +127,7 @@ lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     if (inode->i_removed) {
         assert(inode->i_bmap == NULL);
         assert(inode->i_page == NULL);
+        assert(inode->i_dpcount == 0);
         inode->i_bmapdirty = false;
         return;
     }
@@ -156,6 +160,7 @@ lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         bmap->b_off = i;
         bmap->b_block = inode->i_bmap[i];
     }
+    assert(inode->i_stat.st_blocks == bcount);
     if (bblock) {
         if (count < LC_BMAP_BLOCK) {
             bblock->bb_bmap[count].b_block = 0;
@@ -166,7 +171,6 @@ lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         block = lc_flushBmapBlocks(gfs, fs, page, pcount);
         lc_replaceMetaBlocks(fs, &inode->i_bmapDirExtents, block, pcount);
     }
-    inode->i_stat.st_blocks = bcount;
     inode->i_bmapDirBlock = block;
     inode->i_bmapdirty = false;
     inode->i_dirty = true;
@@ -196,6 +200,8 @@ lc_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
     }
     lc_printf("Inode %ld with fragmented extents %ld\n", inode->i_stat.st_ino, inode->i_stat.st_blocks);
     lc_inodeBmapAlloc(inode);
+    bcount = inode->i_stat.st_blocks;
+    inode->i_stat.st_blocks = 0;
     block = inode->i_bmapDirBlock;
     while (block != LC_INVALID_BLOCK) {
         //lc_printf("Reading bmap block %ld\n", block);
@@ -208,7 +214,6 @@ lc_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
             }
             //lc_printf("page %ld at block %ld\n", bmap->b_off, bmap->b_block);
             lc_inodeBmapAdd(inode, bmap->b_off, bmap->b_block);
-            bcount++;
         }
         block = bblock->bb_next;
     }

@@ -102,6 +102,9 @@ struct inode {
     /* Size of page array */
     uint64_t i_pcount;
 
+    /* Count of dirty pages */
+    uint64_t i_dpcount;
+
     /* Extended attributes */
     struct xattr *i_xattr;
 

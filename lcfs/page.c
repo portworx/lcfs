@@ -88,6 +88,8 @@ lc_removeDirtyPage(struct inode *inode, uint64_t pg, bool release) {
             lc_fillPage(inode, page, pg);
         }
         page->dp_data = NULL;
+        assert(inode->i_dpcount > 0);
+        inode->i_dpcount--;
     }
     return release ? NULL : pdata;
 }
@@ -173,6 +175,7 @@ lc_mergePage(struct inode *inode, uint64_t pg, char *data,
         dpage->dp_data = data;
         dpage->dp_poffset = poffset;
         dpage->dp_psize = psize;
+        inode->i_dpcount++;
         return 1;
     }
 
@@ -285,6 +288,12 @@ lc_addPages(struct inode *inode, off_t off, size_t size,
                               dpage->dp_psize);
         page++;
         count++;
+    }
+
+    /* Flush dirty pages if the inode accumulated too many */
+    if (inode->i_dpcount >= LC_MAX_DIRTYPAGES) {
+        /* XXX Avoid this for files in tmp directory */
+        lc_flushPages(inode->i_fs->fs_gfs, inode->i_fs, inode);
     }
     return added;
 }
@@ -436,6 +445,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         }
         inode->i_extentBlock = block;
         inode->i_extentLength = bcount;
+        inode->i_stat.st_blocks = bcount;
     } else {
         if (inode->i_extentLength) {
             lc_expandBmap(inode);
@@ -507,6 +517,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         lc_addPageForWriteBack(gfs, fs, dpage, tpage, fcount);
     }
     assert(bcount == tcount);
+    assert(inode->i_dpcount == 0);
 
     /* Free dirty page list as all pages are in block cache */
     if (inode->i_page) {
@@ -552,6 +563,7 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
 
     /* Copy bmap list before changing it */
     if (inode->i_shared) {
+        assert(inode->i_dpcount == 0);
         if (size == 0) {
             if (remove) {
                 inode->i_stat.st_blocks = 0;
@@ -673,6 +685,7 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
     /* If the file is fully truncated, free bmap and page lists */
     if (size == 0) {
         assert((inode->i_stat.st_blocks == 0) || !remove);
+        assert(inode->i_dpcount == 0);
         if (inode->i_page) {
             free(inode->i_page);
             inode->i_page = NULL;

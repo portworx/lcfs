@@ -334,6 +334,11 @@ Writes
 
 Writes are returned immediately after copying new data to inode page table.
 
+Writes which are not page aligned do not trigger reading at the time of write,
+but deferred until application reads the page again or when the page is written
+to disk. If the page is filled up with subsequent writes, reading of the page
+from disk can be completely avoided as a whole page could be written down.
+
 Fsync
 
 Fsync is disabled on all files and layers are made persistent when needed.
@@ -400,7 +405,8 @@ is instantiated in inode cache of the layer.
 
 Each regular file inode maintains an array for dirty pages of size 4KB indexed
 by the page number, for recently written/modified pages, if the file was
-recently modified.  These pages are written out when the file is closed or when
+recently modified.  These pages are written out when the file is closed in
+read-only layers, when a file accumulate too many dirty pages or when
 the file system unmounted/persisted.  Also each regular file inode maintains a
 bmap table indexed by the page number, if the file is fragmented on disk.
 
@@ -425,6 +431,9 @@ With the read-only layers created while populating images, files are written
 once and never modified and this scheme of deferred allocation helps keeping
 the files contiguous on disk.  Also temporary files may never get written to
 disk (large temporary files are created for image tar files).
+
+This also helps when applications are writing to a file randomly and/or if
+writes are not page aligned.
 
 Such a scheme also helps writing out small files after coalescing many of those
 together.  Similarly, metadata is also placed contigously and written out

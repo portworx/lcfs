@@ -1,7 +1,7 @@
 #ifndef _LC_H_
 #define _LC_H_
 
-#define LC_MAX  4096
+#define LC_MAX  4096ul
 
 /* Global file system */
 struct gfs {
@@ -225,13 +225,13 @@ struct fs {
 static inline uint64_t
 lc_setHandle(uint64_t gindex, ino_t ino) {
     assert(gindex < LC_MAX);
-    return (gindex << 32) | ino;
+    return (gindex << LC_FH_LAYER) | ino;
 }
 
 /* Get the file system id from the file handle */
 static inline uint64_t
 lc_getFsHandle(uint64_t handle) {
-    int gindex = handle >> 32;
+    int gindex = handle >> LC_FH_LAYER;
 
     assert(gindex < LC_MAX);
     return gindex;
@@ -243,7 +243,7 @@ lc_getInodeHandle(uint64_t handle) {
     if (handle <= LC_ROOT_INODE) {
         return LC_ROOT_INODE;
     }
-    return handle & 0xFFFFFFFF;
+    return handle & LC_FH_INODE;
 }
 
 /* Check if specified inode belongs in global file system outside any layers */

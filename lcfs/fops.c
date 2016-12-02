@@ -799,6 +799,8 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
     /* Flush dirty pages of a file on last close */
     if (fs->fs_readOnly && (inode->i_ocount == 0) &&
         S_ISREG(inode->i_stat.st_mode) && inode->i_bmapdirty) {
+
+        /* Inode bmap needs to be stable before an inode could be cloned */
         lc_bmapFlush(fs->fs_gfs, inode->i_fs, inode);
     }
     lc_inodeUnlock(inode);

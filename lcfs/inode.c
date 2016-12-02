@@ -255,6 +255,7 @@ lc_freeInode(struct inode *inode) {
     }
     assert(inode->i_page == NULL);
     assert(inode->i_bmap == NULL);
+    assert(inode->i_dpcount == 0);
     lc_xattrFree(inode);
     pthread_rwlock_destroy(&inode->i_rwlock);
     lc_blockFreeExtents(NULL, inode->i_bmapDirExtents, false, false);
@@ -439,6 +440,7 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
 
     if (S_ISREG(inode->i_stat.st_mode)) {
         assert(parent->i_page == NULL);
+        assert(parent->i_dpcount == 0);
 
         /* Share pages initially */
         if (parent->i_stat.st_blocks) {
