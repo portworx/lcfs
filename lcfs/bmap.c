@@ -134,7 +134,7 @@ lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     if (inode->i_shared) {
         lc_copyBmap(inode);
     }
-    lc_flushPages(gfs, fs, inode);
+    lc_flushPages(gfs, fs, inode, true);
     if (inode->i_bcount) {
         lc_printf("File %ld fragmented\n", inode->i_stat.st_ino);
     } else {
@@ -220,3 +220,86 @@ lc_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
     assert(inode->i_stat.st_blocks == bcount);
 }
 
+/* Free blocks in the extent list */
+void
+lc_freeInodeDataBlocks(struct fs *fs, struct inode *inode,
+                       struct extent **extents) {
+    struct extent *extent = *extents, *tmp;
+
+    while (extent) {
+        lc_freeLayerDataBlocks(fs, extent->ex_start, extent->ex_count,
+                               inode->i_private);
+        tmp = extent;
+        extent = extent->ex_next;
+        free(tmp);
+    }
+}
+
+/* Truncate the bmap of a file */
+void
+lc_bmapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
+                size_t size, uint64_t pg, bool remove, bool *truncated) {
+    struct extent *extents = NULL;
+    uint64_t i, bcount = 0;
+
+    /* Take care of files with single extent */
+    if (remove && inode->i_extentLength) {
+        assert(inode->i_bcount == 0);
+
+        /* If a page is partially truncated, expand bmap */
+        if (size % LC_BLOCK_SIZE) {
+            lc_expandBmap(inode);
+        } else {
+            if (inode->i_extentLength > pg) {
+                bcount = inode->i_extentLength - pg;
+                lc_addExtent(gfs, &extents,
+                             inode->i_extentBlock + pg, bcount);
+                inode->i_extentLength = pg;
+            }
+            if (inode->i_extentLength == 0) {
+                inode->i_extentBlock = 0;
+            }
+        }
+    }
+
+    /* Remove blockmap entries past the new size */
+    if (remove && inode->i_bcount) {
+        assert(inode->i_stat.st_blocks <= inode->i_bcount);
+        for (i = pg; i < inode->i_bcount; i++) {
+            if (inode->i_bmap[i] == 0) {
+                continue;
+            }
+            if ((pg == i) && ((size % LC_BLOCK_SIZE) != 0)) {
+
+                /* If a page is partially truncated, keep it */
+                lc_truncatePage(fs, inode, NULL, pg, size % LC_BLOCK_SIZE);
+                *truncated = true;
+            } else {
+                lc_addExtent(gfs, &extents, inode->i_bmap[i], 1);
+                inode->i_bmap[i] = 0;
+                bcount++;
+            }
+        }
+    }
+
+    /* Free blocks */
+    if (bcount) {
+        lc_freeInodeDataBlocks(fs, inode, &extents);
+        assert(inode->i_stat.st_blocks >= bcount);
+        inode->i_stat.st_blocks -= bcount;
+    } else {
+        assert(extents == NULL);
+    }
+    if (size == 0) {
+        assert((inode->i_stat.st_blocks == 0) || !remove);
+        if (inode->i_bmap) {
+            free(inode->i_bmap);
+            inode->i_bmap = NULL;
+            inode->i_bcount = 0;
+        }
+        assert(inode->i_bcount == 0);
+        if (remove) {
+            inode->i_private = true;
+        }
+    }
+}

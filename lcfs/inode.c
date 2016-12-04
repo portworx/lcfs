@@ -255,6 +255,8 @@ lc_freeInode(struct inode *inode) {
     }
     assert(inode->i_page == NULL);
     assert(inode->i_bmap == NULL);
+    assert(inode->i_bcount == 0);
+    assert(inode->i_pcount == 0);
     assert(inode->i_dpcount == 0);
     lc_xattrFree(inode);
     pthread_rwlock_destroy(&inode->i_rwlock);
@@ -402,7 +404,6 @@ lc_destroyInodes(struct fs *fs, bool remove) {
     int i;
 
     /* Take the inode off the hash list */
-
     for (i = 0; i < LC_ICACHE_SIZE; i++) {
         /* XXX Lock is not needed as the file system is locked for exclusive
          * access
@@ -420,6 +421,7 @@ lc_destroyInodes(struct fs *fs, bool remove) {
         //pthread_mutex_unlock(&fs->fs_icache[i].ic_lock);
         pthread_mutex_destroy(&fs->fs_icache[i].ic_lock);
     }
+
     /* XXX reuse this cache for another file system */
     free(fs->fs_icache);
     if (remove && icount) {

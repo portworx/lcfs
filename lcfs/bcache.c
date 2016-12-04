@@ -319,10 +319,10 @@ lc_getPageNewData(struct fs *fs, uint64_t block) {
 void
 lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
                     struct page *head, uint64_t count) {
+    uint64_t i, j, bcount = 0;
     struct page *page = head;
     struct iovec *iovec;
     uint64_t block = 0;
-    uint64_t i, j;
 
     if (count == 1) {
         block = page->p_block;
@@ -332,15 +332,26 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
 
         /* Issue the I/O in block order */
         for (i = 0, j = count - 1; i < count; i++, j--) {
+
+            /* Flush current set of dirty pages if the new page is not adjacent
+             * to those.
+             * XXX This could happen when metadata and userdata are flushed
+             * concurrently OR files flushed concurrently.
+             */
+            if (i && ((page->p_block + 1) != block)) {
+                lc_printf("Not contigous, block %ld previous block %ld i %ld count %ld\n", block, page->p_block, i, count);
+                lc_writeBlocks(gfs, fs, &iovec[j + 1], bcount, block);
+                bcount = 0;
+            }
             iovec[j].iov_base = page->p_data;
             iovec[j].iov_len = LC_BLOCK_SIZE;
-            assert((i == 0) || (block == (page->p_block + 1)));
             block = page->p_block;
+            bcount++;
             page = page->p_dnext;
         }
         assert(page == NULL);
         assert(block != 0);
-        lc_writeBlocks(gfs, fs, iovec, count, block);
+        lc_writeBlocks(gfs, fs, iovec, bcount, block);
     }
 
     /* Release the pages after writing */
@@ -351,25 +362,11 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
 void
 lc_addPageForWriteBack(struct gfs *gfs, struct fs *fs, struct page *head,
                        struct page *tail, uint64_t pcount) {
-    uint64_t block, count = 0;
     struct page *page = NULL;
+    uint64_t count = 0;
 
     assert(count < LC_CLUSTER_SIZE);
-    block = tail->p_block;
     pthread_mutex_lock(&fs->fs_plock);
-
-    /* Flush current set of dirty pages if the new page is not adjacent to
-     * those.
-     * XXX This could happen when metadata and userdata are flushed
-     * concurrently OR files flushed concurrently.
-     */
-    if (fs->fs_dpages && (block != (fs->fs_dpages->p_block + 1))) {
-        //lc_printf("Not contigous, block %ld previous block %ld count %ld\n", block, fs->fs_dpages->p_block, fs->fs_dpcount);
-        page = fs->fs_dpages;
-        fs->fs_dpages = NULL;
-        count = fs->fs_dpcount;
-        fs->fs_dpcount = 0;
-    }
     tail->p_dnext = fs->fs_dpages;
     fs->fs_dpages = head;
     fs->fs_dpcount += pcount;

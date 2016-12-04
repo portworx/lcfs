@@ -135,6 +135,15 @@ struct fs {
     /* Count of pages linked from fs_inodeBlockPages pending flushing */
     uint64_t fs_inodeBlockCount;
 
+    /* First inode with dirty pages */
+    struct inode *fs_dirtyInodes;
+
+    /* Last inode with dirty pages */
+    struct inode *fs_dirtyInodesLast;
+
+    /* Lock protecting fs_dirtyInodes list */
+    pthread_mutex_t fs_dilock;
+
     /* Creation time in seconds since Epoch */
     time_t fs_ctime;
 

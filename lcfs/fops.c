@@ -106,6 +106,8 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
 
         /* Flag a file as removed on last unlink */
         if (inode->i_stat.st_nlink == 0) {
+
+            /* XXX This can be done in the background */
             if ((inode->i_ocount == 0) && S_ISREG(inode->i_stat.st_mode)) {
                 lc_truncate(inode, 0);
             }
@@ -797,11 +799,17 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
     fuse_reply_err(req, 0);
 
     /* Flush dirty pages of a file on last close */
-    if (fs->fs_readOnly && (inode->i_ocount == 0) &&
-        S_ISREG(inode->i_stat.st_mode) && inode->i_bmapdirty) {
+    if ((inode->i_ocount == 0) && inode->i_bmapdirty) {
+        assert(S_ISREG(inode->i_stat.st_mode));
+        if (fs->fs_readOnly) {
 
-        /* Inode bmap needs to be stable before an inode could be cloned */
-        lc_bmapFlush(fs->fs_gfs, inode->i_fs, inode);
+            /* Inode bmap needs to be stable before an inode could be cloned */
+            lc_bmapFlush(fs->fs_gfs, inode->i_fs, inode);
+        } else if (!inode->i_removed && inode->i_page &&
+                   (inode->i_dnext == NULL) &&
+                   (fs->fs_dirtyInodesLast != inode)) {
+            lc_addDirtyInode(fs, inode);
+        }
     }
     lc_inodeUnlock(inode);
 }
@@ -1167,6 +1175,9 @@ out:
         }
     }
     lc_statsAdd(fs, LC_WRITE_BUF, err, &start);
+    if (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES) {
+        lc_flushDirtyInodeList(fs);
+    }
     lc_unlock(fs);
 }
 

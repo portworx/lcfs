@@ -1,7 +1,10 @@
 set -x
 
 MNT=/tmp/lcfs-testmountpoint
+LCFS=$PWD/lcfs
 XATTR=$PWD/testxattr
+CSTAT=$PWD/cstat
+
 fusermount -u $MNT
 rm -fr $MNT
 mkdir $MNT
@@ -10,7 +13,7 @@ DEVICE=/tmp/lcfs-testdevice
 rm $DEVICE
 dd if=/dev/zero of=$DEVICE count=60000 bs=4096
 
-./lcfs $DEVICE $MNT -f &
+$LCFS $DEVICE $MNT -f &
 sleep 10
 cd $MNT
 
@@ -106,6 +109,11 @@ service docker stop
 dockerd -s lcfs -g $MNT 2>/dev/null &
 sleep 10
 docker run hello-world
+
+cd $MNT/lcfs
+$CSTAT .
+cd -
+
 docker ps --all --format {{.ID}} | xargs docker rm
 docker rmi hello-world
 cat /var/run/docker.pid | xargs kill
@@ -120,7 +128,7 @@ df -i $MNT
 fusermount -u $MNT
 sleep 10
 
-./lcfs $DEVICE $MNT -f &
+$LCFS $DEVICE $MNT -f &
 sleep 10
 cd $MNT
 

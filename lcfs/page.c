@@ -8,6 +8,108 @@ lc_findDirtyPage(struct inode *inode, uint64_t pg) {
     return (pg < inode->i_pcount) ? &inode->i_page[pg] : NULL;
 }
 
+/* Flush dirty pages if the inode accumulated too many */
+static void
+lc_flushInodeDirtyPages(struct inode *inode, uint64_t page) {
+    struct dpage *dpage;
+
+    /* Do not trigger flush if the last page is not fully filled up for a
+     * sequentially written file.
+     */
+    if (inode->i_extentLength || (inode->i_bcount == 0)) {
+        dpage = lc_findDirtyPage(inode, page);
+        if (dpage->dp_data &&
+            (dpage->dp_poffset || (dpage->dp_psize != LC_BLOCK_SIZE))) {
+            return;
+        }
+    }
+    printf("Flushing pages of inode %ld\n", inode->i_stat.st_ino);
+
+    /* XXX Avoid this for files in tmp directory */
+    lc_flushPages(inode->i_fs->fs_gfs, inode->i_fs, inode, false);
+}
+
+/* Add inode to the file system dirty list */
+void
+lc_addDirtyInode(struct fs *fs, struct inode *inode) {
+    assert(inode->i_dnext == NULL);
+    pthread_mutex_lock(&fs->fs_dilock);
+    if (fs->fs_dirtyInodesLast) {
+        fs->fs_dirtyInodesLast->i_dnext = inode;
+    } else {
+        assert(fs->fs_dirtyInodes == NULL);
+        fs->fs_dirtyInodes = inode;
+    }
+    fs->fs_dirtyInodesLast = inode;
+    pthread_mutex_unlock(&fs->fs_dilock);
+}
+
+/* Remove an inode from the file system dirty list */
+static void
+lc_removeDirtyInode(struct fs *fs, struct inode *inode, struct inode *prev) {
+    if (prev) {
+        prev->i_dnext = inode->i_dnext;
+    } else {
+        assert(fs->fs_dirtyInodes == inode);
+        fs->fs_dirtyInodes = inode->i_dnext;
+    }
+    if (fs->fs_dirtyInodesLast == inode) {
+        assert(prev || (fs->fs_dirtyInodes == NULL));
+        fs->fs_dirtyInodesLast = prev;
+    }
+}
+
+/* Flush inodes on the dirty list */
+void
+lc_flushDirtyInodeList(struct fs *fs) {
+    struct inode *inode, *prev = NULL, *tmp;
+
+    if (fs->fs_dirtyInodes == NULL) {
+        return;
+    }
+    if (pthread_mutex_trylock(&fs->fs_dilock)) {
+        return;
+    }
+    inode = fs->fs_dirtyInodes;
+    while (inode) {
+        if (inode->i_removed) {
+            lc_removeDirtyInode(fs, inode, prev);
+            tmp = inode;
+            inode = inode->i_dnext;
+            tmp->i_dnext = NULL;
+        } else if ((inode->i_ocount == 0) &&
+            !pthread_rwlock_trywrlock(&inode->i_rwlock)) {
+            lc_removeDirtyInode(fs, inode, prev);
+            inode->i_dnext = NULL;
+            if (inode->i_page == NULL) {
+                pthread_rwlock_unlock(&inode->i_rwlock);
+                inode = prev ? prev->i_dnext : fs->fs_dirtyInodes;
+                continue;
+            }
+            pthread_mutex_unlock(&fs->fs_dilock);
+            lc_flushInodeDirtyPages(inode,
+                                    inode->i_stat.st_size / LC_BLOCK_SIZE);
+            if (inode->i_page) {
+                pthread_rwlock_unlock(&inode->i_rwlock);
+                return;
+            }
+            pthread_rwlock_unlock(&inode->i_rwlock);
+            if (fs->fs_pcount < (LC_MAX_LAYER_DIRTYPAGES / 2)) {
+                return;
+            }
+            prev = NULL;
+            if (pthread_mutex_trylock(&fs->fs_dilock)) {
+                return;
+            }
+            inode = fs->fs_dirtyInodes;
+        } else {
+            prev = inode;
+            inode = inode->i_dnext;
+        }
+    }
+    pthread_mutex_unlock(&fs->fs_dilock);
+}
+
 /* Fill up a partial page */
 static void
 lc_fillPage(struct inode *inode, struct dpage *dpage, uint64_t pg) {
@@ -286,14 +388,13 @@ lc_addPages(struct inode *inode, off_t off, size_t size,
         dpage = &dpages[count];
         added += lc_mergePage(inode, page, dpage->dp_data, dpage->dp_poffset,
                               dpage->dp_psize);
+
+        /* Flush dirty pages if the inode accumulated too many */
+        if (inode->i_dpcount >= LC_MAX_FILE_DIRTYPAGES) {
+            lc_flushInodeDirtyPages(inode, page);
+        }
         page++;
         count++;
-    }
-
-    /* Flush dirty pages if the inode accumulated too many */
-    if (inode->i_dpcount >= LC_MAX_DIRTYPAGES) {
-        /* XXX Avoid this for files in tmp directory */
-        lc_flushPages(inode->i_fs->fs_gfs, inode->i_fs, inode);
     }
     return added;
 }
@@ -352,24 +453,10 @@ lc_readPages(fuse_req_t req, struct inode *inode, off_t soffset,
     lc_releaseReadPages(fs->fs_gfs, fs, pages, pcount);
 }
 
-/* Free blocks in the extent list */
-static void
-lc_freeInodeDataBlocks(struct fs *fs, struct inode *inode,
-                       struct extent **extents) {
-    struct extent *extent = *extents, *tmp;
-
-    while (extent) {
-        lc_freeLayerDataBlocks(fs, extent->ex_start, extent->ex_count,
-                               inode->i_private);
-        tmp = extent;
-        extent = extent->ex_next;
-        free(tmp);
-    }
-}
-
 /* Flush dirty pages of an inode */
 void
-lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
+lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
+              bool release) {
     uint64_t count = 0, bcount = 0, start, end = 0, fcount = 0;
     uint64_t i, lpage, pcount, block, tcount = 0, rcount;
     struct page *page, *dpage = NULL, *tpage = NULL;
@@ -410,7 +497,9 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             ended = true;
         }
     }
-    assert(bcount);
+    if (bcount == 0) {
+        goto out;
+    }
 
     rcount = bcount;
     do {
@@ -428,6 +517,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
 
     /* Check if file has a single extent */
     if (single) {
+        assert(inode->i_page[0].dp_data);
 
         /* Free any old blocks present */
         if (inode->i_extentLength) {
@@ -446,6 +536,13 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         inode->i_extentBlock = block;
         inode->i_extentLength = bcount;
         inode->i_stat.st_blocks = bcount;
+    } else if ((start == inode->i_extentLength) && (bcount == rcount) &&
+               ((start + bcount - 1) == end)) {
+
+        /* If previous extent is extended, keep the single extent layout */
+        single = true;
+        inode->i_extentLength += bcount;
+        inode->i_stat.st_blocks += bcount;
     } else {
         if (inode->i_extentLength) {
             lc_expandBmap(inode);
@@ -481,6 +578,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             if (tpage == NULL) {
                 tpage = page;
             }
+            assert(page->p_dnext == NULL);
             page->p_dnext = dpage;
             dpage = page;
             if (!single) {
@@ -519,8 +617,10 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     assert(bcount == tcount);
     assert(inode->i_dpcount == 0);
 
+out:
+
     /* Free dirty page list as all pages are in block cache */
-    if (inode->i_page) {
+    if (release) {
         free(inode->i_page);
         inode->i_page = NULL;
         inode->i_pcount = 0;
@@ -534,19 +634,42 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     }
 }
 
+/* Truncate a dirty page */
+void
+lc_truncatePage(struct fs *fs, struct inode *inode, struct dpage *dpage,
+                uint64_t pg, uint16_t poffset) {
+
+    if (dpage == NULL) {
+        lc_inodeAllocPages(inode);
+        dpage = lc_findDirtyPage(inode, pg);
+    }
+
+    /* Create a dirty page if one does not exist */
+    if (dpage->dp_data == NULL) {
+        malloc_aligned((void **)&dpage->dp_data);
+        __sync_add_and_fetch(&fs->fs_pcount, 1);
+        dpage->dp_poffset = 0;
+        dpage->dp_psize = 0;
+    } else if ((dpage->dp_poffset + dpage->dp_psize) > poffset) {
+
+        /* Truncate down the valid portion of the page */
+        if (dpage->dp_poffset >= poffset) {
+            dpage->dp_poffset = 0;
+            dpage->dp_psize = 0;
+        } else {
+            dpage->dp_psize = poffset - dpage->dp_poffset;
+        }
+    }
+}
+
 /* Truncate pages beyond the new size of the file */
 void
 lc_truncPages(struct inode *inode, off_t size, bool remove) {
-    uint64_t pg = size / LC_BLOCK_SIZE, lpage;
-    struct extent *extents = NULL;
-    uint64_t i, bcount = 0, pcount;
-    struct fs *fs = inode->i_fs;
+    uint64_t pg = size / LC_BLOCK_SIZE, lpage, freed, i, pcount;
     bool truncated = false;
     struct dpage *dpage;
     struct gfs *gfs;
-    int freed = 0;
-    off_t poffset;
-    char *pdata;
+    struct fs *fs;
 
     /* If nothing to truncate, return */
     if ((inode->i_bmap == NULL) && (inode->i_pcount == 0) &&
@@ -557,7 +680,9 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
         assert(inode->i_pcount == 0);
         assert(inode->i_page == NULL);
         assert(!inode->i_shared);
-        inode->i_private = true;
+        if (remove) {
+            inode->i_private = true;
+        }
         return;
     }
 
@@ -567,10 +692,10 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
         if (size == 0) {
             if (remove) {
                 inode->i_stat.st_blocks = 0;
-                inode->i_shared = false;
-                inode->i_private = true;
                 inode->i_extentBlock = 0;
                 inode->i_extentLength = 0;
+                inode->i_shared = false;
+                inode->i_private = true;
             }
             inode->i_page = NULL;
             inode->i_pcount = 0;
@@ -581,123 +706,46 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
         lc_copyBmap(inode);
     }
     assert(!inode->i_shared);
+    fs = inode->i_fs;
     gfs = fs->fs_gfs;
 
-    /* Take care of files with single extent */
-    lpage = (inode->i_stat.st_size + LC_BLOCK_SIZE - 1) / LC_BLOCK_SIZE;
-    if (remove && inode->i_extentLength) {
-        assert(inode->i_bcount == 0);
-        if (size % LC_BLOCK_SIZE) {
-            lc_expandBmap(inode);
-        } else {
-            if (inode->i_extentLength > pg) {
-                bcount = inode->i_extentLength - pg;
-                lc_addExtent(gfs, &extents,
-                             inode->i_extentBlock + pg, bcount);
-                inode->i_extentLength = pg;
-            }
-            if (inode->i_extentLength == 0) {
-                inode->i_extentBlock = 0;
-            }
-        }
-    }
-
-    /* Remove blockmap entries past the new size */
-    if (remove && inode->i_bcount) {
-        assert(inode->i_stat.st_blocks <= inode->i_bcount);
-        for (i = pg; i < inode->i_bcount; i++) {
-            if (inode->i_bmap[i] == 0) {
-                continue;
-            }
-            if ((pg == i) && ((size % LC_BLOCK_SIZE) != 0)) {
-
-                /* If a page is partially truncated, keep it */
-                poffset = size % LC_BLOCK_SIZE;
-                lc_inodeAllocPages(inode);
-                dpage = lc_findDirtyPage(inode, pg);
-                if (dpage->dp_data == NULL) {
-                    malloc_aligned((void **)&dpage->dp_data);
-                    __sync_add_and_fetch(&fs->fs_pcount, 1);
-                    dpage->dp_poffset = 0;
-                    dpage->dp_psize = 0;
-                } else {
-                    if ((dpage->dp_poffset + dpage->dp_psize) > poffset) {
-                        if (dpage->dp_poffset >= poffset) {
-                            dpage->dp_poffset = 0;
-                            dpage->dp_psize = 0;
-                        } else {
-                            dpage->dp_psize = poffset - dpage->dp_poffset;
-                        }
-                    }
-                }
-                truncated = true;
-            } else {
-                lc_addExtent(gfs, &extents, inode->i_bmap[i], 1);
-                inode->i_bmap[i] = 0;
-                bcount++;
-            }
-        }
-    }
+    /* Free blocks allocated beyond new eof */
+    lc_bmapTruncate(gfs, fs, inode, size, pg, remove, &truncated);
 
     /* Remove dirty pages past the new size from the dirty list */
     if (inode->i_pcount) {
+        freed = 0;
+        lpage = (inode->i_stat.st_size + LC_BLOCK_SIZE - 1) / LC_BLOCK_SIZE;
         assert(lpage < inode->i_pcount);
         for (i = pg; i <= lpage; i++) {
             dpage = lc_findDirtyPage(inode, i);
-            pdata = dpage->dp_data;
-            if (pdata == NULL) {
+            if (dpage->dp_data == NULL) {
                 continue;
             }
             if ((pg == i) && ((size % LC_BLOCK_SIZE) != 0)) {
 
                 /* If a page is partially truncated, keep it */
                 if (!truncated) {
-                    poffset = size % LC_BLOCK_SIZE;
-                    if ((dpage->dp_poffset + dpage->dp_psize) > poffset) {
-                        if (dpage->dp_poffset >= poffset) {
-                            dpage->dp_poffset = 0;
-                            dpage->dp_psize = 0;
-                        } else {
-                            dpage->dp_psize = poffset - dpage->dp_poffset;
-                        }
-                    }
+                    lc_truncatePage(fs, inode, dpage, pg,
+                                    size % LC_BLOCK_SIZE);
                 }
             } else {
                 lc_removeDirtyPage(inode, i, true);
                 freed++;
             }
         }
-    }
-    if (extents) {
-        lc_freeInodeDataBlocks(fs, inode, &extents);
-    }
-    if (freed) {
-        pcount = __sync_fetch_and_sub(&fs->fs_pcount, freed);
-        assert(pcount >= freed);
-    }
-
-    /* Update inode blocks while truncating the file */
-    if (remove) {
-        assert(inode->i_stat.st_blocks >= bcount);
-        inode->i_stat.st_blocks -= bcount;
-    }
-
-    /* If the file is fully truncated, free bmap and page lists */
-    if (size == 0) {
-        assert((inode->i_stat.st_blocks == 0) || !remove);
-        assert(inode->i_dpcount == 0);
-        if (inode->i_page) {
-            free(inode->i_page);
-            inode->i_page = NULL;
-            inode->i_pcount = 0;
+        if (freed) {
+            pcount = __sync_fetch_and_sub(&fs->fs_pcount, freed);
+            assert(pcount >= freed);
         }
-        if (inode->i_bmap) {
-            free(inode->i_bmap);
-            inode->i_bmap = NULL;
-            inode->i_bcount = 0;
+        if (size == 0) {
+            assert(inode->i_dpcount == 0);
+            if (inode->i_page) {
+                free(inode->i_page);
+                inode->i_page = NULL;
+                inode->i_pcount = 0;
+            }
+            assert(inode->i_pcount == 0);
         }
-        assert(inode->i_pcount == 0);
-        assert(inode->i_bcount == 0);
-        inode->i_private = true;
     }
 }

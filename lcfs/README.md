@@ -406,8 +406,9 @@ is instantiated in inode cache of the layer.
 Each regular file inode maintains an array for dirty pages of size 4KB indexed
 by the page number, for recently written/modified pages, if the file was
 recently modified.  These pages are written out when the file is closed in
-read-only layers, when a file accumulate too many dirty pages or when
-the file system unmounted/persisted.  Also each regular file inode maintains a
+read-only layers, when a file accumulate too many dirty pages, when a layer
+accumulate too many files with dirty pages or when the file system
+unmounted/persisted.  Also each regular file inode maintains a
 bmap table indexed by the page number, if the file is fragmented on disk.
 
 Blocks can be cached in chunks of size 4KB, called pages in block cache.
@@ -469,5 +470,6 @@ Stats
 When enabled at build time, all file operations and ioctl requests are counted
 and times taken for each of those are tracked for each layer separately.
 Those stats can be queried using a command.  As of now, it is also displayed at
-the time a layer is unmounted.
+the time a layer is unmounted.  Stats for a layer can be cleared before running
+applications to trace actual operations during any time period.
 

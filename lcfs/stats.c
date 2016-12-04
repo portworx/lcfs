@@ -129,7 +129,7 @@ lc_displayStats(struct fs *fs) {
     printf("\tRequest:\tTotal\t\tFailed\tAverage\t\tMax\t\tMin\n\n");
     for (i = 0; i < LC_REQUEST_MAX; i++) {
         if (stats->s_count[i]) {
-            printf("\t%15s: %10ld\t%10ld\t%2lds.%06ldu\t%2lds.%06ldu\t%2lds.%06ldu\n",
+            printf("%15s: %10ld\t%10ld\t%2lds.%06ldu\t%2lds.%06ldu\t%2lds.%06ldu\n",
                    requests[i], stats->s_count[i], stats->s_err[i],
                    stats->s_total[i].tv_sec / stats->s_count[i],
                    stats->s_total[i].tv_usec / stats->s_count[i],
@@ -158,11 +158,13 @@ lc_displayStatsAll(struct gfs *gfs) {
     if (!stats_enabled) {
         return;
     }
+    pthread_mutex_lock(&gfs->gfs_lock);
     for (i = 0; i <= gfs->gfs_scount; i++) {
         if (gfs->gfs_fs[i]) {
             lc_displayStats(gfs->gfs_fs[i]);
         }
     }
+    pthread_mutex_unlock(&gfs->gfs_lock);
 }
 
 /* Display global stats */

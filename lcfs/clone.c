@@ -95,13 +95,12 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
 
         /* Copy the parent root directory */
         pfs = lc_getfs(pinum, false);
+        pfs->fs_frozen = true;
         assert(pfs->fs_root == lc_getInodeHandle(pinum));
         pdir = pfs->fs_rootInode;
-        lc_inodeLock(pdir, false);
         dir->i_stat.st_nlink = pdir->i_stat.st_nlink;
         dir->i_dirent = pdir->i_dirent;
         lc_dirCopy(dir);
-        lc_inodeUnlock(pdir);
 
         /* Inode chain lock is shared with the parent */
         fs->fs_parent = pfs;
@@ -228,13 +227,17 @@ lc_snapIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
     case SNAP_STAT:
     case SNAP_UMOUNT:
         if (err == 0) {
-            fuse_reply_ioctl(req, 0, NULL, 0);
             fs = lc_getfs(root, false);
+            fuse_reply_ioctl(req, 0, NULL, 0);
             lc_displayStats(fs);
             if ((cmd == SNAP_UMOUNT) && fs->fs_readOnly) {
                 lc_sync(gfs, fs);
             }
             lc_unlock(fs);
+        } else if (cmd == SNAP_STAT) {
+            lc_displayStatsAll(gfs);
+            fuse_reply_ioctl(req, 0, NULL, 0);
+            err = 0;
         }
         lc_statsAdd(rfs, cmd == SNAP_UMOUNT ? LC_UMOUNT : LC_STAT,
                      err, &start);
@@ -255,7 +258,7 @@ lc_snapIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
         err = EINVAL;
     }
     if (err) {
-        lc_reportError(__func__, __LINE__, root, err);
+        lc_reportError(__func__, __LINE__, 0, err);
         fuse_reply_err(req, err);
     }
     lc_unlock(rfs);

@@ -13,6 +13,7 @@ lc_newFs(struct gfs *gfs, bool rw) {
     fs->fs_ctime = t;
     fs->fs_atime = t;
     pthread_mutex_init(&fs->fs_plock, NULL);
+    pthread_mutex_init(&fs->fs_dilock, NULL);
     pthread_mutex_init(&fs->fs_alock, NULL);
     pthread_rwlock_init(&fs->fs_rwlock, NULL);
     fs->fs_icache = lc_icache_init();
@@ -122,6 +123,7 @@ lc_freeLayer(struct fs *fs, bool remove) {
     }
     lc_displayStats(fs);
     lc_statsDeinit(fs);
+    pthread_mutex_destroy(&fs->fs_dilock);
     pthread_mutex_destroy(&fs->fs_plock);
     pthread_mutex_destroy(&fs->fs_alock);
     pthread_rwlock_destroy(&fs->fs_rwlock);
@@ -306,7 +308,6 @@ lc_addfs(struct fs *fs, struct fs *pfs) {
         snap->fs_super->sb_nextSnap = fs->fs_sblock;
         snap->fs_super->sb_flags |= LC_SUPER_DIRTY;
     } else if (pfs) {
-        pfs->fs_frozen = true;
         pfs->fs_snap = fs;
         pfs->fs_super->sb_childSnap = fs->fs_sblock;
         pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;

@@ -508,10 +508,14 @@ lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount, bool remove) {
 void
 lc_freeLayerDataBlocks(struct fs *fs, uint64_t block, uint64_t count,
                        bool allocated) {
-    if (allocated) {
+
+    /* XXX Do not free blocks right now as pages may be still in the process of
+     * flushing.
+     */
+    if (0 && allocated) {
         lc_blockFree(fs, block, count);
     } else {
-        assert(fs != lc_getGlobalFs(fs->fs_gfs));
+        //assert(fs != lc_getGlobalFs(fs->fs_gfs));
         pthread_mutex_lock(&fs->fs_alock);
         lc_addExtent(fs->fs_gfs, &fs->fs_fextents, block, count);
         pthread_mutex_unlock(&fs->fs_alock);
