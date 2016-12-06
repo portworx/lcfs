@@ -1,6 +1,15 @@
 #include "includes.h"
 #include <sys/ioctl.h>
 
+/* Display usage and exit */
+static void
+usage(char *name) {
+    printf("usage: %s <id> [-c]\n", name);
+    printf("Specify . as id for displaying stats for all layers\n");
+    printf("Run this command from the layer root directory\n");
+    exit(EINVAL);
+}
+
 /* Display (and optionally clear) stats of a layer.
  * Issue the command from the layer root directory.
  */
@@ -10,12 +19,10 @@ main(int argc, char *argv[]) {
     int fd, err;
 
     if ((argc != 2) && (argc != 3)) {
-        printf("usage: %s <id> [-c]\n", argv[0]);
-        exit(EINVAL);
+        usage(argv[0]);
     }
     if ((argc == 3) && strcmp(argv[2], "-c")) {
-        printf("usage: %s <id> [-c]\n", argv[0]);
-        exit(EINVAL);
+        usage(argv[0]);
     }
     fd = open(".", O_DIRECTORY);
     if (fd < 0) {

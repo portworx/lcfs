@@ -25,16 +25,16 @@ lc_dirLookup(struct fs *fs, struct inode *dir, const char *name) {
 /* Add a new directory entry to the given directory */
 void
 lc_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,
-           int nsize) {
+          int nsize) {
     struct fs *fs = dir->i_fs;
-    struct dirent *dirent = lc_malloc(fs, sizeof(struct dirent),
+    struct dirent *dirent = lc_malloc(fs, sizeof(struct dirent) + nsize + 1,
                                       LC_MEMTYPE_DIRENT);
 
     assert(S_ISDIR(dir->i_stat.st_mode));
     assert(!dir->i_shared);
     assert(ino > LC_ROOT_INODE);
     dirent->di_ino = ino;
-    dirent->di_name = lc_malloc(fs, nsize + 1, LC_MEMTYPE_DIRNAME);
+    dirent->di_name = ((char *)dirent) + sizeof(struct dirent);
     memcpy(dirent->di_name, name, nsize);
     dirent->di_name[nsize] = 0;
     dirent->di_size = nsize;
@@ -65,8 +65,8 @@ lc_dirCopy(struct inode *dir) {
 /* Free a dirent structure */
 static inline void
 lc_freeDirent(struct fs *fs, struct dirent *dirent) {
-    lc_free(fs, dirent->di_name, dirent->di_size + 1, LC_MEMTYPE_DIRNAME);
-    lc_free(fs, dirent, sizeof(struct dirent), LC_MEMTYPE_DIRENT);
+    lc_free(fs, dirent, sizeof(struct dirent) + dirent->di_size + 1,
+            LC_MEMTYPE_DIRENT);
 }
 
 /* Remove a directory entry */
@@ -101,7 +101,7 @@ lc_dirRemove(struct inode *dir, const char *name) {
 void
 lc_dirRename(struct inode *dir, ino_t ino,
               const char *name, const char *newname) {
-    struct dirent *dirent = dir->i_dirent;
+    struct dirent *dirent = dir->i_dirent, *pdirent = NULL, *new;
     int len = strlen(name);
     struct fs *fs;
 
@@ -115,10 +115,17 @@ lc_dirRename(struct inode *dir, ino_t ino,
 
             /* Existing name can be used if size is not growing */
             if (len > dirent->di_size) {
-                lc_free(fs, dirent->di_name, dirent->di_size + 1,
-                        LC_MEMTYPE_DIRNAME);
-                dirent->di_name = lc_malloc(fs, len + 1,
-                                            LC_MEMTYPE_DIRNAME);
+                new = lc_malloc(fs, sizeof(struct dirent) + len + 1,
+                                LC_MEMTYPE_DIRENT);
+                memcpy(new, dirent, sizeof(struct dirent));
+                lc_freeDirent(fs, dirent);
+                dirent = new;
+                if (pdirent == NULL) {
+                    dir->i_dirent = dirent;
+                } else {
+                    pdirent->di_next = dirent;
+                }
+                dirent->di_name = ((char *)dirent) + sizeof(struct dirent);
             } else if (dirent->di_size > len) {
                 lc_memUpdateTotal(fs, dirent->di_size - len);
             }
@@ -127,6 +134,7 @@ lc_dirRename(struct inode *dir, ino_t ino,
             dirent->di_size = len;
             return;
         }
+        pdirent = dirent;
         dirent = dirent->di_next;
     }
     assert(false);
