@@ -112,9 +112,35 @@ static_assert(sizeof(struct dextentBlock) == LC_BLOCK_SIZE, "dextent size != LC_
 /* Disk inode structure */
 struct dinode {
 
-    /* Stat structure */
-    /* XXX Avoid storing unwanted stat fields */
-    struct stat di_stat;
+    /* Inode number */
+    ino_t di_ino;
+
+    /* File mode and permissions */
+    mode_t di_mode;
+
+    /* Number of links (hardlinks or subdirectories) */
+    nlink_t di_nlink;
+
+    /* User id */
+    uid_t di_uid;
+
+    /* Group id */
+    gid_t di_gid;
+
+    /* Device id */
+    dev_t di_rdev;
+
+    /* Size of the file */
+    off_t di_size;
+
+    /* Count of blocks */
+    blkcnt_t di_blocks;
+
+    /* modification time */
+    struct timespec di_mtime;
+
+    /* change time */
+    struct timespec di_ctime;
 
     /* Starting block for bmap or directory */
     uint64_t di_bmapdir;
@@ -131,7 +157,7 @@ struct dinode {
     /* Set if blocks are newly allocated and not inherited */
     uint8_t di_private;
 } __attribute__((packed));
-static_assert(sizeof(struct dinode) == 177, "dinode size != 177");
+static_assert(sizeof(struct dinode) == 117, "dinode size != 117");
 
 #define LC_IBLOCK_MAX  ((LC_BLOCK_SIZE / sizeof(uint64_t)) - 2)
 /* Inode block table */

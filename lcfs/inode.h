@@ -140,7 +140,6 @@ struct inode {
 
 }  __attribute__((packed));
 
-#define i_stat          i_dinode.di_stat
 #define i_parent        i_dinode.di_parent
 #define i_bmapDirBlock  i_dinode.di_bmapdir
 #define i_xattrBlock    i_dinode.di_xattr
@@ -159,11 +158,11 @@ lc_markInodeDirty(struct inode *inode, bool dirty, bool dir, bool bmap,
         inode->i_dirty = true;
     }
     if (dir) {
-        assert(S_ISDIR(inode->i_stat.st_mode));
+        assert(S_ISDIR(inode->i_dinode.di_mode));
         inode->i_dirdirty = true;
     }
     if (bmap) {
-        assert(S_ISREG(inode->i_stat.st_mode));
+        assert(S_ISREG(inode->i_dinode.di_mode));
         inode->i_bmapdirty = true;
     }
     if (xattr) {
@@ -177,6 +176,5 @@ lc_inodeDirty(struct inode *inode) {
     return inode->i_dirty || inode->i_dirdirty || inode->i_bmapdirty ||
            inode->i_xattrdirty;
 }
-
 
 #endif

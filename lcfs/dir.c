@@ -9,7 +9,7 @@ lc_dirLookup(struct fs *fs, struct inode *dir, const char *name) {
     int len = strlen(name);
     ino_t dino;
 
-    assert(S_ISDIR(dir->i_stat.st_mode));
+    assert(S_ISDIR(dir->i_dinode.di_mode));
     dirent = dir->i_dirent;
     while (dirent != NULL) {
         if ((len == dirent->di_size) &&
@@ -30,7 +30,7 @@ lc_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,
     struct dirent *dirent = lc_malloc(fs, sizeof(struct dirent) + nsize + 1,
                                       LC_MEMTYPE_DIRENT);
 
-    assert(S_ISDIR(dir->i_stat.st_mode));
+    assert(S_ISDIR(dir->i_dinode.di_mode));
     assert(!dir->i_shared);
     assert(ino > LC_ROOT_INODE);
     dirent->di_ino = ino;
@@ -50,8 +50,8 @@ lc_dirCopy(struct inode *dir) {
     struct dirent *dirent = dir->i_dirent;
 
     assert(dir->i_shared);
-    assert(S_ISDIR(dir->i_stat.st_mode));
-    assert(dir->i_stat.st_nlink >= 2);
+    assert(S_ISDIR(dir->i_dinode.di_mode));
+    assert(dir->i_dinode.di_nlink >= 2);
     dir->i_dirent = NULL;
     dir->i_shared = false;
     while (dirent) {
@@ -77,7 +77,7 @@ lc_dirRemove(struct inode *dir, const char *name) {
     int len = strlen(name);
     struct fs *fs;
 
-    assert(S_ISDIR(dir->i_stat.st_mode));
+    assert(S_ISDIR(dir->i_dinode.di_mode));
     assert(!dir->i_shared);
     while (dirent != NULL) {
         if ((len == dirent->di_size) &&
@@ -105,7 +105,7 @@ lc_dirRename(struct inode *dir, ino_t ino,
     int len = strlen(name);
     struct fs *fs;
 
-    assert(S_ISDIR(dir->i_stat.st_mode));
+    assert(S_ISDIR(dir->i_dinode.di_mode));
     assert(!dir->i_shared);
     while (dirent != NULL) {
         if ((dirent->di_ino == ino) &&(len == dirent->di_size) &&
@@ -149,7 +149,7 @@ lc_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf) {
     struct dblock *dblock = buf;
     char *dbuf;
 
-    assert(S_ISDIR(dir->i_stat.st_mode));
+    assert(S_ISDIR(dir->i_dinode.di_mode));
     while (block != LC_INVALID_BLOCK) {
         lc_addExtent(gfs, fs, &dir->i_bmapDirExtents, block, 1);
         lc_readBlock(gfs, fs, block, dblock);
@@ -171,7 +171,7 @@ lc_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf) {
         }
         block = dblock->db_next;
     }
-    assert(dir->i_stat.st_nlink == count);
+    assert(dir->i_dinode.di_nlink == count);
 }
 
 /* Allocate a directory block and flush to disk */
@@ -220,7 +220,7 @@ lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
     struct ddirent *ddirent;
     char *dbuf = NULL;
 
-    assert(S_ISDIR(dir->i_stat.st_mode));
+    assert(S_ISDIR(dir->i_dinode.di_mode));
     if (dir->i_removed) {
         dir->i_dirdirty = false;
         return;
@@ -258,9 +258,9 @@ lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
         lc_replaceMetaBlocks(fs, &dir->i_bmapDirExtents, block, count);
     }
     dir->i_bmapDirBlock = block;
-    assert(dir->i_stat.st_nlink == subdir);
-    dir->i_stat.st_blocks = count;
-    dir->i_stat.st_size = count * LC_BLOCK_SIZE;
+    assert(dir->i_dinode.di_nlink == subdir);
+    dir->i_dinode.di_blocks = count;
+    dir->i_dinode.di_size = count * LC_BLOCK_SIZE;
     dir->i_dirdirty = false;
     dir->i_dirty = true;
 }
@@ -291,14 +291,14 @@ lc_removeTree(struct fs *fs, struct inode *dir) {
     bool rmdir;
 
     while (dirent != NULL) {
-        lc_printf("lc_removeTree: dir %ld nlink %ld removing %s inode %ld dir %d\n", dir->i_stat.st_ino, dir->i_stat.st_nlink, dirent->di_name, dirent->di_ino, S_ISDIR(dirent->di_mode));
+        lc_printf("lc_removeTree: dir %ld nlink %ld removing %s inode %ld dir %d\n", dir->i_dinode.di_ino, dir->i_dinode.di_nlink, dirent->di_name, dirent->di_ino, S_ISDIR(dirent->di_mode));
         rmdir = S_ISDIR(dirent->di_mode);
         lc_removeInode(fs, dir, dirent->di_ino, rmdir, NULL);
         if (rmdir) {
-            assert(dir->i_stat.st_nlink > 2);
-            dir->i_stat.st_nlink--;
+            assert(dir->i_dinode.di_nlink > 2);
+            dir->i_dinode.di_nlink--;
         } else {
-            assert(dir->i_stat.st_nlink >= 2);
+            assert(dir->i_dinode.di_nlink >= 2);
         }
         dir->i_dirent = dirent->di_next;
         lc_freeDirent(fs, dirent);
@@ -313,11 +313,11 @@ lc_dirRemoveName(struct fs *fs, struct inode *dir,
                  int dremove(struct fs *, struct inode *, ino_t,
                              bool, void **)) {
     struct dirent *dirent = dir->i_dirent, *pdirent = NULL;
-    ino_t ino, parent = dir->i_stat.st_ino;
+    ino_t ino, parent = dir->i_dinode.di_ino;
     struct gfs *gfs = fs->fs_gfs;
     int len = strlen(name), err;
 
-    assert(S_ISDIR(dir->i_stat.st_mode));
+    assert(S_ISDIR(dir->i_dinode.di_mode));
     while (dirent != NULL) {
         if ((len == dirent->di_size) &&
             (strcmp(name, dirent->di_name) == 0)) {
@@ -335,12 +335,12 @@ lc_dirRemoveName(struct fs *fs, struct inode *dir,
             if ((err == 0) || (err == ESTALE)) {
                 if (err == 0) {
                     if (rmdir) {
-                        assert(dir->i_stat.st_nlink > 2);
-                        dir->i_stat.st_nlink--;
+                        assert(dir->i_dinode.di_nlink > 2);
+                        dir->i_dinode.di_nlink--;
                     } else {
-                        assert(dir->i_stat.st_nlink >= 2);
+                        assert(dir->i_dinode.di_nlink >= 2);
                     }
-                    lc_updateInodeTimes(dir, false, false, true);
+                    lc_updateInodeTimes(dir, false, true);
                 } else {
                     err = 0;
                 }

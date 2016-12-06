@@ -14,6 +14,26 @@ lc_epInit(struct fuse_entry_param *ep) {
     ep->entry_timeout = 1.0;
 }
 
+/* Copy disk inode to stat structure */
+static void
+lc_copyStat(struct stat *st, struct inode *inode) {
+    struct dinode *dinode = &inode->i_dinode;
+
+    st->st_dev = 0;
+    st->st_ino = dinode->di_ino;
+    st->st_mode = dinode->di_mode;
+    st->st_nlink = dinode->di_nlink;
+    st->st_uid = dinode->di_uid;
+    st->st_gid = dinode->di_gid;
+    st->st_rdev = dinode->di_rdev;
+    st->st_size = dinode->di_size;
+    st->st_blksize = LC_BLOCK_SIZE;
+    st->st_blocks = dinode->di_blocks;
+    st->st_atim = dinode->di_mtime;
+    st->st_mtim = dinode->di_mtime;
+    st->st_ctim = dinode->di_ctime;
+}
+
 /* Create a new directory entry and associated inode */
 static int
 create(struct fs *fs, ino_t parent, const char *name, mode_t mode,
@@ -31,20 +51,20 @@ create(struct fs *fs, ino_t parent, const char *name, mode_t mode,
         lc_reportError(__func__, __LINE__, parent, ENOENT);
         return ENOENT;
     }
-    assert(S_ISDIR(dir->i_stat.st_mode));
+    assert(S_ISDIR(dir->i_dinode.di_mode));
     if (dir->i_shared) {
         lc_dirCopy(dir);
     }
     inode = lc_inodeInit(fs, mode, uid, gid, rdev, parent, target);
-    ino = inode->i_stat.st_ino;
+    ino = inode->i_dinode.di_ino;
     lc_dirAdd(dir, ino, mode, name, strlen(name));
     if (S_ISDIR(mode)) {
-        assert(inode->i_stat.st_nlink >= 2);
-        assert(dir->i_stat.st_nlink >= 2);
-        dir->i_stat.st_nlink++;
+        assert(inode->i_dinode.di_nlink >= 2);
+        assert(dir->i_dinode.di_nlink >= 2);
+        dir->i_dinode.di_nlink++;
     }
-    lc_updateInodeTimes(dir, false, true, true);
-    memcpy(&ep->attr, &inode->i_stat, sizeof(struct stat));
+    lc_updateInodeTimes(dir, true, true);
+    lc_copyStat(&ep->attr, inode);
     if (fi) {
         inode->i_ocount++;
         fi->fh = (uint64_t)inode;
@@ -61,13 +81,13 @@ create(struct fs *fs, ino_t parent, const char *name, mode_t mode,
 /* Truncate a file */
 static void
 lc_truncate(struct inode *inode, off_t size) {
-    assert(S_ISREG(inode->i_stat.st_mode));
+    assert(S_ISREG(inode->i_dinode.di_mode));
 
-    if (size < inode->i_stat.st_size) {
+    if (size < inode->i_dinode.di_size) {
         lc_truncPages(inode, size, true);
     }
     assert(!inode->i_shared);
-    inode->i_stat.st_size = size;
+    inode->i_dinode.di_size = size;
 }
 
 /* Remove an inode */
@@ -77,15 +97,15 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
     bool removed = false;
     struct inode *inode;
 
-    assert(S_ISDIR(dir->i_stat.st_mode));
+    assert(S_ISDIR(dir->i_dinode.di_mode));
     inode = lc_getInode(fs, ino, NULL, true, true);
     if (inode == NULL) {
         lc_reportError(__func__, __LINE__, ino, ESTALE);
         return ESTALE;
     }
-    assert(inode->i_stat.st_nlink);
+    assert(inode->i_dinode.di_nlink);
     if (rmdir) {
-        assert(inode->i_parent == dir->i_stat.st_ino);
+        assert(inode->i_parent == dir->i_dinode.di_ino);
 
         /* Allow directory removals from the root file system even when
          * directories are not empty.
@@ -98,24 +118,24 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
             //lc_reportError(__func__, __LINE__, ino, EEXIST);
             return EEXIST;
         }
-        assert(inode->i_stat.st_nlink == 2);
+        assert(inode->i_dinode.di_nlink == 2);
         inode->i_removed = true;
         removed = true;
     } else {
-        inode->i_stat.st_nlink--;
+        inode->i_dinode.di_nlink--;
 
         /* Flag a file as removed on last unlink */
-        if (inode->i_stat.st_nlink == 0) {
+        if (inode->i_dinode.di_nlink == 0) {
 
             /* XXX This can be done in the background */
-            if ((inode->i_ocount == 0) && S_ISREG(inode->i_stat.st_mode)) {
+            if ((inode->i_ocount == 0) && S_ISREG(inode->i_dinode.di_mode)) {
                 lc_truncate(inode, 0);
             }
             inode->i_removed = true;
             removed = true;
         }
     }
-    lc_markInodeDirty(inode, true, rmdir, S_ISREG(inode->i_stat.st_mode),
+    lc_markInodeDirty(inode, true, rmdir, S_ISREG(inode->i_dinode.di_mode),
                       false);
     lc_inodeUnlock(inode);
     if (removed) {
@@ -139,7 +159,7 @@ lc_remove(struct fs *fs, ino_t parent, const char *name, bool rmdir) {
         lc_reportError(__func__, __LINE__, parent, ENOENT);
         return ENOENT;
     }
-    assert(S_ISDIR(dir->i_stat.st_mode));
+    assert(S_ISDIR(dir->i_dinode.di_mode));
     if (dir->i_shared) {
         lc_dirCopy(dir);
     }
@@ -201,7 +221,7 @@ lc_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
     } else {
-        memcpy(&ep.attr, &inode->i_stat, sizeof(struct stat));
+        lc_copyStat(&ep.attr, inode);
         lc_inodeUnlock(inode);
         ep.ino = lc_setHandle(gindex, ino);
         lc_epInit(&ep);
@@ -236,7 +256,7 @@ lc_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
         err = ENOENT;
         goto out;
     }
-    memcpy(&stbuf, &inode->i_stat, sizeof(struct stat));
+    lc_copyStat(&stbuf, inode);
     parent = inode->i_parent;
     lc_inodeUnlock(inode);
     stbuf.st_ino = lc_setHandle(lc_getIndex(fs, parent,
@@ -252,7 +272,7 @@ out:
 static void
 lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
             int to_set, struct fuse_file_info *fi) {
-    bool ctime = false, mtime = false, atime = false;
+    bool ctime = false, mtime = false;
     struct inode *inode, *handle;
     struct timeval start;
     struct stat stbuf;
@@ -277,16 +297,16 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
         goto out;
     }
     if (to_set & FUSE_SET_ATTR_MODE) {
-        assert((inode->i_stat.st_mode & S_IFMT) == (attr->st_mode & S_IFMT));
-        inode->i_stat.st_mode = attr->st_mode;
+        assert((inode->i_dinode.di_mode & S_IFMT) == (attr->st_mode & S_IFMT));
+        inode->i_dinode.di_mode = attr->st_mode;
         ctime = true;
     }
     if (to_set & FUSE_SET_ATTR_UID) {
-        inode->i_stat.st_uid = attr->st_uid;
+        inode->i_dinode.di_uid = attr->st_uid;
         ctime = true;
     }
     if (to_set & FUSE_SET_ATTR_GID) {
-        inode->i_stat.st_gid = attr->st_gid;
+        inode->i_dinode.di_gid = attr->st_gid;
         ctime = true;
     }
     if (to_set & FUSE_SET_ATTR_SIZE) {
@@ -294,24 +314,18 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
         mtime = true;
         ctime = true;
     }
-    if (to_set & FUSE_SET_ATTR_ATIME) {
-        inode->i_stat.st_atime = attr->st_atime;
-        atime = false;
-    } else if (to_set & FUSE_SET_ATTR_ATIME_NOW) {
-        atime = true;
-    }
     if (to_set & FUSE_SET_ATTR_MTIME) {
-        inode->i_stat.st_mtime = attr->st_mtime;
+        inode->i_dinode.di_mtime = attr->st_mtim;
         mtime = false;
     } else if (to_set & FUSE_SET_ATTR_MTIME_NOW) {
         mtime = true;
         ctime = true;
     }
-    if (ctime || mtime || atime) {
-        lc_updateInodeTimes(inode, atime, mtime, ctime);
+    if (ctime || mtime) {
+        lc_updateInodeTimes(inode, mtime, ctime);
     }
     lc_markInodeDirty(inode, true, false, to_set & FUSE_SET_ATTR_SIZE, false);
-    memcpy(&stbuf, &inode->i_stat, sizeof(struct stat));
+    lc_copyStat(&stbuf, inode);
     lc_inodeUnlock(inode);
     stbuf.st_ino = lc_setHandle(fs->fs_gindex, stbuf.st_ino);
     fuse_reply_attr(req, &stbuf, 1.0);
@@ -340,8 +354,8 @@ lc_readlink(fuse_req_t req, fuse_ino_t ino) {
         err = ENOENT;
         goto out;
     }
-    assert(S_ISLNK(inode->i_stat.st_mode));
-    size = inode->i_stat.st_size;
+    assert(S_ISLNK(inode->i_dinode.di_mode));
+    size = inode->i_dinode.di_size;
     assert(size && (size <= LC_FILENAME_MAX));
     strncpy(buf, inode->i_target, size);
     lc_inodeUnlock(inode);
@@ -494,7 +508,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
             err = ENOENT;
             goto out;
         }
-        assert(S_ISDIR(tdir->i_stat.st_mode));
+        assert(S_ISDIR(tdir->i_dinode.di_mode));
     }
     sdir = lc_getInode(fs, parent, NULL, true, true);
     if (sdir == NULL) {
@@ -506,7 +520,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
         err = ENOENT;
         goto out;
     }
-    assert(S_ISDIR(sdir->i_stat.st_mode));
+    assert(S_ISDIR(sdir->i_dinode.di_mode));
     ino = lc_dirLookup(fs, sdir, name);
     if (ino == LC_INVALID_INODE) {
         lc_inodeUnlock(sdir);
@@ -530,7 +544,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
             err = ENOENT;
             goto out;
         }
-        assert(S_ISDIR(tdir->i_stat.st_mode));
+        assert(S_ISDIR(tdir->i_dinode.di_mode));
     }
     if (tdir && tdir->i_shared) {
         lc_dirCopy(tdir);
@@ -549,16 +563,16 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
             err = ENOENT;
             goto out;
         }
-        lc_dirAdd(tdir, ino, inode->i_stat.st_mode, newname, strlen(newname));
+        lc_dirAdd(tdir, ino, inode->i_dinode.di_mode, newname, strlen(newname));
         lc_dirRemove(sdir, name);
-        if (S_ISDIR(inode->i_stat.st_mode)) {
-            assert(sdir->i_stat.st_nlink > 2);
-            sdir->i_stat.st_nlink--;
-            assert(tdir->i_stat.st_nlink >= 2);
-            tdir->i_stat.st_nlink++;
+        if (S_ISDIR(inode->i_dinode.di_mode)) {
+            assert(sdir->i_dinode.di_nlink > 2);
+            sdir->i_dinode.di_nlink--;
+            assert(tdir->i_dinode.di_nlink >= 2);
+            tdir->i_dinode.di_nlink++;
         }
         inode->i_parent = lc_getInodeHandle(newparent);
-        lc_updateInodeTimes(inode, false, false, true);
+        lc_updateInodeTimes(inode, false, true);
         lc_markInodeDirty(inode, true, false, false, false);
         lc_inodeUnlock(inode);
     } else {
@@ -567,11 +581,11 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
         lc_dirRename(sdir, ino, name, newname);
     }
     fuse_reply_err(req, 0);
-    lc_updateInodeTimes(sdir, false, true, true);
+    lc_updateInodeTimes(sdir, true, true);
     lc_markInodeDirty(sdir, true, true, false, false);
     lc_inodeUnlock(sdir);
     if (tdir) {
-        lc_updateInodeTimes(tdir, false, true, true);
+        lc_updateInodeTimes(tdir, true, true);
         lc_markInodeDirty(tdir, true, true, false, false);
         lc_inodeUnlock(tdir);
     }
@@ -607,8 +621,8 @@ lc_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
         err = ENOENT;
         goto out;
     }
-    assert(S_ISDIR(dir->i_stat.st_mode));
-    assert(dir->i_stat.st_nlink >= 2);
+    assert(S_ISDIR(dir->i_dinode.di_mode));
+    assert(dir->i_dinode.di_nlink >= 2);
     if (dir->i_shared) {
         lc_dirCopy(dir);
     }
@@ -620,16 +634,16 @@ lc_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
         err = ENOENT;
         goto out;
     }
-    assert(S_ISREG(inode->i_stat.st_mode));
-    lc_dirAdd(dir, inode->i_stat.st_ino, inode->i_stat.st_mode, newname,
+    assert(S_ISREG(inode->i_dinode.di_mode));
+    lc_dirAdd(dir, inode->i_dinode.di_ino, inode->i_dinode.di_mode, newname,
                strlen(newname));
-    lc_updateInodeTimes(dir, false, true, true);
+    lc_updateInodeTimes(dir, true, true);
     lc_markInodeDirty(dir, true, true, false, false);
-    inode->i_stat.st_nlink++;
-    lc_updateInodeTimes(inode, false, false, true);
+    inode->i_dinode.di_nlink++;
+    lc_updateInodeTimes(inode, false, true);
     lc_markInodeDirty(inode, true, false, false, false);
     lc_inodeUnlock(dir);
-    memcpy(&ep.attr, &inode->i_stat, sizeof(struct stat));
+    lc_copyStat(&ep.attr, inode);
     lc_inodeUnlock(inode);
     ep.ino = lc_setHandle(fs->fs_gindex, ino);
     lc_epInit(&ep);
@@ -729,10 +743,10 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
         err = ENOENT;
         goto out;
     }
-    assert(S_ISREG(inode->i_stat.st_mode));
+    assert(S_ISREG(inode->i_dinode.di_mode));
 
     /* Reading beyond file size is not allowed */
-    fsize = inode->i_stat.st_size;
+    fsize = inode->i_dinode.di_size;
     if (off >= fsize) {
         lc_inodeUnlock(inode);
         fuse_reply_buf(req, NULL, 0);
@@ -771,28 +785,28 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
 
     /* Nothing to do if inode is not part of this layer */
     if (inode->i_fs != fs) {
-        if (inval && (inode->i_stat.st_size > 0) &&
-            S_ISREG(inode->i_stat.st_mode)) {
+        if (inval && (inode->i_dinode.di_size > 0) &&
+            S_ISREG(inode->i_dinode.di_mode)) {
             *inval = true;
         }
         fuse_reply_err(req, 0);
         return;
     }
     lc_inodeLock(inode, true);
-    assert(inode->i_stat.st_ino == lc_getInodeHandle(ino));
+    assert(inode->i_dinode.di_ino == lc_getInodeHandle(ino));
     assert(inode->i_fs == fs);
     assert(inode->i_ocount > 0);
     inode->i_ocount--;
 
     /* Truncate a removed file on last close */
     if ((inode->i_ocount == 0) && inode->i_removed &&
-        S_ISREG(inode->i_stat.st_mode)) {
+        S_ISREG(inode->i_dinode.di_mode)) {
         lc_truncate(inode, 0);
     }
 
     /* Invalidate pages of shared files in kernel page cache */
     if (inval) {
-        *inval = (inode->i_ocount == 0) && (inode->i_stat.st_size > 0) &&
+        *inval = (inode->i_ocount == 0) && (inode->i_dinode.di_size > 0) &&
                  (!inode->i_private || fs->fs_readOnly ||
                   (fs->fs_snap != NULL));
     }
@@ -800,7 +814,7 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
 
     /* Flush dirty pages of a file on last close */
     if ((inode->i_ocount == 0) && inode->i_bmapdirty) {
-        assert(S_ISREG(inode->i_stat.st_mode));
+        assert(S_ISREG(inode->i_dinode.di_mode));
         if (fs->fs_readOnly) {
 
             /* Inode bmap needs to be stable before an inode could be cloned */
@@ -890,7 +904,7 @@ lc_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
         err = ENOENT;
         goto out;
     }
-    assert(S_ISDIR(dir->i_stat.st_mode));
+    assert(S_ISDIR(dir->i_dinode.di_mode));
     dirent = dir->i_dirent;
     while (off && dirent && (dirent->di_index >= off)) {
         dirent = dirent->di_next;
@@ -1157,11 +1171,11 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
 
     /* Now the write cannot fail, so respond success */
     fuse_reply_write(req, size);
-    assert(S_ISREG(inode->i_stat.st_mode));
+    assert(S_ISREG(inode->i_dinode.di_mode));
 
     /* Link the dirty pages to the inode and update times */
     pcount -= lc_addPages(inode, off, size, dpages, pcount);
-    lc_updateInodeTimes(inode, false, true, true);
+    lc_updateInodeTimes(inode, true, true);
     lc_markInodeDirty(inode, true, false, true, false);
     lc_inodeUnlock(inode);
 

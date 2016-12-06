@@ -473,3 +473,5 @@ Those stats can be queried using a command.  As of now, it is also displayed at
 the time a layer is unmounted.  Stats for a layer can be cleared before running
 applications to trace actual operations during any time period.
 
+Memory usage on a per layer basis is tracked and reported as well.
+

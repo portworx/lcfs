@@ -67,9 +67,9 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
 
     /* Allocate root inode and add to the directory */
     lc_dirAdd(pdir, root, S_IFDIR, name, strlen(name));
-    pdir->i_stat.st_nlink++;
+    pdir->i_dinode.di_nlink++;
     lc_markInodeDirty(pdir, true, true, false, false);
-    lc_updateInodeTimes(pdir, false, true, true);
+    lc_updateInodeTimes(pdir, true, true);
     lc_inodeUnlock(pdir);
 
     /* Initialize the new layer */
@@ -100,7 +100,7 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
         pfs->fs_frozen = true;
         assert(pfs->fs_root == lc_getInodeHandle(pinum));
         pdir = pfs->fs_rootInode;
-        dir->i_stat.st_nlink = pdir->i_stat.st_nlink;
+        dir->i_dinode.di_nlink = pdir->i_dinode.di_nlink;
         dir->i_dirent = pdir->i_dirent;
         lc_dirCopy(dir);
 
@@ -143,7 +143,7 @@ lc_removeLayer(struct fs *rfs, struct inode *dir, ino_t ino, bool rmdir,
     ino_t root;
 
     /* There should be a file system rooted on this directory */
-    root = lc_setHandle(lc_getIndex(rfs, dir->i_stat.st_ino, ino), ino);
+    root = lc_setHandle(lc_getIndex(rfs, dir->i_dinode.di_ino, ino), ino);
     return lc_getfsForRemoval(rfs->fs_gfs, root, (struct fs **)fsp);
 }
 

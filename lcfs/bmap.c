@@ -7,9 +7,9 @@ lc_inodeBmapAlloc(struct inode *inode) {
     struct fs *fs = inode->i_fs;
     uint64_t *blocks;
 
-    assert(inode->i_stat.st_size);
-    assert(S_ISREG(inode->i_stat.st_mode));
-    lpage = (inode->i_stat.st_size + LC_BLOCK_SIZE - 1) / LC_BLOCK_SIZE;
+    assert(inode->i_dinode.di_size);
+    assert(S_ISREG(inode->i_dinode.di_mode));
+    lpage = (inode->i_dinode.di_size + LC_BLOCK_SIZE - 1) / LC_BLOCK_SIZE;
     if (inode->i_bcount <= lpage) {
         count = lpage + 1;
         tsize = count * sizeof(uint64_t);
@@ -37,7 +37,7 @@ lc_inodeBmapAdd(struct inode *inode, uint64_t page, uint64_t block) {
     assert(inode->i_extentLength == 0);
     assert(page < inode->i_bcount);
     if (inode->i_bmap[page] == 0) {
-        inode->i_stat.st_blocks++;
+        inode->i_dinode.di_blocks++;
     }
     inode->i_bmap[page] = block;
 }
@@ -72,7 +72,7 @@ lc_expandBmap(struct inode *inode) {
     inode->i_bcount = inode->i_extentLength;
     inode->i_extentBlock = 0;
     inode->i_extentLength = 0;
-    assert(inode->i_stat.st_blocks == inode->i_bcount);
+    assert(inode->i_dinode.di_blocks == inode->i_bcount);
     inode->i_bmapdirty = true;
 }
 
@@ -85,7 +85,7 @@ lc_copyBmap(struct inode *inode) {
     assert(inode->i_extentLength == 0);
     bmap = inode->i_bmap;
     size = inode->i_bcount * sizeof(uint64_t);
-    assert(inode->i_stat.st_blocks <= inode->i_bcount);
+    assert(inode->i_dinode.di_blocks <= inode->i_bcount);
     inode->i_bmap= lc_malloc(inode->i_fs, size, LC_MEMTYPE_BMAP);
     memcpy(inode->i_bmap, bmap, size);
     inode->i_shared = false;
@@ -124,7 +124,7 @@ lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     struct page *page = NULL;
     struct bmap *bmap;
 
-    assert(S_ISREG(inode->i_stat.st_mode));
+    assert(S_ISREG(inode->i_dinode.di_mode));
 
     /* If the file removed, nothing to write */
     if (inode->i_removed) {
@@ -139,7 +139,7 @@ lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     }
     lc_flushPages(gfs, fs, inode, true);
     if (inode->i_bcount) {
-        lc_printf("File %ld fragmented\n", inode->i_stat.st_ino);
+        lc_printf("File %ld fragmented\n", inode->i_dinode.di_ino);
     } else {
         block = inode->i_extentBlock;
         bcount = inode->i_extentLength;
@@ -163,7 +163,7 @@ lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         bmap->b_off = i;
         bmap->b_block = inode->i_bmap[i];
     }
-    assert(inode->i_stat.st_blocks == bcount);
+    assert(inode->i_dinode.di_blocks == bcount);
     if (bblock) {
         if (count < LC_BMAP_BLOCK) {
             bblock->bb_bmap[count].b_block = 0;
@@ -188,23 +188,23 @@ lc_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
     struct bmap *bmap;
     uint64_t block;
 
-    assert(S_ISREG(inode->i_stat.st_mode));
-    if (inode->i_stat.st_size == 0) {
-        assert(inode->i_stat.st_blocks == 0);
+    assert(S_ISREG(inode->i_dinode.di_mode));
+    if (inode->i_dinode.di_size == 0) {
+        assert(inode->i_dinode.di_blocks == 0);
         assert(inode->i_extentLength == 0);
         return;
     }
 
     /* If inode has a single extent, nothing more to do */
     if (inode->i_extentLength) {
-        assert(inode->i_stat.st_blocks == inode->i_extentLength);
+        assert(inode->i_dinode.di_blocks == inode->i_extentLength);
         assert(inode->i_extentBlock != 0);
         return;
     }
-    lc_printf("Inode %ld with fragmented extents %ld\n", inode->i_stat.st_ino, inode->i_stat.st_blocks);
+    lc_printf("Inode %ld with fragmented extents %ld\n", inode->i_dinode.di_ino, inode->i_dinode.di_blocks);
     lc_inodeBmapAlloc(inode);
-    bcount = inode->i_stat.st_blocks;
-    inode->i_stat.st_blocks = 0;
+    bcount = inode->i_dinode.di_blocks;
+    inode->i_dinode.di_blocks = 0;
     block = inode->i_bmapDirBlock;
     while (block != LC_INVALID_BLOCK) {
         //lc_printf("Reading bmap block %ld\n", block);
@@ -220,7 +220,7 @@ lc_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
         }
         block = bblock->bb_next;
     }
-    assert(inode->i_stat.st_blocks == bcount);
+    assert(inode->i_dinode.di_blocks == bcount);
 }
 
 /* Free blocks in the extent list */
@@ -267,7 +267,7 @@ lc_bmapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
 
     /* Remove blockmap entries past the new size */
     if (remove && inode->i_bcount) {
-        assert(inode->i_stat.st_blocks <= inode->i_bcount);
+        assert(inode->i_dinode.di_blocks <= inode->i_bcount);
         for (i = pg; i < inode->i_bcount; i++) {
             if (inode->i_bmap[i] == 0) {
                 continue;
@@ -288,13 +288,13 @@ lc_bmapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
     /* Free blocks */
     if (bcount) {
         lc_freeInodeDataBlocks(fs, inode, &extents);
-        assert(inode->i_stat.st_blocks >= bcount);
-        inode->i_stat.st_blocks -= bcount;
+        assert(inode->i_dinode.di_blocks >= bcount);
+        inode->i_dinode.di_blocks -= bcount;
     } else {
         assert(extents == NULL);
     }
     if (size == 0) {
-        assert((inode->i_stat.st_blocks == 0) || !remove);
+        assert((inode->i_dinode.di_blocks == 0) || !remove);
         if (inode->i_bmap) {
             lc_free(fs, inode->i_bmap, inode->i_bcount * sizeof(uint64_t),
                     LC_MEMTYPE_BMAP);

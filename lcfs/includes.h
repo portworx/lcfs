@@ -99,8 +99,7 @@ struct inode *lc_inodeInit(struct fs *fs, mode_t mode,
                             const char *target);
 void lc_rootInit(struct fs *fs, ino_t root);
 void lc_setSnapshotRoot(struct gfs *gfs, ino_t ino);
-void lc_updateInodeTimes(struct inode *inode, bool atime,
-                          bool mtime, bool ctime);
+void lc_updateInodeTimes(struct inode *inode, bool mtime, bool ctime);
 void lc_syncInodes(struct gfs *gfs, struct fs *fs);
 void lc_inodeLock(struct inode *inode, bool exclusive);
 void lc_inodeUnlock(struct inode *inode);
