@@ -1,24 +1,16 @@
 #include "includes.h"
 
 /* Read a file system block */
-void *
+void
 lc_readBlock(struct gfs *gfs, struct fs *fs, off_t block, void *dbuf) {
     size_t size;
-    void *buf;
 
     //lc_printf("Reading block %ld\n", block);
     assert((block == LC_SUPER_BLOCK) || (block < gfs->gfs_super->sb_tblocks));
-    if (dbuf == NULL) {
-        malloc_aligned((void **)&buf);
-    } else {
-        buf = dbuf;
-    }
-    size = pread(gfs->gfs_fd, buf, LC_BLOCK_SIZE, block * LC_BLOCK_SIZE);
+    size = pread(gfs->gfs_fd, dbuf, LC_BLOCK_SIZE, block * LC_BLOCK_SIZE);
     assert(size == LC_BLOCK_SIZE);
     __sync_add_and_fetch(&gfs->gfs_reads, 1);
     __sync_add_and_fetch(&fs->fs_reads, 1);
-    return buf;
-
 }
 
 /* Write a file system block */

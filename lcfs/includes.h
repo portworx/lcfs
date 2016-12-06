@@ -22,6 +22,7 @@
 
 #include "lcfs.h"
 #include "layout.h"
+#include "memory.h"
 #include "inode.h"
 #include "fs.h"
 #include "block.h"
@@ -31,33 +32,42 @@
 
 struct gfs *getfs();
 
-void *lc_readBlock(struct gfs *gfs, struct fs *fs, off_t block, void *dbuf);
+void *lc_malloc(struct fs *fs, size_t size, enum lc_memTypes type);
+void lc_mallocBlockAligned(struct fs *fs, void **memptr, bool pdata);
+void lc_free(struct fs *fs, void *ptr, size_t size, enum lc_memTypes type);
+void lc_memUpdateTotal(struct fs *fs, size_t size);
+void lc_checkMemStats(struct fs *fs);
+void lc_displayGlobalMemStats();
+void lc_displayMemStats(struct fs *fs);
+
+void lc_readBlock(struct gfs *gfs, struct fs *fs, off_t block, void *dbuf);
 int lc_writeBlock(struct gfs *gfs, struct fs *fs, void *buf, off_t block);
 int lc_writeBlocks(struct gfs *gfs, struct fs *fs,
                     struct iovec *iov, int iovcnt, off_t block);
 
-void lc_blockAllocatorInit(struct gfs *gfs);
+void lc_blockAllocatorInit(struct gfs *gfs, struct fs *fs);
 void lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs);
 bool lc_hasSpace(struct gfs *gfs, uint64_t blocks);
-void lc_addExtent(struct gfs *gfs, struct extent **extents,
+void lc_addExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
                   uint64_t block, uint64_t count);
 void lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount,
                         bool remove);
 uint64_t lc_blockAlloc(struct fs *fs, uint64_t count, bool meta, bool reserve);
 uint64_t lc_blockAllocExact(struct fs *fs, uint64_t count,
                             bool meta, bool reserve);
-void lc_blockFree(struct fs *fs, uint64_t block, uint64_t count);
+void lc_blockFree(struct gfs *gfs, struct fs *fs, uint64_t block,
+                  uint64_t count, bool layer);
 void lc_freeLayerMetaBlocks(struct fs *fs, uint64_t block, uint64_t count);
 void lc_freeLayerDataBlocks(struct fs *fs, uint64_t block, uint64_t count,
                             bool allocated);
 void lc_processFreedBlocks(struct fs *fs, bool remove);
 uint64_t lc_blockFreeExtents(struct fs *fs, struct extent *extents,
-                         bool efree, bool flush);
+                             bool efree, bool flush, bool layer);
 void lc_replaceMetaBlocks(struct fs *fs, struct extent **extents,
                           uint64_t block, uint64_t count);
 void lc_readExtents(struct gfs *gfs, struct fs *fs);
 
-struct super *lc_superRead(struct gfs *gfs, uint64_t block);
+void lc_superRead(struct gfs *gfs, struct fs *fs, uint64_t block);
 int lc_superWrite(struct gfs *gfs, struct fs *fs);
 void lc_superInit(struct super *super, size_t size, bool global);
 
@@ -77,7 +87,7 @@ void lc_syncAllLayers(struct gfs *gfs);
 struct fs *lc_newFs(struct gfs *gfs, bool rw);
 void lc_destroyFs(struct fs *fs, bool remove);
 
-struct icache *lc_icache_init();
+void lc_icache_init(struct fs *fs);
 void lc_icache_deinit(struct icache *icache);
 ino_t lc_inodeAlloc(struct fs *fs);
 int lc_readInodes(struct gfs *gfs, struct fs *fs);
@@ -126,8 +136,9 @@ void lc_bmapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
 void lc_freeInodeDataBlocks(struct fs *fs, struct inode *inode,
                             struct extent **extents);
 
-struct pcache *lc_pcache_init();
-void lc_destroy_pages(struct gfs *gfs, struct pcache *pcache, bool remove);
+void lc_pcache_init(struct fs *fs);
+void lc_destroy_pages(struct gfs *gfs, struct fs *fs, struct pcache *pcache,
+                      bool remove);
 struct page *lc_getPage(struct fs *fs, uint64_t block, bool read);
 struct page *lc_getPageNoBlock(struct gfs *gfs, struct fs *fs, char *data,
                                struct page *prev);
@@ -146,8 +157,9 @@ void lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head);
 void lc_addPageForWriteBack(struct gfs *gfs, struct fs *fs, struct page *head,
                             struct page *tail, uint64_t pcount);
 
-uint64_t lc_copyPages(off_t off, size_t size, struct dpage *dpages,
-                      struct fuse_bufvec *bufv, struct fuse_bufvec *dst);
+uint64_t lc_copyPages(struct fs *fs, off_t off, size_t size,
+                      struct dpage *dpages, struct fuse_bufvec *bufv,
+                      struct fuse_bufvec *dst);
 uint64_t lc_addPages(struct inode *inode, off_t off, size_t size,
                      struct dpage *dpages, uint64_t pcount);
 void lc_readPages(fuse_req_t req, struct inode *inode, off_t soffset,
@@ -183,7 +195,7 @@ void lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name);
 void lc_snapIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
                   enum ioctl_cmd cmd);
 
-struct stats *lc_statsNew();
+void lc_statsNew(struct fs *fs);
 void lc_statsBegin(struct timeval *start);
 void lc_statsAdd(struct fs *fs, enum lc_stats type, bool err,
                   struct timeval *start);

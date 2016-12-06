@@ -1129,16 +1129,17 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
     dst = alloca(wsize);
     memset(dst, 0, wsize);
     dpages = alloca(pcount * sizeof(struct dpage));
-
-    /* Copy in the data before taking the lock */
-    pcount = lc_copyPages(off, size, dpages, bufv, dst);
     fs = lc_getfs(ino, false);
     if (fs->fs_frozen) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
         err = EROFS;
+        pcount = 0;
         goto out;
     }
+
+    /* Copy in the data before taking the lock */
+    pcount = lc_copyPages(fs, off, size, dpages, bufv, dst);
     reserved = __sync_add_and_fetch(&fs->fs_pcount, pcount);
     if (!lc_hasSpace(getfs(), reserved)) {
         lc_reportError(__func__, __LINE__, ino, ENOSPC);
@@ -1171,11 +1172,12 @@ out:
     if (err) {
         while (pcount) {
             pcount--;
-            free(dpages[pcount].dp_data);
+            lc_free(fs->fs_rfs, dpages[pcount].dp_data, LC_BLOCK_SIZE,
+                    LC_MEMTYPE_DATA);
         }
     }
     lc_statsAdd(fs, LC_WRITE_BUF, err, &start);
-    if (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES) {
+    if (!err && (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES)) {
         lc_flushDirtyInodeList(fs);
     }
     lc_unlock(fs);

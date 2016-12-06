@@ -3,6 +3,8 @@
 static struct gfs *gfs;
 extern struct fuse_lowlevel_ops lc_ll_oper;
 
+#define LC_SIZEOF_MOUNTARGS 1024
+
 /* XXX Figure out a better way to find userdata with low level fuse */
 /* Return global file system */
 struct gfs *
@@ -51,7 +53,7 @@ main(int argc, char *argv[]) {
     arg[0] = argv[0];
     arg[1] = argv[2];
     arg[2] = "-o";
-    arg[3] = malloc(1024);
+    arg[3] = lc_malloc(NULL, LC_SIZEOF_MOUNTARGS, LC_MEMTYPE_GFS);
     sprintf(arg[3],
             "nonempty,allow_other,auto_unmount,atomic_o_trunc,"
             "subtype=lcfs,fsname=%s,big_writes,noatime,"
@@ -66,7 +68,7 @@ main(int argc, char *argv[]) {
         ((gfs->gfs_ch = fuse_mount(mountpoint, &args)) != NULL)) {
         se = fuse_lowlevel_new(&args, &lc_ll_oper,
                                sizeof(lc_ll_oper), gfs);
-        free(arg[3]);
+        lc_free(NULL, arg[3], LC_SIZEOF_MOUNTARGS, LC_MEMTYPE_GFS);
         if (se) {
             printf("%s mounted at %s\n", argv[1], mountpoint);
             err = lc_loop(se, foreground);
@@ -77,15 +79,16 @@ main(int argc, char *argv[]) {
         }
         fuse_unmount(mountpoint, gfs->gfs_ch);
     } else {
-        free(arg[3]);
+        lc_free(NULL, arg[3], LC_SIZEOF_MOUNTARGS, LC_MEMTYPE_GFS);
         usage(argv[0]);
         err = EINVAL;
         lc_unmount(gfs);
     }
     fuse_opt_free_args(&args);
     if (mountpoint) {
-        free(mountpoint);
+        lc_free(NULL, mountpoint, 0, LC_MEMTYPE_GFS);
     }
-    free(gfs);
+    lc_free(NULL, gfs, sizeof(struct gfs), LC_MEMTYPE_GFS);
+    lc_displayGlobalMemStats();
     return err ? 1 : 0;
 }

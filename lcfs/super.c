@@ -17,10 +17,10 @@ lc_superInit(struct super *super, size_t size, bool global) {
 }
 
 /* Read file system super block */
-struct super *
-lc_superRead(struct gfs *gfs, uint64_t block) {
-    return (struct super *)lc_readBlock(gfs, lc_getGlobalFs(gfs), block,
-                                         NULL);
+void
+lc_superRead(struct gfs *gfs, struct fs *fs, uint64_t block) {
+    lc_mallocBlockAligned(fs, (void **)&fs->fs_super, false);
+    lc_readBlock(gfs, fs, block, fs->fs_super);
 }
 
 /* Write out file system superblock */

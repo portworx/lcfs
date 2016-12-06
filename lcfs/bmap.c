@@ -4,6 +4,7 @@
 void
 lc_inodeBmapAlloc(struct inode *inode) {
     uint64_t lpage, count, size, tsize;
+    struct fs *fs = inode->i_fs;
     uint64_t *blocks;
 
     assert(inode->i_stat.st_size);
@@ -12,14 +13,14 @@ lc_inodeBmapAlloc(struct inode *inode) {
     if (inode->i_bcount <= lpage) {
         count = lpage + 1;
         tsize = count * sizeof(uint64_t);
-        blocks = malloc(tsize);
+        blocks = lc_malloc(fs, tsize, LC_MEMTYPE_BMAP);
 
         /* Copy existing list to the new list allocated */
         if (inode->i_bcount) {
             size = inode->i_bcount * sizeof(uint64_t);
             memcpy(blocks, inode->i_bmap, size);
             memset(&blocks[inode->i_bcount], 0, tsize - size);
-            free(inode->i_bmap);
+            lc_free(fs, inode->i_bmap, size, LC_MEMTYPE_BMAP);
         } else {
             assert(inode->i_bmap == NULL);
             memset(blocks, 0, tsize);
@@ -62,7 +63,9 @@ void
 lc_expandBmap(struct inode *inode) {
     uint64_t i;
 
-    inode->i_bmap = malloc(inode->i_extentLength * sizeof(uint64_t));
+    inode->i_bmap = lc_malloc(inode->i_fs,
+                              inode->i_extentLength * sizeof(uint64_t),
+                              LC_MEMTYPE_BMAP);
     for (i = 0; i < inode->i_extentLength; i++) {
         inode->i_bmap[i] = inode->i_extentBlock + i;
     }
@@ -83,7 +86,7 @@ lc_copyBmap(struct inode *inode) {
     bmap = inode->i_bmap;
     size = inode->i_bcount * sizeof(uint64_t);
     assert(inode->i_stat.st_blocks <= inode->i_bcount);
-    inode->i_bmap = malloc(size);
+    inode->i_bmap= lc_malloc(inode->i_fs, size, LC_MEMTYPE_BMAP);
     memcpy(inode->i_bmap, bmap, size);
     inode->i_shared = false;
 }
@@ -151,7 +154,7 @@ lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             if (bblock) {
                 page = lc_getPageNoBlock(gfs, fs, (char *)bblock, page);
             }
-            malloc_aligned((void **)&bblock);
+            lc_mallocBlockAligned(fs, (void **)&bblock, true);
             pcount++;
             count = 0;
         }
@@ -205,7 +208,7 @@ lc_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
     block = inode->i_bmapDirBlock;
     while (block != LC_INVALID_BLOCK) {
         //lc_printf("Reading bmap block %ld\n", block);
-        lc_addExtent(gfs, &inode->i_bmapDirExtents, block, 1);
+        lc_addExtent(gfs, fs, &inode->i_bmapDirExtents, block, 1);
         lc_readBlock(gfs, fs, block, bblock);
         for (i = 0; i < LC_BMAP_BLOCK; i++) {
             bmap = &bblock->bb_bmap[i];
@@ -231,7 +234,7 @@ lc_freeInodeDataBlocks(struct fs *fs, struct inode *inode,
                                inode->i_private);
         tmp = extent;
         extent = extent->ex_next;
-        free(tmp);
+        lc_free(fs, tmp, sizeof(struct extent), LC_MEMTYPE_EXTENT);
     }
 }
 
@@ -252,7 +255,7 @@ lc_bmapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
         } else {
             if (inode->i_extentLength > pg) {
                 bcount = inode->i_extentLength - pg;
-                lc_addExtent(gfs, &extents,
+                lc_addExtent(gfs, fs, &extents,
                              inode->i_extentBlock + pg, bcount);
                 inode->i_extentLength = pg;
             }
@@ -275,7 +278,7 @@ lc_bmapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
                 lc_truncatePage(fs, inode, NULL, pg, size % LC_BLOCK_SIZE);
                 *truncated = true;
             } else {
-                lc_addExtent(gfs, &extents, inode->i_bmap[i], 1);
+                lc_addExtent(gfs, fs, &extents, inode->i_bmap[i], 1);
                 inode->i_bmap[i] = 0;
                 bcount++;
             }
@@ -293,7 +296,8 @@ lc_bmapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
     if (size == 0) {
         assert((inode->i_stat.st_blocks == 0) || !remove);
         if (inode->i_bmap) {
-            free(inode->i_bmap);
+            lc_free(fs, inode->i_bmap, inode->i_bcount * sizeof(uint64_t),
+                    LC_MEMTYPE_BMAP);
             inode->i_bmap = NULL;
             inode->i_bcount = 0;
         }

@@ -106,6 +106,9 @@ struct fs {
     /* Parent file system of this layer */
     struct fs *fs_parent;
 
+    /* Root of the layer tree */
+    struct fs *fs_rfs;
+
     /* Snapshot file system of this layer */
     struct fs *fs_snap;
 
@@ -213,6 +216,15 @@ struct fs {
 
     /* Inodes written */
     uint64_t fs_iwrite;
+
+    /* Memory in use */
+    uint64_t fs_memory;
+
+    /* Count of allocations for each type */
+    uint64_t fs_malloc[LC_MEMTYPE_MAX];
+
+    /* Count of deallocations for each type */
+    uint64_t fs_free[LC_MEMTYPE_MAX];
 
     /* Next index in inode block array */
     int fs_inodeIndex;

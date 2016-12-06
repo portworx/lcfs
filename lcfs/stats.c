@@ -40,17 +40,17 @@ static const char *requests[] = {
 };
 
 /* Allocate a new stats structure */
-struct stats *
-lc_statsNew() {
+void
+lc_statsNew(struct fs *fs) {
     struct stats *stats;
     struct timeval min;
     enum lc_stats i;
 
     if (!stats_enabled) {
-        return NULL;
+        return;
     }
     gettimeofday(&min, NULL);
-    stats = malloc(sizeof(struct stats));
+    stats = lc_malloc(fs, sizeof(struct stats), LC_MEMTYPE_STATS);
     memset(&stats->s_count, 0, sizeof(uint64_t) * LC_REQUEST_MAX);
     memset(&stats->s_err, 0, sizeof(uint64_t) * LC_REQUEST_MAX);
     memset(&stats->s_max, 0, sizeof(struct timeval) * LC_REQUEST_MAX);
@@ -60,7 +60,7 @@ lc_statsNew() {
                            (i == LC_LCYNC)) ?  (struct timeval){0, 0} : min;
     }
     pthread_mutex_init(&stats->s_lock, NULL);
-    return stats;
+    fs->fs_stats = stats;
 }
 
 /* Begin stats tracking for a new request starting */
@@ -153,15 +153,17 @@ out:
 /* Display stats of all file systems */
 void
 lc_displayStatsAll(struct gfs *gfs) {
+    struct fs *fs;
     int i;
 
-    if (!stats_enabled) {
-        return;
-    }
     pthread_mutex_lock(&gfs->gfs_lock);
     for (i = 0; i <= gfs->gfs_scount; i++) {
-        if (gfs->gfs_fs[i]) {
-            lc_displayStats(gfs->gfs_fs[i]);
+        if ((fs = gfs->gfs_fs[i])) {
+            if (i == 0) {
+                lc_displayGlobalMemStats();
+            }
+            lc_displayMemStats(fs);
+            lc_displayStats(fs);
         }
     }
     pthread_mutex_unlock(&gfs->gfs_lock);
@@ -177,11 +179,18 @@ lc_displayGlobalStats(struct gfs *gfs) {
            gfs->gfs_super->sb_blocks,
            (gfs->gfs_super->sb_blocks * 100ul) / gfs->gfs_super->sb_tblocks,
            gfs->gfs_super->sb_tblocks);
-    printf("Total %ld reads %ld writes\n", gfs->gfs_reads, gfs->gfs_writes);
-    printf("%ld inodes cloned\n", gfs->gfs_clones);
-    printf("%ld pages hit %ld pages missed "
-           "%ld pages recycled %ld pages reused\n", gfs->gfs_phit,
-           gfs->gfs_pmissed, gfs->gfs_precycle, gfs->gfs_preused);
+    if (gfs->gfs_reads || gfs->gfs_writes) {
+        printf("Total %ld reads %ld writes\n", gfs->gfs_reads, gfs->gfs_writes);
+    }
+    if (gfs->gfs_clones) {
+        printf("%ld inodes cloned\n", gfs->gfs_clones);
+    }
+    if (gfs->gfs_phit || gfs->gfs_pmissed || gfs->gfs_precycle ||
+        gfs->gfs_preused) {
+        printf("%ld pages hit %ld pages missed "
+               "%ld pages recycled %ld pages reused\n", gfs->gfs_phit,
+               gfs->gfs_pmissed, gfs->gfs_precycle, gfs->gfs_preused);
+    }
 }
 
 /* Free resources associated with the stats of a file system */
@@ -189,6 +198,6 @@ void
 lc_statsDeinit(struct fs *fs) {
     if (stats_enabled) {
         pthread_mutex_destroy(&fs->fs_stats->s_lock);
-        free(fs->fs_stats);
+        lc_free(fs, fs->fs_stats, sizeof(struct stats), LC_MEMTYPE_STATS);
     }
 }

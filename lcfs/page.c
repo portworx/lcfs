@@ -64,14 +64,14 @@ void
 lc_flushDirtyInodeList(struct fs *fs) {
     struct inode *inode, *prev = NULL, *tmp;
 
-    if (fs->fs_dirtyInodes == NULL) {
+    if ((fs->fs_dirtyInodes == NULL) || fs->fs_removed) {
         return;
     }
     if (pthread_mutex_trylock(&fs->fs_dilock)) {
         return;
     }
     inode = fs->fs_dirtyInodes;
-    while (inode) {
+    while (inode && !fs->fs_removed) {
         if (inode->i_removed) {
             lc_removeDirtyInode(fs, inode, prev);
             tmp = inode;
@@ -182,7 +182,8 @@ lc_removeDirtyPage(struct inode *inode, uint64_t pg, bool release) {
     pdata = page->dp_data;
     if (pdata) {
         if (release) {
-            free(pdata);
+            lc_free(inode->i_fs->fs_rfs, pdata,
+                    LC_BLOCK_SIZE, LC_MEMTYPE_DATA);
         } else if ((page->dp_poffset != 0) ||
                    (page->dp_psize != LC_BLOCK_SIZE)) {
 
@@ -209,6 +210,7 @@ lc_updateVec(char *pdata, struct fuse_bufvec *bufv,
 static void
 lc_inodeAllocPages(struct inode *inode) {
     uint64_t lpage, count, size, tsize;
+    struct fs *fs = inode->i_fs;
     struct dpage *page;
 
     assert(!inode->i_shared);
@@ -224,12 +226,12 @@ lc_inodeAllocPages(struct inode *inode) {
             count *= 2;
         }
         tsize = count * sizeof(struct dpage);
-        page = malloc(tsize);
+        page = lc_malloc(fs, tsize, LC_MEMTYPE_DPAGEHASH);
         if (inode->i_pcount) {
             size = inode->i_pcount * sizeof(struct dpage);
             memcpy(page, inode->i_page, size);
             memset(&page[inode->i_pcount], 0, tsize - size);
-            free(inode->i_page);
+            lc_free(fs, inode->i_page, size, LC_MEMTYPE_DPAGEHASH);
         } else {
             assert(inode->i_page == NULL);
             memset(page, 0, tsize);
@@ -317,13 +319,13 @@ lc_mergePage(struct inode *inode, uint64_t pg, char *data,
         }
     }
     memcpy(&dpage->dp_data[poffset], &data[poffset], psize);
-    free(data);
+    lc_free(inode->i_fs->fs_rfs, data, LC_BLOCK_SIZE, LC_MEMTYPE_DATA);
     return 0;
 }
 
 /* Copy in provided pages */
 uint64_t
-lc_copyPages(off_t off, size_t size, struct dpage *dpages,
+lc_copyPages(struct fs *fs, off_t off, size_t size, struct dpage *dpages,
              struct fuse_bufvec *bufv, struct fuse_bufvec *dst) {
     uint64_t page, spage, pcount = 0, poffset;
     size_t wsize = size, psize;
@@ -344,7 +346,7 @@ lc_copyPages(off_t off, size_t size, struct dpage *dpages,
         if (psize > wsize) {
             psize = wsize;
         }
-        malloc_aligned((void **)&pdata);
+        lc_mallocBlockAligned(fs, (void **)&pdata, true);
         lc_updateVec(pdata, dst, poffset, psize);
         dpages[pcount].dp_data = pdata;
         dpages[pcount].dp_poffset = poffset;
@@ -526,10 +528,11 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
         } else if (inode->i_bmap) {
             for (i = 0; i < inode->i_bcount; i++) {
                 if (inode->i_bmap[i]) {
-                    lc_addExtent(gfs, &extents, inode->i_bmap[i], 1);
+                    lc_addExtent(gfs, fs, &extents, inode->i_bmap[i], 1);
                 }
             }
-            free(inode->i_bmap);
+            lc_free(fs, inode->i_bmap, inode->i_bcount * sizeof(uint64_t),
+                    LC_MEMTYPE_BMAP);
             inode->i_bmap = NULL;
             inode->i_bcount = 0;
         }
@@ -583,7 +586,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
             dpage = page;
             if (!single) {
                 if (inode->i_bmap[i]) {
-                    lc_addExtent(gfs, &extents, inode->i_bmap[i], 1);
+                    lc_addExtent(gfs, fs, &extents, inode->i_bmap[i], 1);
                 }
                 lc_inodeBmapAdd(inode, i, block + count);
             }
@@ -621,7 +624,8 @@ out:
 
     /* Free dirty page list as all pages are in block cache */
     if (release) {
-        free(inode->i_page);
+        lc_free(fs, inode->i_page, inode->i_pcount * sizeof(struct dpage),
+                LC_MEMTYPE_DPAGEHASH);
         inode->i_page = NULL;
         inode->i_pcount = 0;
     }
@@ -629,7 +633,7 @@ out:
         lc_freeInodeDataBlocks(fs, inode, &extents);
     }
     if (tcount) {
-        pcount = __sync_fetch_and_sub(&inode->i_fs->fs_pcount, tcount);
+        pcount = __sync_fetch_and_sub(&fs->fs_pcount, tcount);
         assert(pcount >= tcount);
     }
 }
@@ -646,7 +650,7 @@ lc_truncatePage(struct fs *fs, struct inode *inode, struct dpage *dpage,
 
     /* Create a dirty page if one does not exist */
     if (dpage->dp_data == NULL) {
-        malloc_aligned((void **)&dpage->dp_data);
+        lc_mallocBlockAligned(fs, (void **)&dpage->dp_data, true);
         __sync_add_and_fetch(&fs->fs_pcount, 1);
         dpage->dp_poffset = 0;
         dpage->dp_psize = 0;
@@ -741,7 +745,9 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
         if (size == 0) {
             assert(inode->i_dpcount == 0);
             if (inode->i_page) {
-                free(inode->i_page);
+                lc_free(fs, inode->i_page,
+                        inode->i_pcount * sizeof(struct dpage),
+                        LC_MEMTYPE_DPAGEHASH);
                 inode->i_page = NULL;
                 inode->i_pcount = 0;
             }

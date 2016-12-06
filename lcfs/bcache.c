@@ -10,8 +10,9 @@ lc_pageBlockHash(uint64_t block) {
 
 /* Allocate a new page */
 static struct page *
-lc_newPage(struct gfs *gfs) {
-    struct page *page = malloc(sizeof(struct page));
+lc_newPage(struct gfs *gfs, struct fs *fs) {
+    struct page *page = lc_malloc(fs->fs_rfs, sizeof(struct page),
+                                  LC_MEMTYPE_PAGE);
 
     page->p_data = NULL;
     page->p_block = LC_INVALID_BLOCK;
@@ -27,37 +28,40 @@ lc_newPage(struct gfs *gfs) {
 
 /* Free a page */
 static void
-lc_freePage(struct gfs *gfs, struct page *page) {
+lc_freePage(struct gfs *gfs, struct fs *fs, struct page *page) {
     assert(page->p_refCount == 0);
     assert(page->p_block == LC_INVALID_BLOCK);
     assert(page->p_cnext == NULL);
     assert(page->p_dnext == NULL);
 
     if (page->p_data) {
-        free(page->p_data);
+        lc_free(fs->fs_rfs, page->p_data, LC_BLOCK_SIZE, LC_MEMTYPE_DATA);
     }
     pthread_mutex_destroy(&page->p_dlock);
-    free(page);
+    lc_free(fs->fs_rfs, page, sizeof(struct page), LC_MEMTYPE_PAGE);
     __sync_sub_and_fetch(&gfs->gfs_pcount, 1);
 }
 
 /* Allocate and initialize page block hash table */
-struct pcache *
-lc_pcache_init() {
-    struct pcache *pcache = malloc(sizeof(struct pcache) * LC_PCACHE_SIZE);
+void
+lc_pcache_init(struct fs *fs) {
+    struct pcache *pcache;
     int i;
 
+    pcache = lc_malloc(fs, sizeof(struct pcache) * LC_PCACHE_SIZE,
+                       LC_MEMTYPE_PCACHE);
     for (i = 0; i < LC_PCACHE_SIZE; i++) {
         pthread_mutex_init(&pcache[i].pc_lock, NULL);
         pcache[i].pc_head = NULL;
         pcache[i].pc_pcount = 0;
     }
-    return pcache;
+    fs->fs_pcache = pcache;
 }
 
 /* Remove pages from page cache and free the hash table */
 void
-lc_destroy_pages(struct gfs *gfs, struct pcache *pcache, bool remove) {
+lc_destroy_pages(struct gfs *gfs, struct fs *fs, struct pcache *pcache,
+                 bool remove) {
     uint64_t i, count = 0, pcount;
     struct page *page;
 
@@ -69,7 +73,7 @@ lc_destroy_pages(struct gfs *gfs, struct pcache *pcache, bool remove) {
             page->p_block = LC_INVALID_BLOCK;
             page->p_cnext = NULL;
             page->p_dvalid = 0;
-            lc_freePage(gfs, page);
+            lc_freePage(gfs, fs, page);
             pcount++;
         }
         assert(pcount == pcache[i].pc_pcount);
@@ -78,7 +82,8 @@ lc_destroy_pages(struct gfs *gfs, struct pcache *pcache, bool remove) {
         pthread_mutex_destroy(&pcache[i].pc_lock);
         count += pcount;
     }
-    free(pcache);
+    lc_free(fs, pcache, sizeof(struct pcache) * LC_PCACHE_SIZE,
+            LC_MEMTYPE_PCACHE);
     if (count && remove) {
         __sync_add_and_fetch(&gfs->gfs_preused, count);
     }
@@ -131,7 +136,7 @@ lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page, bool read) {
     }
     pthread_mutex_unlock(&pcache[hash].pc_lock);
     if (fpage) {
-        lc_freePage(gfs, fpage);
+        lc_freePage(gfs, fs, fpage);
         __sync_add_and_fetch(&gfs->gfs_precycle, 1);
     }
 }
@@ -149,7 +154,7 @@ lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head) {
         if (page->p_block == LC_INVALID_BLOCK) {
             assert(page->p_refCount == 1);
             page->p_refCount = 0;
-            lc_freePage(gfs, page);
+            lc_freePage(gfs, fs, page);
         } else {
             lc_releasePage(gfs, fs, page, false);
         }
@@ -235,7 +240,7 @@ retry:
 
     /* If no page is found, allocate one and retry */
     if (page == NULL) {
-        new = lc_newPage(gfs);
+        new = lc_newPage(gfs, fs);
         assert(!new->p_dvalid);
         goto retry;
     }
@@ -243,7 +248,7 @@ retry:
     /* If raced with another thread, free the unused page */
     if (new) {
         new->p_refCount = 0;
-        lc_freePage(gfs, new);
+        lc_freePage(gfs, fs, new);
     }
 
     /* If page is missing data, read from disk */
@@ -252,7 +257,8 @@ retry:
         /* XXX Use a shared lock instead of a per page one */
         pthread_mutex_lock(&page->p_dlock);
         if (!page->p_dvalid) {
-            page->p_data = lc_readBlock(gfs, fs, block, page->p_data);
+            lc_mallocBlockAligned(fs, (void **)&page->p_data, true);
+            lc_readBlock(gfs, fs, block, page->p_data);
             page->p_dvalid = 1;
         }
         pthread_mutex_unlock(&page->p_dlock);
@@ -276,7 +282,7 @@ lc_getPageNew(struct gfs *gfs, struct fs *fs, uint64_t block, char *data) {
 
     assert(page->p_refCount == 1);
     if (page->p_data) {
-        free(page->p_data);
+        lc_free(fs->fs_rfs, page->p_data, LC_BLOCK_SIZE, LC_MEMTYPE_DATA);
     }
     page->p_data = data;
     page->p_dvalid = 1;
@@ -291,7 +297,7 @@ lc_getPageNew(struct gfs *gfs, struct fs *fs, uint64_t block, char *data) {
 struct page *
 lc_getPageNoBlock(struct gfs *gfs, struct fs *fs, char *data,
                   struct page *prev) {
-    struct page *page = lc_newPage(gfs);
+    struct page *page = lc_newPage(gfs, fs);
 
     page->p_data = data;
     page->p_dvalid = 1;
@@ -309,7 +315,7 @@ lc_getPageNewData(struct fs *fs, uint64_t block) {
 
     page = lc_getPage(fs, block, false);
     if (page->p_data == NULL) {
-        malloc_aligned((void **)&page->p_data);
+        lc_mallocBlockAligned(fs, (void **)&page->p_data, true);
     }
     page->p_hitCount = 0;
     return page;

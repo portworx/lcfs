@@ -4,13 +4,15 @@
 static void
 lc_xattrLink(struct inode *inode, const char *name, int len,
               const char *value, size_t size) {
-    struct xattr *xattr = malloc(sizeof(struct xattr));
+    struct fs *fs = inode->i_fs;
+    struct xattr *xattr = lc_malloc(fs, sizeof(struct xattr),
+                                    LC_MEMTYPE_XATTR);
 
-    xattr->x_name = malloc(len + 1);
+    xattr->x_name = lc_malloc(fs, len + 1, LC_MEMTYPE_XATTRNAME);
     memcpy(xattr->x_name, name, len);
     xattr->x_name[len] = 0;
     if (size) {
-        xattr->x_value = malloc(size);
+        xattr->x_value = lc_malloc(fs, size, LC_MEMTYPE_XATTRVALUE);
         memcpy(xattr->x_value, value, size);
     } else {
         xattr->x_value = NULL;
@@ -72,12 +74,14 @@ lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
 
                 /* Replace the attribute with new value */
                 if (xattr->x_value && (size != xattr->x_size)) {
-                    free(xattr->x_value);
+                    lc_free(fs, xattr->x_value, xattr->x_size,
+                            LC_MEMTYPE_XATTRVALUE);
                     xattr->x_value = NULL;
                 }
                 if (size) {
                     if (xattr->x_value == NULL) {
-                        xattr->x_value = malloc(size);
+                        xattr->x_value = lc_malloc(fs, size,
+                                                   LC_MEMTYPE_XATTRVALUE);
                     }
                     memcpy(xattr->x_value, value, size);
                 }
@@ -191,7 +195,7 @@ lc_xattrList(fuse_req_t req, ino_t ino, size_t size) {
         err = ERANGE;
         goto out;
     }
-    buf = malloc(inode->i_xsize);
+    buf = lc_malloc(fs, inode->i_xsize, LC_MEMTYPE_XATTRBUF);
     xattr = inode->i_xattr;
     while (xattr) {
         strcpy(&buf[i], xattr->x_name);
@@ -201,11 +205,22 @@ lc_xattrList(fuse_req_t req, ino_t ino, size_t size) {
     fuse_reply_buf(req, buf, inode->i_xsize);
     assert(i == inode->i_xsize);
     lc_inodeUnlock(inode);
-    free(buf);
+    lc_free(fs, buf, inode->i_xsize, LC_MEMTYPE_XATTRBUF);
 
 out:
     lc_statsAdd(fs, LC_LISTXATTR, err, &start);
     lc_unlock(fs);
+}
+
+/* Free an xattr structure */
+static inline void
+lc_freeXattr(struct fs *fs, struct xattr *xattr) {
+    if (xattr->x_value) {
+        lc_free(fs, xattr->x_value, xattr->x_size, LC_MEMTYPE_XATTRVALUE);
+    }
+    lc_free(fs, xattr->x_name, strlen(xattr->x_name) + 1,
+            LC_MEMTYPE_XATTRNAME);
+    lc_free(fs, xattr, sizeof(struct xattr), LC_MEMTYPE_XATTR);
 }
 
 /* Remove the specified extended attribute */
@@ -247,11 +262,7 @@ lc_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
             } else {
                 inode->i_xattr = xattr->x_next;
             }
-            free(xattr->x_name);
-            if (xattr->x_value) {
-                free(xattr->x_value);
-            }
-            free(xattr);
+            lc_freeXattr(fs, xattr);
             len = strlen(name) + 1;
             assert(inode->i_xsize >= len);
             inode->i_xsize -= len;
@@ -277,13 +288,16 @@ out:
 void
 lc_xattrCopy(struct inode *inode, struct inode *parent) {
     struct xattr *xattr = parent->i_xattr, *new;
+    struct fs *fs = inode->i_fs;
 
     while (xattr) {
-        new = malloc(sizeof(struct xattr));
-        new->x_name = malloc(strlen(xattr->x_name) + 1);
+
+        new = lc_malloc(fs, sizeof(struct xattr), LC_MEMTYPE_XATTR);
+        new->x_name = lc_malloc(fs, strlen(xattr->x_name) + 1,
+                                LC_MEMTYPE_XATTRNAME);
         strcpy(new->x_name, xattr->x_name);
         if (xattr->x_value) {
-            new->x_value = malloc(xattr->x_size);
+            new->x_value = lc_malloc(fs, xattr->x_size, LC_MEMTYPE_XATTRVALUE);
             memcpy(new->x_value, xattr->x_value, xattr->x_size);
         }
         new->x_size = xattr->x_size;
@@ -353,7 +367,7 @@ lc_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             if (xblock) {
                 page = lc_xattrAddPage(gfs, fs, xblock, remain, page);
             }
-            malloc_aligned((void **)&xblock);
+            lc_mallocBlockAligned(fs, (void **)&xblock, true);
             xbuf = (char *)&xblock->xb_attr[0];
             remain = LC_BLOCK_SIZE - sizeof(struct xblock);
             pcount++;
@@ -400,7 +414,7 @@ lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
         lc_printf("Enabled extended attributes\n");
     }
     while (block != LC_INVALID_BLOCK) {
-        lc_addExtent(gfs, &inode->i_xattrExtents, block, 1);
+        lc_addExtent(gfs, fs, &inode->i_xattrExtents, block, 1);
         lc_readBlock(gfs, fs, block, xblock);
         xbuf = (char *)&xblock->xb_attr[0];
         remain = LC_BLOCK_SIZE - sizeof(struct xblock);
@@ -424,14 +438,11 @@ lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
 void
 lc_xattrFree(struct inode *inode) {
     struct xattr *xattr = inode->i_xattr, *tmp;
+    struct fs *fs = inode->i_fs;
 
     while (xattr) {
         tmp = xattr;
         xattr = xattr->x_next;
-        free(tmp->x_name);
-        if (tmp->x_value) {
-            free(tmp->x_value);
-        }
-        free(tmp);
+        lc_freeXattr(fs, tmp);
     }
 }

@@ -75,7 +75,7 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     /* Initialize the new layer */
     fs = lc_newFs(gfs, rw);
     lc_lock(fs, true);
-    malloc_aligned((void **)&super);
+    lc_mallocBlockAligned(fs, (void **)&super, false);
     lc_superInit(super, 0, false);
     fs->fs_super = super;
     fs->fs_root = root;
@@ -86,9 +86,11 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     }
     lc_rootInit(fs, fs->fs_root);
     if (base) {
-        fs->fs_pcache = lc_pcache_init();
-        fs->fs_ilock = malloc(sizeof(pthread_mutex_t));
+        lc_pcache_init(fs);
+        fs->fs_ilock = lc_malloc(fs, sizeof(pthread_mutex_t),
+                                 LC_MEMTYPE_ILOCK);
         pthread_mutex_init(fs->fs_ilock, NULL);
+        fs->fs_rfs = fs;
     } else {
         dir = fs->fs_rootInode;
         dir->i_shared = true;
@@ -106,6 +108,7 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
         fs->fs_parent = pfs;
         fs->fs_pcache = pfs->fs_pcache;
         fs->fs_ilock = pfs->fs_ilock;
+        fs->fs_rfs = pfs->fs_rfs;
     }
 
     /* Add this file system to global list of file systems */
@@ -177,7 +180,7 @@ lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name) {
     lc_invalidateDirtyPages(gfs, fs);
     lc_invalidateInodePages(gfs, fs);
     lc_invalidateInodeBlocks(gfs, fs);
-    lc_blockFree(fs, fs->fs_sblock, 1);
+    lc_blockFree(gfs, fs, fs->fs_sblock, 1, true);
     lc_freeLayerBlocks(gfs, fs, true, true);
 
     /* Notify VFS about removal of a directory */
@@ -229,6 +232,7 @@ lc_snapIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
         if (err == 0) {
             fs = lc_getfs(root, false);
             fuse_reply_ioctl(req, 0, NULL, 0);
+            lc_displayMemStats(fs);
             lc_displayStats(fs);
             if ((cmd == SNAP_UMOUNT) && fs->fs_readOnly) {
                 lc_sync(gfs, fs);
@@ -249,7 +253,7 @@ lc_snapIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
             fs = lc_getfs(root, true);
             lc_displayStats(fs);
             lc_statsDeinit(fs);
-            fs->fs_stats = lc_statsNew();
+            lc_statsNew(fs);
             lc_unlock(fs);
         }
         break;

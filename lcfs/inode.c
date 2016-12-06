@@ -7,16 +7,18 @@ lc_inodeHash(ino_t ino) {
 }
 
 /* Allocate and initialize inode hash table */
-struct icache *
-lc_icache_init() {
-    struct icache *icache = malloc(sizeof(struct icache) * LC_ICACHE_SIZE);
+void
+lc_icache_init(struct fs *fs) {
+    struct icache *icache = lc_malloc(fs,
+                                      sizeof(struct icache) * LC_ICACHE_SIZE,
+                                      LC_MEMTYPE_ICACHE);
     int i;
 
     for (i = 0; i < LC_ICACHE_SIZE; i++) {
         pthread_mutex_init(&icache[i].ic_lock, NULL);
         icache[i].ic_head = NULL;
     }
-    return icache;
+    fs->fs_icache = icache;
 }
 
 /* Allocate a new inode */
@@ -24,7 +26,7 @@ static struct inode *
 lc_newInode(struct fs *fs) {
     struct inode *inode;
 
-    inode = malloc(sizeof(struct inode));
+    inode = lc_malloc(fs, sizeof(struct inode), LC_MEMTYPE_INODE);
     memset(inode, 0, sizeof(struct inode));
     inode->i_block = LC_INVALID_BLOCK;
     inode->i_bmapDirBlock = LC_INVALID_BLOCK;
@@ -174,8 +176,8 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
     lc_printf("Reading inodes for fs %d %ld\n", fs->fs_gindex, fs->fs_root);
     assert(fs->fs_inodeBlocks == NULL);
     if (block != LC_INVALID_BLOCK) {
-        malloc_aligned((void **)&fs->fs_inodeBlocks);
-        malloc_aligned((void **)&ibuf);
+        lc_mallocBlockAligned(fs, (void **)&fs->fs_inodeBlocks, false);
+        lc_mallocBlockAligned(fs, (void **)&ibuf, false);
     }
     while (block != LC_INVALID_BLOCK) {
         //lc_printf("Reading inode table from block %ld\n", block);
@@ -199,7 +201,7 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
                 flush = true;
                 continue;
             }
-            inode = malloc(sizeof(struct inode));
+            inode = lc_malloc(fs, sizeof(struct inode), LC_MEMTYPE_INODE);
             __sync_add_and_fetch(&fs->fs_icount, 1);
 
             /* XXX zero out just necessary fields */
@@ -213,7 +215,8 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
             } else if (S_ISDIR(inode->i_stat.st_mode)) {
                 lc_dirRead(gfs, fs, inode, ibuf);
             } else if (S_ISLNK(inode->i_stat.st_mode)) {
-                inode->i_target = malloc(inode->i_stat.st_size + 1);
+                inode->i_target = lc_malloc(fs, inode->i_stat.st_size + 1,
+                                            LC_MEMTYPE_SYMLINK);
                 target = ibuf;
                 target += sizeof(struct dinode);
                 memcpy(inode->i_target, target, inode->i_stat.st_size);
@@ -233,9 +236,9 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
     }
     assert(fs->fs_rootInode != NULL);
     if (fs->fs_inodeBlocks) {
-        free(fs->fs_inodeBlocks);
+        lc_free(fs, fs->fs_inodeBlocks, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
         fs->fs_inodeBlocks = NULL;
-        free(ibuf);
+        lc_free(fs, ibuf, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
     }
     return 0;
 }
@@ -243,13 +246,16 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
 /* Free an inode and associated resources */
 static void
 lc_freeInode(struct inode *inode) {
+    struct fs *fs = inode->i_fs;
+
     if (S_ISREG(inode->i_stat.st_mode)) {
         lc_truncPages(inode, 0, false);
     } else if (S_ISDIR(inode->i_stat.st_mode)) {
         lc_dirFree(inode);
     } else if (S_ISLNK(inode->i_stat.st_mode)) {
         if (!inode->i_shared) {
-            free(inode->i_target);
+            lc_free(fs, inode->i_target, inode->i_stat.st_size + 1,
+                    LC_MEMTYPE_SYMLINK);
         }
         inode->i_target = NULL;
     }
@@ -260,9 +266,9 @@ lc_freeInode(struct inode *inode) {
     assert(inode->i_dpcount == 0);
     lc_xattrFree(inode);
     pthread_rwlock_destroy(&inode->i_rwlock);
-    lc_blockFreeExtents(NULL, inode->i_bmapDirExtents, false, false);
-    lc_blockFreeExtents(NULL, inode->i_xattrExtents, false, false);
-    free(inode);
+    lc_blockFreeExtents(fs, inode->i_bmapDirExtents, false, false, true);
+    lc_blockFreeExtents(fs, inode->i_xattrExtents, false, false, true);
+    lc_free(fs, inode, sizeof(struct inode), LC_MEMTYPE_INODE);
 }
 
 /* Invalidate dirty inode pages */
@@ -312,10 +318,12 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             assert(inode->i_extentLength == 0);
 
             /* Free metadata blocks allocated to the inode */
-            lc_blockFreeExtents(fs, inode->i_bmapDirExtents, true, false);
+            lc_blockFreeExtents(fs, inode->i_bmapDirExtents,
+                                true, false, true);
             inode->i_bmapDirExtents = NULL;
             inode->i_bmapDirBlock = LC_INVALID_BLOCK;
-            lc_blockFreeExtents(fs, inode->i_xattrExtents, true, false);
+            lc_blockFreeExtents(fs, inode->i_xattrExtents,
+                                true, false, true);
             inode->i_xattrBlock = LC_INVALID_BLOCK;
             inode->i_xattrExtents = NULL;
         }
@@ -423,7 +431,8 @@ lc_destroyInodes(struct fs *fs, bool remove) {
     }
 
     /* XXX reuse this cache for another file system */
-    free(fs->fs_icache);
+    lc_free(fs, fs->fs_icache, sizeof(struct icache) * LC_ICACHE_SIZE,
+            LC_MEMTYPE_ICACHE);
     if (remove && icount) {
         __sync_sub_and_fetch(&fs->fs_gfs->gfs_super->sb_inodes, rcount);
     }
@@ -582,7 +591,7 @@ lc_inodeInit(struct fs *fs, mode_t mode, uid_t uid, gid_t gid,
     lc_updateInodeTimes(inode, true, true, true);
     if (target != NULL) {
         len = strlen(target);
-        inode->i_target = malloc(len + 1);
+        inode->i_target = lc_malloc(fs, len + 1, LC_MEMTYPE_SYMLINK);
         memcpy(inode->i_target, target, len);
         inode->i_target[len] = 0;
         inode->i_stat.st_size = len;
