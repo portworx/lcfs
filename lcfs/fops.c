@@ -119,6 +119,7 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
             return EEXIST;
         }
         assert(inode->i_dinode.di_nlink == 2);
+        inode->i_dinode.di_nlink = 0;
         inode->i_removed = true;
         removed = true;
     } else {
@@ -813,8 +814,8 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
     fuse_reply_err(req, 0);
 
     /* Flush dirty pages of a file on last close */
-    if ((inode->i_ocount == 0) && inode->i_bmapdirty) {
-        assert(S_ISREG(inode->i_dinode.di_mode));
+    if ((inode->i_ocount == 0) && S_ISREG(inode->i_dinode.di_mode) &&
+        inode->i_bmapdirty) {
         if (fs->fs_readOnly) {
 
             /* Inode bmap needs to be stable before an inode could be cloned */
@@ -1020,7 +1021,14 @@ lc_getxattr(fuse_req_t req, fuse_ino_t ino, const char *name, size_t size) {
 /* List extended attributes on a file */
 static void
 lc_listxattr(fuse_req_t req, fuse_ino_t ino, size_t size) {
+    struct gfs *gfs = getfs();
+
     lc_displayEntry(__func__, ino, 0, NULL);
+    if (!gfs->gfs_xattr_enabled) {
+        //lc_reportError(__func__, __LINE__, ino, ENODATA);
+        fuse_reply_err(req, ENODATA);
+        return;
+    }
     lc_xattrList(req, ino, size);
 }
 

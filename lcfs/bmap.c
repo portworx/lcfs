@@ -63,6 +63,7 @@ void
 lc_expandBmap(struct inode *inode) {
     uint64_t i;
 
+    assert(S_ISREG(inode->i_dinode.di_mode));
     inode->i_bmap = lc_malloc(inode->i_fs,
                               inode->i_extentLength * sizeof(uint64_t),
                               LC_MEMTYPE_BMAP);
@@ -82,6 +83,7 @@ lc_copyBmap(struct inode *inode) {
     uint64_t *bmap;
     uint64_t size;
 
+    assert(S_ISREG(inode->i_dinode.di_mode));
     assert(inode->i_extentLength == 0);
     bmap = inode->i_bmap;
     size = inode->i_bcount * sizeof(uint64_t);

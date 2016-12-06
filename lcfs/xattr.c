@@ -23,6 +23,14 @@ lc_xattrLink(struct inode *inode, const char *name, int len,
     inode->i_xsize += len + 1;
 }
 
+/* Allocate xattr data for the inode */
+static void
+lc_xattrInit(struct fs *fs, struct inode *inode) {
+    inode->i_xattrData = lc_malloc(fs, sizeof(struct ixattr),
+                                   LC_MEMTYPE_XATTRINODE);
+    memset(inode->i_xattrData, 0, sizeof(struct ixattr));
+}
+
 /* Add the specified extended attribute to the inode */
 void
 lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
@@ -55,6 +63,9 @@ lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
         gfs->gfs_xattr_enabled = true;
         fs->fs_xattrEnabled = true;
         lc_printf("Enabled extended attributes\n");
+    }
+    if (inode->i_xattrData == NULL) {
+        lc_xattrInit(fs, inode);
     }
     xattr = inode->i_xattr;
     while (xattr) {
@@ -140,7 +151,7 @@ lc_xattrGet(fuse_req_t req, ino_t ino, const char *name,
         err = ENOENT;
         goto out;
     }
-    xattr = inode->i_xattr;
+    xattr = inode->i_xattrData ? inode->i_xattr : NULL;
     while (xattr) {
         if (strcmp(name, xattr->x_name) == 0) {
             if (size == 0) {
@@ -177,6 +188,11 @@ lc_xattrList(fuse_req_t req, ino_t ino, size_t size) {
 
     lc_statsBegin(&start);
     fs = lc_getfs(ino, false);
+    if (!fs->fs_xattrEnabled) {
+        fuse_reply_err(req, ENODATA);
+        err = ENODATA;
+        goto out;
+    }
     inode = lc_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
@@ -184,15 +200,30 @@ lc_xattrList(fuse_req_t req, ino_t ino, size_t size) {
         err = ENOENT;
         goto out;
     }
+    if (inode->i_xattrData == NULL) {
+        fuse_reply_err(req, ENODATA);
+        lc_inodeUnlock(inode);
+        lc_reportError(__func__, __LINE__, ino, ENODATA);
+        err = ENODATA;
+        goto out;
+    }
     if (size == 0) {
         fuse_reply_xattr(req, inode->i_xsize);
         lc_inodeUnlock(inode);
         goto out;
-    } else if (size < inode->i_xsize) {
+    }
+    if (size < inode->i_xsize) {
         lc_inodeUnlock(inode);
-        lc_reportError(__func__, __LINE__, ino, ERANGE);
         fuse_reply_err(req, ERANGE);
+        lc_reportError(__func__, __LINE__, ino, ERANGE);
         err = ERANGE;
+        goto out;
+    }
+    if (inode->i_xsize == 0) {
+        lc_inodeUnlock(inode);
+        fuse_reply_err(req, ENODATA);
+        lc_reportError(__func__, __LINE__, ino, ENODATA);
+        err = ENODATA;
         goto out;
     }
     buf = lc_malloc(fs, inode->i_xsize, LC_MEMTYPE_XATTRBUF);
@@ -253,7 +284,7 @@ lc_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
         goto out;
     }
 
-    xattr = inode->i_xattr;
+    xattr = inode->i_xattrData ? inode->i_xattr : NULL;
     while (xattr) {
         if (strcmp(name, xattr->x_name) == 0) {
             fuse_reply_err(req, 0);
@@ -287,11 +318,16 @@ out:
 /* Copy extended attributes of one inode to another */
 void
 lc_xattrCopy(struct inode *inode, struct inode *parent) {
-    struct xattr *xattr = parent->i_xattr, *new;
     struct fs *fs = inode->i_fs;
+    struct xattr *xattr, *new;
 
+    if (parent->i_xattrData == NULL) {
+        return;
+    }
+    assert(inode->i_xattrData == NULL);
+    lc_xattrInit(fs, inode);
+    xattr = parent->i_xattr;
     while (xattr) {
-
         new = lc_malloc(fs, sizeof(struct xattr), LC_MEMTYPE_XATTR);
         new->x_name = lc_malloc(fs, strlen(xattr->x_name) + 1,
                                 LC_MEMTYPE_XATTRNAME);
@@ -408,10 +444,14 @@ lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
     struct dxattr *dxattr;
     char *xbuf;
 
-    if ((block != LC_INVALID_BLOCK) && !fs->fs_xattrEnabled) {
-        gfs->gfs_xattr_enabled = true;
-        fs->fs_xattrEnabled = true;
-        lc_printf("Enabled extended attributes\n");
+    assert(inode->i_xattrData == NULL);
+    if (block != LC_INVALID_BLOCK) {
+        if (!fs->fs_xattrEnabled) {
+            gfs->gfs_xattr_enabled = true;
+            fs->fs_xattrEnabled = true;
+            lc_printf("Enabled extended attributes\n");
+        }
+        lc_xattrInit(fs, inode);
     }
     while (block != LC_INVALID_BLOCK) {
         lc_addExtent(gfs, fs, &inode->i_xattrExtents, block, 1);
@@ -437,12 +477,20 @@ lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
 /* Free all the extended attributes of an inode */
 void
 lc_xattrFree(struct inode *inode) {
-    struct xattr *xattr = inode->i_xattr, *tmp;
     struct fs *fs = inode->i_fs;
+    struct xattr *xattr, *tmp;
 
+    if (inode->i_xattrData == NULL) {
+        return;
+    }
+    lc_blockFreeExtents(fs, inode->i_xattrExtents, false, false, true);
+    xattr = inode->i_xattr;
     while (xattr) {
         tmp = xattr;
         xattr = xattr->x_next;
         lc_freeXattr(fs, tmp);
     }
+    lc_free(fs, inode->i_xattrData, sizeof(struct ixattr),
+            LC_MEMTYPE_XATTRINODE);
+    inode->i_xattrData = NULL;
 }

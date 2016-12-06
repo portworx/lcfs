@@ -22,6 +22,7 @@ static const char *mrequests[] = {
     "XATTRNAME",
     "XATTRVALUE",
     "XATTRBUF",
+    "XATTRINODE",
     "STATS",
 };
 
