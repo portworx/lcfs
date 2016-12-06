@@ -84,10 +84,10 @@ void lc_invalidateInodeBlocks(struct gfs *gfs, struct fs *fs);
 void lc_sync(struct gfs *gfs, struct fs *fs);
 void lc_unmount(struct gfs *gfs);
 void lc_syncAllLayers(struct gfs *gfs);
-struct fs *lc_newFs(struct gfs *gfs, bool rw);
+struct fs *lc_newFs(struct gfs *gfs, size_t icsize, bool rw);
 void lc_destroyFs(struct fs *fs, bool remove);
 
-void lc_icache_init(struct fs *fs);
+void lc_icache_init(struct fs *fs, size_t size);
 void lc_icache_deinit(struct icache *icache);
 ino_t lc_inodeAlloc(struct fs *fs);
 int lc_readInodes(struct gfs *gfs, struct fs *fs);
@@ -135,7 +135,7 @@ void lc_bmapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
 void lc_freeInodeDataBlocks(struct fs *fs, struct inode *inode,
                             struct extent **extents);
 
-void lc_pcache_init(struct fs *fs);
+void lc_pcache_init(struct fs *fs, uint64_t size);
 void lc_destroy_pages(struct gfs *gfs, struct fs *fs, struct pcache *pcache,
                       bool remove);
 struct page *lc_getPage(struct fs *fs, uint64_t block, bool read);

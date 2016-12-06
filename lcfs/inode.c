@@ -2,23 +2,23 @@
 
 /* Given an inode number, return the hash index */
 static inline int
-lc_inodeHash(ino_t ino) {
-    return ino % LC_ICACHE_SIZE;
+lc_inodeHash(struct fs *fs, ino_t ino) {
+    return ino % fs->fs_icacheSize;
 }
 
 /* Allocate and initialize inode hash table */
 void
-lc_icache_init(struct fs *fs) {
-    struct icache *icache = lc_malloc(fs,
-                                      sizeof(struct icache) * LC_ICACHE_SIZE,
+lc_icache_init(struct fs *fs, size_t size) {
+    struct icache *icache = lc_malloc(fs, sizeof(struct icache) * size,
                                       LC_MEMTYPE_ICACHE);
     int i;
 
-    for (i = 0; i < LC_ICACHE_SIZE; i++) {
+    for (i = 0; i < size; i++) {
         pthread_mutex_init(&icache[i].ic_lock, NULL);
         icache[i].ic_head = NULL;
     }
     fs->fs_icache = icache;
+    fs->fs_icacheSize = size;
 }
 
 /* Allocate a new inode */
@@ -69,7 +69,7 @@ lc_inodeUnlock(struct inode *inode) {
 /* Add an inode to the hash and file system list */
 static void
 lc_addInode(struct fs *fs, struct inode *inode) {
-    int hash = lc_inodeHash(inode->i_dinode.di_ino);
+    int hash = lc_inodeHash(fs, inode->i_dinode.di_ino);
 
     /* Add the inode to the hash list */
     pthread_mutex_lock(&fs->fs_icache[hash].ic_lock);
@@ -81,7 +81,7 @@ lc_addInode(struct fs *fs, struct inode *inode) {
 
 static struct inode *
 lc_lookupInodeCache(struct fs *fs, ino_t ino) {
-    int hash = lc_inodeHash(ino);
+    int hash = lc_inodeHash(fs, ino);
     struct inode *inode;
 
     if (fs->fs_icache[hash].ic_head == NULL) {
@@ -384,7 +384,7 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs) {
     int i;
 
     lc_printf("Syncing inodes for fs %d %ld\n", fs->fs_gindex, fs->fs_root);
-    for (i = 0; i < LC_ICACHE_SIZE; i++) {
+    for (i = 0; i < fs->fs_icacheSize; i++) {
         inode = fs->fs_icache[i].ic_head;
         while (inode && !fs->fs_removed) {
             if (lc_inodeDirty(inode)) {
@@ -412,7 +412,7 @@ lc_destroyInodes(struct fs *fs, bool remove) {
     int i;
 
     /* Take the inode off the hash list */
-    for (i = 0; i < LC_ICACHE_SIZE; i++) {
+    for (i = 0; i < fs->fs_icacheSize; i++) {
         /* XXX Lock is not needed as the file system is locked for exclusive
          * access
          * */
@@ -431,7 +431,7 @@ lc_destroyInodes(struct fs *fs, bool remove) {
     }
 
     /* XXX reuse this cache for another file system */
-    lc_free(fs, fs->fs_icache, sizeof(struct icache) * LC_ICACHE_SIZE,
+    lc_free(fs, fs->fs_icache, sizeof(struct icache) * fs->fs_icacheSize,
             LC_MEMTYPE_ICACHE);
     if (remove && icount) {
         __sync_sub_and_fetch(&fs->fs_gfs->gfs_super->sb_inodes, rcount);

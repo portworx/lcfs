@@ -32,6 +32,7 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     ino_t root, pinum = 0;
     struct timeval start;
     char pname[size + 1];
+    size_t icsize;
     void *super;
     int err = 0;
     bool base;
@@ -43,8 +44,10 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
         memcpy(pname, parent, size);
         pname[size] = 0;
         base = false;
+        icsize = strstr(name, "init") ? LC_ICACHE_SIZE_MIN : LC_ICACHE_SIZE;
     } else {
         base = true;
+        icsize = LC_ICACHE_SIZE_MAX;
     }
 
     /* Get the global file system */
@@ -73,7 +76,7 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     lc_inodeUnlock(pdir);
 
     /* Initialize the new layer */
-    fs = lc_newFs(gfs, rw);
+    fs = lc_newFs(gfs, icsize, rw);
     lc_lock(fs, true);
     lc_mallocBlockAligned(fs, (void **)&super, false);
     lc_superInit(super, 0, false);
@@ -86,7 +89,7 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     }
     lc_rootInit(fs, fs->fs_root);
     if (base) {
-        lc_pcache_init(fs);
+        lc_pcache_init(fs, LC_PCACHE_SIZE);
         fs->fs_ilock = lc_malloc(fs, sizeof(pthread_mutex_t),
                                  LC_MEMTYPE_ILOCK);
         pthread_mutex_init(fs->fs_ilock, NULL);
@@ -107,6 +110,7 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
         /* Inode chain lock is shared with the parent */
         fs->fs_parent = pfs;
         fs->fs_pcache = pfs->fs_pcache;
+        fs->fs_pcacheSize = pfs->fs_pcacheSize;
         fs->fs_ilock = pfs->fs_ilock;
         fs->fs_rfs = pfs->fs_rfs;
     }

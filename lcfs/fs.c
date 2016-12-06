@@ -2,7 +2,7 @@
 
 /* Allocate a new file system structure */
 struct fs *
-lc_newFs(struct gfs *gfs, bool rw) {
+lc_newFs(struct gfs *gfs, size_t icsize, bool rw) {
     struct fs *fs = lc_malloc(NULL, sizeof(struct fs), LC_MEMTYPE_GFS);
     time_t t;
 
@@ -16,7 +16,7 @@ lc_newFs(struct gfs *gfs, bool rw) {
     pthread_mutex_init(&fs->fs_dilock, NULL);
     pthread_mutex_init(&fs->fs_alock, NULL);
     pthread_rwlock_init(&fs->fs_rwlock, NULL);
-    lc_icache_init(fs);
+    lc_icache_init(fs, icsize);
     lc_statsNew(fs);
     __sync_add_and_fetch(&gfs->gfs_count, 1);
     return fs;
@@ -346,10 +346,13 @@ lc_gfsAlloc(int fd) {
 /* Initialize a file system after reading its super block */
 static struct fs *
 lc_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
+    uint64_t icsize;
     struct fs *fs;
     int i;
 
-    fs = lc_newFs(gfs, true);
+    /* XXX Size the icache based on inodes allocated in layer */
+    icsize = (child || pfs->fs_parent) ? LC_ICACHE_SIZE : LC_ICACHE_SIZE_MAX;
+    fs = lc_newFs(gfs, icsize, true);
     fs->fs_sblock = block;
     lc_superRead(gfs, fs, block);
     if (fs->fs_super->sb_flags & LC_SUPER_RDWR) {
@@ -364,6 +367,7 @@ lc_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
         pfs->fs_frozen = true;
         fs->fs_parent = pfs;
         fs->fs_pcache = pfs->fs_pcache;
+        fs->fs_pcacheSize = pfs->fs_pcacheSize;
         fs->fs_ilock = pfs->fs_ilock;
         fs->fs_rfs = pfs->fs_rfs;
     } else if (pfs->fs_parent == NULL) {
@@ -372,7 +376,7 @@ lc_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
         assert(pfs->fs_next == NULL);
         fs->fs_prev = pfs;
         pfs->fs_next = fs;
-        lc_pcache_init(fs);
+        lc_pcache_init(fs, LC_PCACHE_SIZE);
         fs->fs_ilock = lc_malloc(fs, sizeof(pthread_mutex_t),
                                  LC_MEMTYPE_ILOCK);
         pthread_mutex_init(fs->fs_ilock, NULL);
@@ -384,6 +388,7 @@ lc_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
         fs->fs_prev = pfs;
         pfs->fs_next = fs;
         fs->fs_pcache = pfs->fs_pcache;
+        fs->fs_pcacheSize = pfs->fs_pcacheSize;
         fs->fs_parent = pfs->fs_parent;
         fs->fs_ilock = pfs->fs_ilock;
         fs->fs_rfs = pfs->fs_rfs;
@@ -480,11 +485,11 @@ lc_mount(char *device, struct gfs **gfsp) {
 
     /* Initialize a file system structure in memory */
     /* XXX Recreate file system after abnormal shutdown for now */
-    fs = lc_newFs(gfs, true);
+    fs = lc_newFs(gfs, LC_ICACHE_SIZE_MIN, true);
     fs->fs_root = LC_ROOT_INODE;
     fs->fs_sblock = LC_SUPER_BLOCK;
     fs->fs_rfs = fs;
-    lc_pcache_init(fs);
+    lc_pcache_init(fs, LC_PCACHE_SIZE_MIN);
     gfs->gfs_fs[0] = fs;
     gfs->gfs_roots[0] = LC_ROOT_INODE;
 

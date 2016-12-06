@@ -2,10 +2,10 @@
 
 /* Return the hash number for the block number provided */
 static inline int
-lc_pageBlockHash(uint64_t block) {
+lc_pageBlockHash(struct fs *fs, uint64_t block) {
     assert(block);
     assert(block != LC_INVALID_BLOCK);
-    return block % LC_PCACHE_SIZE;
+    return block % fs->fs_pcacheSize;
 }
 
 /* Allocate a new page */
@@ -44,18 +44,18 @@ lc_freePage(struct gfs *gfs, struct fs *fs, struct page *page) {
 
 /* Allocate and initialize page block hash table */
 void
-lc_pcache_init(struct fs *fs) {
+lc_pcache_init(struct fs *fs, uint64_t size) {
     struct pcache *pcache;
     int i;
 
-    pcache = lc_malloc(fs, sizeof(struct pcache) * LC_PCACHE_SIZE,
-                       LC_MEMTYPE_PCACHE);
-    for (i = 0; i < LC_PCACHE_SIZE; i++) {
+    pcache = lc_malloc(fs, sizeof(struct pcache) * size, LC_MEMTYPE_PCACHE);
+    for (i = 0; i < size; i++) {
         pthread_mutex_init(&pcache[i].pc_lock, NULL);
         pcache[i].pc_head = NULL;
         pcache[i].pc_pcount = 0;
     }
     fs->fs_pcache = pcache;
+    fs->fs_pcacheSize = size;
 }
 
 /* Remove pages from page cache and free the hash table */
@@ -65,7 +65,7 @@ lc_destroy_pages(struct gfs *gfs, struct fs *fs, struct pcache *pcache,
     uint64_t i, count = 0, pcount;
     struct page *page;
 
-    for (i = 0; i < LC_PCACHE_SIZE; i++) {
+    for (i = 0; i < fs->fs_pcacheSize; i++) {
         pcount = 0;
         pthread_mutex_lock(&pcache[i].pc_lock);
         while ((page = pcache[i].pc_head)) {
@@ -82,7 +82,7 @@ lc_destroy_pages(struct gfs *gfs, struct fs *fs, struct pcache *pcache,
         pthread_mutex_destroy(&pcache[i].pc_lock);
         count += pcount;
     }
-    lc_free(fs, pcache, sizeof(struct pcache) * LC_PCACHE_SIZE,
+    lc_free(fs, pcache, sizeof(struct pcache) * fs->fs_pcacheSize,
             LC_MEMTYPE_PCACHE);
     if (count && remove) {
         __sync_add_and_fetch(&gfs->gfs_preused, count);
@@ -96,7 +96,7 @@ lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page, bool read) {
     struct pcache *pcache = fs->fs_pcache;
     uint64_t hash, hit;
 
-    hash = lc_pageBlockHash(page->p_block);
+    hash = lc_pageBlockHash(fs, page->p_block);
     pthread_mutex_lock(&pcache[hash].pc_lock);
     assert(page->p_refCount > 0);
     page->p_refCount--;
@@ -107,7 +107,7 @@ lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page, bool read) {
     }
 
     /* Free a page if page cache is above limit */
-    if (pcache[hash].pc_pcount > (LC_PAGE_MAX / LC_PCACHE_SIZE)) {
+    if (pcache[hash].pc_pcount > (LC_PAGE_MAX / fs->fs_pcacheSize)) {
         cpage = pcache[hash].pc_head;
         hit = page->p_hitCount;
 
@@ -178,7 +178,7 @@ void
 lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
                     struct page *page, uint64_t block) {
     struct pcache *pcache = fs->fs_pcache;
-    int hash = lc_pageBlockHash(block);
+    int hash = lc_pageBlockHash(fs, block);
     struct page *cpage;
 
     assert(page->p_block == LC_INVALID_BLOCK);
@@ -204,7 +204,7 @@ lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
 /* Lookup a page in the block hash */
 struct page *
 lc_getPage(struct fs *fs, uint64_t block, bool read) {
-    int hash = lc_pageBlockHash(block);
+    int hash = lc_pageBlockHash(fs, block);
     struct pcache *pcache = fs->fs_pcache;
     struct page *page, *new = NULL;
     struct gfs *gfs = fs->fs_gfs;
