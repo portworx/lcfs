@@ -31,7 +31,7 @@ lc_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,
                                       LC_MEMTYPE_DIRENT);
 
     assert(S_ISDIR(dir->i_dinode.di_mode));
-    assert(!dir->i_shared);
+    assert(!(dir->i_flags & LC_INODE_SHARED));
     assert(ino > LC_ROOT_INODE);
     dirent->di_ino = ino;
     dirent->di_name = ((char *)dirent) + sizeof(struct dirent);
@@ -49,17 +49,17 @@ void
 lc_dirCopy(struct inode *dir) {
     struct dirent *dirent = dir->i_dirent;
 
-    assert(dir->i_shared);
+    assert(dir->i_flags & LC_INODE_SHARED);
     assert(S_ISDIR(dir->i_dinode.di_mode));
     assert(dir->i_dinode.di_nlink >= 2);
     dir->i_dirent = NULL;
-    dir->i_shared = false;
+    dir->i_flags &= ~LC_INODE_SHARED;
     while (dirent) {
         lc_dirAdd(dir, dirent->di_ino, dirent->di_mode,
                    dirent->di_name, dirent->di_size);
         dirent = dirent->di_next;
     }
-    dir->i_dirdirty = true;
+    dir->i_flags |= LC_INODE_DIRDIRTY;
 }
 
 /* Free a dirent structure */
@@ -78,7 +78,7 @@ lc_dirRemove(struct inode *dir, const char *name) {
     struct fs *fs;
 
     assert(S_ISDIR(dir->i_dinode.di_mode));
-    assert(!dir->i_shared);
+    assert(!(dir->i_flags & LC_INODE_SHARED));
     while (dirent != NULL) {
         if ((len == dirent->di_size) &&
             (strcmp(name, dirent->di_name) == 0)) {
@@ -106,7 +106,7 @@ lc_dirRename(struct inode *dir, ino_t ino,
     struct fs *fs;
 
     assert(S_ISDIR(dir->i_dinode.di_mode));
-    assert(!dir->i_shared);
+    assert(!(dir->i_flags & LC_INODE_SHARED));
     while (dirent != NULL) {
         if ((dirent->di_ino == ino) &&(len == dirent->di_size) &&
             (strcmp(name, dirent->di_name) == 0)) {
@@ -221,8 +221,8 @@ lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
     char *dbuf = NULL;
 
     assert(S_ISDIR(dir->i_dinode.di_mode));
-    if (dir->i_removed) {
-        dir->i_dirdirty = false;
+    if (dir->i_flags & LC_INODE_REMOVED) {
+        dir->i_flags &= ~LC_INODE_DIRDIRTY;
         return;
     }
     while (dirent) {
@@ -261,8 +261,8 @@ lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
     assert(dir->i_dinode.di_nlink == subdir);
     dir->i_dinode.di_blocks = count;
     dir->i_dinode.di_size = count * LC_BLOCK_SIZE;
-    dir->i_dirdirty = false;
-    dir->i_dirty = true;
+    dir->i_flags &= ~LC_INODE_DIRDIRTY;
+    dir->i_flags |= LC_INODE_DIRTY;
 }
 
 /* Free directory entries */
@@ -271,7 +271,7 @@ lc_dirFree(struct inode *dir) {
     struct dirent *dirent = dir->i_dirent, *tmp;
     struct fs *fs;
 
-    if (dir->i_shared) {
+    if (dir->i_flags & LC_INODE_SHARED) {
         dir->i_dirent = NULL;
         return;
     }

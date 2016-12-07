@@ -33,7 +33,7 @@ lc_inodeBmapAlloc(struct inode *inode) {
 /* Add a bmap entry to the inode */
 void
 lc_inodeBmapAdd(struct inode *inode, uint64_t page, uint64_t block) {
-    assert(!inode->i_shared);
+    assert(!(inode->i_flags & LC_INODE_SHARED));
     assert(inode->i_extentLength == 0);
     assert(page < inode->i_bcount);
     if (inode->i_bmap[page] == 0) {
@@ -74,7 +74,7 @@ lc_expandBmap(struct inode *inode) {
     inode->i_extentBlock = 0;
     inode->i_extentLength = 0;
     assert(inode->i_dinode.di_blocks == inode->i_bcount);
-    inode->i_bmapdirty = true;
+    inode->i_flags |= LC_INODE_BMAPDIRTY;
 }
 
 /* Create a new bmap hash table for the inode, copying existing bmap table */
@@ -90,7 +90,7 @@ lc_copyBmap(struct inode *inode) {
     assert(inode->i_dinode.di_blocks <= inode->i_bcount);
     inode->i_bmap= lc_malloc(inode->i_fs, size, LC_MEMTYPE_BMAP);
     memcpy(inode->i_bmap, bmap, size);
-    inode->i_shared = false;
+    inode->i_flags &= ~LC_INODE_SHARED;
 }
 
 
@@ -129,14 +129,14 @@ lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     assert(S_ISREG(inode->i_dinode.di_mode));
 
     /* If the file removed, nothing to write */
-    if (inode->i_removed) {
+    if (inode->i_flags & LC_INODE_REMOVED) {
         assert(inode->i_bmap == NULL);
         assert(inode->i_page == NULL);
         assert(inode->i_dpcount == 0);
-        inode->i_bmapdirty = false;
+        inode->i_flags &= ~LC_INODE_BMAPDIRTY;
         return;
     }
-    if (inode->i_shared) {
+    if (inode->i_flags & LC_INODE_SHARED) {
         lc_copyBmap(inode);
     }
     lc_flushPages(gfs, fs, inode, true);
@@ -177,8 +177,8 @@ lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         lc_replaceMetaBlocks(fs, &inode->i_bmapDirExtents, block, pcount);
     }
     inode->i_bmapDirBlock = block;
-    inode->i_bmapdirty = false;
-    inode->i_dirty = true;
+    inode->i_flags &= ~LC_INODE_BMAPDIRTY;
+    inode->i_flags |= LC_INODE_DIRTY;
 }
 
 /* Read bmap blocks of a file and initialize page list */

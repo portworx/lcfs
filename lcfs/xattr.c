@@ -342,7 +342,7 @@ lc_xattrCopy(struct inode *inode, struct inode *parent) {
         xattr = xattr->x_next;
     }
     inode->i_xsize = parent->i_xsize;
-    inode->i_xattrdirty = true;
+    inode->i_flags |= LC_INODE_XATTRDIRTY;
 }
 
 /* Allocate a block and flush extended attributes */
@@ -392,8 +392,8 @@ lc_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     struct dxattr *dxattr;
     char *xbuf = NULL;
 
-    if (inode->i_removed) {
-        inode->i_xattrdirty = false;
+    if (inode->i_flags & LC_INODE_REMOVED) {
+        inode->i_flags &= ~LC_INODE_XATTRDIRTY;
         return;
     }
     while (xattr) {
@@ -430,8 +430,8 @@ lc_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     }
     assert(size == 0);
     inode->i_xattrBlock = block;
-    inode->i_xattrdirty = false;
-    inode->i_dirty = true;
+    inode->i_flags &= ~LC_INODE_XATTRDIRTY;
+    inode->i_flags |= LC_INODE_DIRTY;
 }
 
 /* Read extended attributes */

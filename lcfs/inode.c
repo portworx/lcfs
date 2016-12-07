@@ -79,6 +79,7 @@ lc_addInode(struct fs *fs, struct inode *inode) {
     inode->i_fs = fs;
 }
 
+/* Lookup an inode in the hash list */
 static struct inode *
 lc_lookupInodeCache(struct fs *fs, ino_t ino) {
     int hash = lc_inodeHash(fs, ino);
@@ -255,7 +256,7 @@ lc_freeInode(struct inode *inode) {
     } else if (S_ISDIR(inode->i_dinode.di_mode)) {
         lc_dirFree(inode);
     } else if (S_ISLNK(inode->i_dinode.di_mode)) {
-        if (!inode->i_shared) {
+        if (!(inode->i_flags & LC_INODE_SHARED)) {
             lc_free(fs, inode->i_target, inode->i_dinode.di_size + 1,
                     LC_MEMTYPE_SYMLINK);
         }
@@ -300,21 +301,19 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     bool written = false;
 
     assert(inode->i_fs == fs);
-    if (inode->i_xattrData && inode->i_xattrdirty) {
+    if (inode->i_flags & LC_INODE_XATTRDIRTY) {
         lc_xattrFlush(gfs, fs, inode);
     }
 
-    if (S_ISREG(inode->i_dinode.di_mode) && inode->i_bmapdirty) {
+    if (inode->i_flags & LC_INODE_BMAPDIRTY) {
         lc_bmapFlush(gfs, fs, inode);
-    }
-
-    if (inode->i_dirdirty) {
+    } else if (inode->i_flags & LC_INODE_DIRDIRTY) {
         lc_dirFlush(gfs, fs, inode);
     }
 
     /* Write out a dirty inode */
-    if (inode->i_dirty) {
-        if (inode->i_removed) {
+    if (inode->i_flags & LC_INODE_DIRTY) {
+        if (inode->i_flags & LC_INODE_REMOVED) {
             assert(inode->i_extentLength == 0);
 
             /* Free metadata blocks allocated to the inode */
@@ -333,7 +332,8 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         /* An removed inode with a disk copy, needs to be written out so that
          * it would be considered removed when the layer is remounted.
          */
-        if (!inode->i_removed || (inode->i_block != LC_INVALID_BLOCK)) {
+        if (!(inode->i_flags & LC_INODE_REMOVED) ||
+            (inode->i_block != LC_INVALID_BLOCK)) {
             if (inode->i_block == LC_INVALID_BLOCK) {
                 if ((fs->fs_inodeBlocks == NULL) ||
                     (fs->fs_inodeIndex >= LC_IBLOCK_MAX)) {
@@ -350,7 +350,8 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
                 fs->fs_inodeBlocks->ib_blks[fs->fs_inodeIndex++] = inode->i_block;
             }
             written = true;
-            assert(!inode->i_removed || (inode->i_dinode.di_nlink == 0));
+            assert(!(inode->i_flags & LC_INODE_REMOVED) ||
+                   (inode->i_dinode.di_nlink == 0));
 
             //lc_printf("Writing inode %ld to block %ld\n", inode->i_dinode.di_ino, inode->i_block);
             page = lc_getPageNewData(fs, inode->i_block);
@@ -371,7 +372,7 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
                 lc_flushInodePages(gfs, fs);
             }
         }
-        inode->i_dirty = false;
+        inode->i_flags &= ~LC_INODE_DIRTY;
     }
     return written ? 1 : 0;
 }
@@ -387,6 +388,12 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs) {
     for (i = 0; i < fs->fs_icacheSize; i++) {
         inode = fs->fs_icache[i].ic_head;
         while (inode && !fs->fs_removed) {
+            if ((inode->i_flags & LC_INODE_REMOVED) &&
+                S_ISREG(inode->i_dinode.di_mode) &&
+                inode->i_dinode.di_size) {
+                assert(lc_inodeDirty(inode));
+                lc_truncPages(inode, 0, true);
+            }
             if (lc_inodeDirty(inode)) {
                 count += lc_flushInode(gfs, fs, inode);
             }
@@ -419,7 +426,7 @@ lc_destroyInodes(struct fs *fs, bool remove) {
         //pthread_mutex_lock(&fs->fs_icache[i].ic_lock);
         while ((inode = fs->fs_icache[i].ic_head)) {
             fs->fs_icache[i].ic_head = inode->i_cnext;
-            if (!inode->i_removed) {
+            if (!(inode->i_flags & LC_INODE_REMOVED)) {
                 rcount++;
             }
             lc_freeInode(inode);
@@ -461,8 +468,7 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
             } else {
                 inode->i_bmap = parent->i_bmap;
                 inode->i_bcount = parent->i_bcount;
-                inode->i_bmapdirty = true;
-                inode->i_shared = true;
+                inode->i_flags |= (LC_INODE_BMAPDIRTY | LC_INODE_SHARED);
             }
         } else {
             inode->i_private = true;
@@ -470,18 +476,17 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
     } else if (S_ISDIR(inode->i_dinode.di_mode)) {
         if (parent->i_dirent) {
             inode->i_dirent = parent->i_dirent;
-            inode->i_shared = true;
-            inode->i_dirdirty = true;
+            inode->i_flags |= (LC_INODE_DIRDIRTY | LC_INODE_SHARED);
         }
     } else if (S_ISLNK(inode->i_dinode.di_mode)) {
         inode->i_target = parent->i_target;
-        inode->i_shared = true;
+        inode->i_flags |= LC_INODE_SHARED;
     }
     inode->i_parent = (parent->i_parent == parent->i_fs->fs_root) ?
                       fs->fs_root : parent->i_parent;
     lc_xattrCopy(inode, parent);
     lc_addInode(fs, inode);
-    inode->i_dirty = true;
+    inode->i_flags |= LC_INODE_DIRTY;
     __sync_add_and_fetch(&fs->fs_gfs->gfs_clones, 1);
     return inode;
 }
@@ -502,7 +507,7 @@ lc_getInodeParent(struct fs *fs, ino_t inum, bool copy) {
             if (parent != NULL) {
 
                 /* Do not clone if the inode is removed in a parent layer */
-                if (!parent->i_removed) {
+                if (!(parent->i_flags & LC_INODE_REMOVED)) {
 
                     /* Clone the inode only when modified */
                     if (copy) {

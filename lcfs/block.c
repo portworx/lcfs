@@ -493,12 +493,13 @@ lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount, bool remove) {
     if (unmount && extent) {
         fs->fs_aextents = NULL;
         assert(fs != lc_getGlobalFs(gfs));
-        lc_blockFreeExtents(fs, extent, remove, !remove, true);
+        fs->fs_freed += lc_blockFreeExtents(fs, extent, remove, !remove,
+                                            !remove);
 
         /* Free blocks used for extents earlier */
         if (fs->fs_dextents) {
             lc_blockFreeExtents(lc_getGlobalFs(gfs), fs->fs_dextents,
-                                true, false, false);
+                                true, false, true);
             fs->fs_dextents = NULL;
         }
     }

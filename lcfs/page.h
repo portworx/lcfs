@@ -29,8 +29,8 @@ struct pcache {
     struct page *pc_head;
 
     /* Count of pages in use */
-    uint64_t pc_pcount;
-};
+    uint32_t pc_pcount;
+} __attribute__((packed));
 
 
 /* Page structure used for caching a file system block */
@@ -43,10 +43,10 @@ struct page {
     uint64_t p_block;
 
     /* Reference count on this page */
-    uint64_t p_refCount;
+    uint32_t p_refCount;
 
     /* Page cache hitcount */
-    uint64_t p_hitCount;
+    uint32_t p_hitCount;
 
     /* Next page in block hash table */
     struct page *p_cnext;

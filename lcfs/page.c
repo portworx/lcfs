@@ -72,7 +72,7 @@ lc_flushDirtyInodeList(struct fs *fs) {
     }
     inode = fs->fs_dirtyInodes;
     while (inode && !fs->fs_removed) {
-        if (inode->i_removed) {
+        if (inode->i_flags & LC_INODE_REMOVED) {
             lc_removeDirtyInode(fs, inode, prev);
             tmp = inode;
             inode = inode->i_dnext;
@@ -213,7 +213,7 @@ lc_inodeAllocPages(struct inode *inode) {
     struct fs *fs = inode->i_fs;
     struct dpage *page;
 
-    assert(!inode->i_shared);
+    assert(!(inode->i_flags & LC_INODE_SHARED));
     lpage = (inode->i_dinode.di_size + LC_BLOCK_SIZE - 1) / LC_BLOCK_SIZE;
     if (inode->i_pcount <= lpage) {
 
@@ -269,7 +269,7 @@ lc_mergePage(struct inode *inode, uint64_t pg, char *data,
     assert(poffset < LC_BLOCK_SIZE);
     assert(psize > 0);
     assert(psize <= LC_BLOCK_SIZE);
-    assert(!inode->i_shared);
+    assert(!(inode->i_flags & LC_INODE_SHARED));
     assert(pg < inode->i_pcount);
 
     dpage = lc_findDirtyPage(inode, pg);
@@ -380,7 +380,7 @@ lc_addPages(struct inode *inode, off_t off, size_t size,
     }
 
     /* Copy page headers if page chain is shared */
-    if (inode->i_shared) {
+    if (inode->i_flags & LC_INODE_SHARED) {
         lc_copyBmap(inode);
     }
     lc_inodeAllocPages(inode);
@@ -467,7 +467,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
     char *pdata;
 
     assert(S_ISREG(inode->i_dinode.di_mode));
-    assert(!inode->i_shared);
+    assert(!(inode->i_flags & LC_INODE_SHARED));
 
     /* If inode does not have any pages, return */
     if ((inode->i_page == NULL) || (inode->i_dinode.di_size == 0)) {
@@ -683,7 +683,7 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
         assert(inode->i_bcount == 0);
         assert(inode->i_pcount == 0);
         assert(inode->i_page == NULL);
-        assert(!inode->i_shared);
+        assert(!(inode->i_flags & LC_INODE_SHARED));
         if (remove) {
             inode->i_private = true;
         }
@@ -691,14 +691,14 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
     }
 
     /* Copy bmap list before changing it */
-    if (inode->i_shared) {
+    if (inode->i_flags & LC_INODE_SHARED) {
         assert(inode->i_dpcount == 0);
         if (size == 0) {
             if (remove) {
                 inode->i_dinode.di_blocks = 0;
                 inode->i_extentBlock = 0;
                 inode->i_extentLength = 0;
-                inode->i_shared = false;
+                inode->i_flags &= ~LC_INODE_SHARED;
                 inode->i_private = true;
             }
             inode->i_page = NULL;
@@ -709,7 +709,7 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
         }
         lc_copyBmap(inode);
     }
-    assert(!inode->i_shared);
+    assert(!(inode->i_flags & LC_INODE_SHARED));
     fs = inode->i_fs;
     gfs = fs->fs_gfs;
 

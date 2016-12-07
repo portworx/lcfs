@@ -96,7 +96,7 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
         fs->fs_rfs = fs;
     } else {
         dir = fs->fs_rootInode;
-        dir->i_shared = true;
+        dir->i_flags |= LC_INODE_SHARED;
 
         /* Copy the parent root directory */
         pfs = lc_getfs(pinum, false);

@@ -52,7 +52,7 @@ create(struct fs *fs, ino_t parent, const char *name, mode_t mode,
         return ENOENT;
     }
     assert(S_ISDIR(dir->i_dinode.di_mode));
-    if (dir->i_shared) {
+    if (dir->i_flags & LC_INODE_SHARED) {
         lc_dirCopy(dir);
     }
     inode = lc_inodeInit(fs, mode, uid, gid, rdev, parent, target);
@@ -86,15 +86,15 @@ lc_truncate(struct inode *inode, off_t size) {
     if (size < inode->i_dinode.di_size) {
         lc_truncPages(inode, size, true);
     }
-    assert(!inode->i_shared);
+    assert(!(inode->i_flags & LC_INODE_SHARED));
     inode->i_dinode.di_size = size;
 }
 
 /* Remove an inode */
 int
 lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
-               void **fsp) {
-    bool removed = false;
+               void **inodep) {
+    bool removed = false, unlock = true;
     struct inode *inode;
 
     assert(S_ISDIR(dir->i_dinode.di_mode));
@@ -120,25 +120,30 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
         }
         assert(inode->i_dinode.di_nlink == 2);
         inode->i_dinode.di_nlink = 0;
-        inode->i_removed = true;
+        inode->i_flags |= LC_INODE_REMOVED;
         removed = true;
     } else {
         inode->i_dinode.di_nlink--;
 
         /* Flag a file as removed on last unlink */
         if (inode->i_dinode.di_nlink == 0) {
-
-            /* XXX This can be done in the background */
             if ((inode->i_ocount == 0) && S_ISREG(inode->i_dinode.di_mode)) {
-                lc_truncate(inode, 0);
+                if (inodep) {
+                    *inodep = inode;
+                    unlock = false;
+                } else {
+                    lc_truncate(inode, 0);
+                }
             }
-            inode->i_removed = true;
+            inode->i_flags |= LC_INODE_REMOVED;
             removed = true;
         }
     }
     lc_markInodeDirty(inode, true, rmdir, S_ISREG(inode->i_dinode.di_mode),
                       false);
-    lc_inodeUnlock(inode);
+    if (unlock) {
+        lc_inodeUnlock(inode);
+    }
     if (removed) {
         __sync_sub_and_fetch(&fs->fs_gfs->gfs_super->sb_inodes, 1);
     }
@@ -147,7 +152,8 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
 
 /* Remove a directory entry */
 static int
-lc_remove(struct fs *fs, ino_t parent, const char *name, bool rmdir) {
+lc_remove(struct fs *fs, ino_t parent, const char *name, void **inodep,
+          bool rmdir) {
     struct inode *dir;
     int err;
 
@@ -161,10 +167,10 @@ lc_remove(struct fs *fs, ino_t parent, const char *name, bool rmdir) {
         return ENOENT;
     }
     assert(S_ISDIR(dir->i_dinode.di_mode));
-    if (dir->i_shared) {
+    if (dir->i_flags & LC_INODE_SHARED) {
         lc_dirCopy(dir);
     }
-    err = lc_dirRemoveName(fs, dir, name, rmdir, NULL, lc_removeInode);
+    err = lc_dirRemoveName(fs, dir, name, rmdir, inodep, lc_removeInode);
     lc_inodeUnlock(dir);
     if (err) {
         if (err != EEXIST) {
@@ -427,6 +433,7 @@ lc_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
 /* Remove a file */
 static void
 lc_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
+    struct inode *inode = NULL;
     struct timeval start;
     struct fs *fs;
     int err;
@@ -434,8 +441,12 @@ lc_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
     lc_statsBegin(&start);
     lc_displayEntry(__func__, parent, 0, name);
     fs = lc_getfs(parent, false);
-    err = lc_remove(fs, parent, name, false);
+    err = lc_remove(fs, parent, name, (void **)&inode, false);
     fuse_reply_err(req, err);
+    if (inode) {
+        lc_truncate(inode, 0);
+        lc_inodeUnlock(inode);
+    }
     lc_statsAdd(fs, LC_UNLINK, err, &start);
     lc_unlock(fs);
 }
@@ -450,7 +461,7 @@ lc_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name) {
     lc_statsBegin(&start);
     lc_displayEntry(__func__, parent, 0, name);
     fs = lc_getfs(parent, false);
-    err = lc_remove(fs, parent, name, true);
+    err = lc_remove(fs, parent, name, NULL, true);
     fuse_reply_err(req, err);
     lc_statsAdd(fs, LC_RMDIR, err, &start);
     lc_unlock(fs);
@@ -533,7 +544,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
         err = ENOENT;
         goto out;
     }
-    if (sdir->i_shared) {
+    if (sdir->i_flags & LC_INODE_SHARED) {
         lc_dirCopy(sdir);
     }
     if (parent < newparent) {
@@ -547,7 +558,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
         }
         assert(S_ISDIR(tdir->i_dinode.di_mode));
     }
-    if (tdir && tdir->i_shared) {
+    if (tdir && (tdir->i_flags & LC_INODE_SHARED)) {
         lc_dirCopy(tdir);
     }
     lc_dirRemoveName(fs, tdir ? tdir : sdir, newname, false,
@@ -624,7 +635,7 @@ lc_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
     }
     assert(S_ISDIR(dir->i_dinode.di_mode));
     assert(dir->i_dinode.di_nlink >= 2);
-    if (dir->i_shared) {
+    if (dir->i_flags & LC_INODE_SHARED) {
         lc_dirCopy(dir);
     }
     inode = lc_getInode(fs, ino, NULL, true, true);
@@ -674,7 +685,7 @@ lc_openInode(struct fs *fs, fuse_ino_t ino, struct fuse_file_info *fi) {
     }
 
     /* Do not allow opening a removed inode */
-    if (inode->i_removed) {
+    if (inode->i_flags & LC_INODE_REMOVED) {
         lc_inodeUnlock(inode);
         lc_reportError(__func__, __LINE__, ino, ENOENT);
         return ENOENT;
@@ -799,12 +810,6 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
     assert(inode->i_ocount > 0);
     inode->i_ocount--;
 
-    /* Truncate a removed file on last close */
-    if ((inode->i_ocount == 0) && inode->i_removed &&
-        S_ISREG(inode->i_dinode.di_mode)) {
-        lc_truncate(inode, 0);
-    }
-
     /* Invalidate pages of shared files in kernel page cache */
     if (inval) {
         *inval = (inode->i_ocount == 0) && (inode->i_dinode.di_size > 0) &&
@@ -813,14 +818,20 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
     }
     fuse_reply_err(req, 0);
 
+    /* Truncate a removed file on last close */
+    if ((inode->i_ocount == 0) && (inode->i_flags & LC_INODE_REMOVED) &&
+        S_ISREG(inode->i_dinode.di_mode)) {
+        lc_truncate(inode, 0);
+    }
+
     /* Flush dirty pages of a file on last close */
-    if ((inode->i_ocount == 0) && S_ISREG(inode->i_dinode.di_mode) &&
-        inode->i_bmapdirty) {
+    if ((inode->i_ocount == 0) && (inode->i_flags & LC_INODE_BMAPDIRTY)) {
+        assert(S_ISREG(inode->i_dinode.di_mode));
         if (fs->fs_readOnly) {
 
             /* Inode bmap needs to be stable before an inode could be cloned */
             lc_bmapFlush(fs->fs_gfs, inode->i_fs, inode);
-        } else if (!inode->i_removed && inode->i_page &&
+        } else if (!(inode->i_flags & LC_INODE_REMOVED) && inode->i_page &&
                    (inode->i_dnext == NULL) &&
                    (fs->fs_dirtyInodesLast != inode)) {
             lc_addDirtyInode(fs, inode);
