@@ -176,34 +176,37 @@ struct iblock {
 };
 static_assert(sizeof(struct iblock) == LC_BLOCK_SIZE, "iblock size != LC_BLOCK_SIZE");
 
-/* Bmap block entry */
-struct bmap {
-    /* Offset */
-    uint64_t b_off;
+/* Emap block entry */
+struct emap {
+    /* Starting page offset */
+    uint64_t e_off;
 
-    /* Block number */
-    uint64_t b_block;
-};
-static_assert(sizeof(struct bmap) == 16, "bmap size != 16");
+    /* Starting block number */
+    uint64_t e_block;
+
+    /* Count of blocks */
+    uint32_t e_count;
+} __attribute__((packed));
+static_assert(sizeof(struct emap) == 20, "bmap size != 20");
 
 /* Number of bmap entries in a block */
-#define LC_BMAP_BLOCK ((LC_BLOCK_SIZE / sizeof(struct bmap)) - 1)
+#define LC_BMAP_BLOCK (LC_BLOCK_SIZE / sizeof(struct emap))
 
 /* Bmap block structure */
-struct bmapBlock {
+struct emapBlock {
     /* Magic number */
-    uint32_t bb_magic;
+    uint32_t eb_magic;
 
     /* Checksum */
-    uint32_t bb_crc;
+    uint32_t eb_crc;
 
     /* Next block */
-    uint64_t bb_next;
+    uint64_t eb_next;
 
-    /* Bmap entries in a block */
-    struct bmap bb_bmap[LC_BMAP_BLOCK];
+    /* Emap entries in a block */
+    struct emap eb_emap[LC_BMAP_BLOCK];
 };
-static_assert(sizeof(struct bmapBlock) == LC_BLOCK_SIZE, "bmapBlock size != LC_BLOCK_SIZE");
+static_assert(sizeof(struct emapBlock) == LC_BLOCK_SIZE, "bmapBlock size != LC_BLOCK_SIZE");
 
 /* Directory entry structure */
 struct ddirent {

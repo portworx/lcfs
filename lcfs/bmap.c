@@ -93,21 +93,20 @@ lc_copyBmap(struct inode *inode) {
     inode->i_flags &= ~LC_INODE_SHARED;
 }
 
-
-/* Allocate a bmap block and flush to disk */
+/* Allocate a emap block and flush to disk */
 static uint64_t
-lc_flushBmapBlocks(struct gfs *gfs, struct fs *fs,
+lc_flushEmapBlocks(struct gfs *gfs, struct fs *fs,
                    struct page *fpage, uint64_t pcount) {
     uint64_t count = pcount, block;
     struct page *page = fpage;
-    struct bmapBlock *bblock;
+    struct emapBlock *bblock;
 
     block = lc_blockAllocExact(fs, pcount, true, true);
     while (page) {
         count--;
         lc_addPageBlockHash(gfs, fs, page, block + count);
-        bblock = (struct bmapBlock *)page->p_data;
-        bblock->bb_next = (page == fpage) ?
+        bblock = (struct emapBlock *)page->p_data;
+        bblock->eb_next = (page == fpage) ?
                           LC_INVALID_BLOCK : block + count + 1;
         page = page->p_dnext;
     }
@@ -119,12 +118,12 @@ lc_flushBmapBlocks(struct gfs *gfs, struct fs *fs,
 /* Flush blockmap of an inode */
 void
 lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
-    uint64_t i, bcount = 0, pcount = 0;
+    uint64_t i, j, bcount = 0, pcount = 0;
     uint64_t block = LC_INVALID_BLOCK;
-    struct bmapBlock *bblock = NULL;
+    struct emapBlock *bblock = NULL;
     int count = LC_BMAP_BLOCK;
     struct page *page = NULL;
-    struct bmap *bmap;
+    struct emap *emap;
 
     assert(S_ISREG(inode->i_dinode.di_mode));
 
@@ -147,7 +146,7 @@ lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         bcount = inode->i_extentLength;
     }
 
-    /* Add bmap blocks with bmap entries */
+    /* Add emap blocks with emap entries */
     for (i = 0; i < inode->i_bcount; i++) {
         if (inode->i_bmap[i] == 0) {
             continue;
@@ -161,19 +160,33 @@ lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             count = 0;
         }
         bcount++;
-        bmap = &bblock->bb_bmap[count++];
-        bmap->b_off = i;
-        bmap->b_block = inode->i_bmap[i];
+        emap = &bblock->eb_emap[count++];
+        emap->e_off = i;
+        emap->e_block = inode->i_bmap[i];
+        emap->e_count = 1;
+        for (j = i + 1; j < inode->i_bcount; j++) {
+            if (inode->i_bmap[j] == 0) {
+                i++;
+                break;
+            }
+            if (inode->i_bmap[j] != (inode->i_bmap[j - 1] + 1)) {
+                break;
+            }
+            emap->e_count++;
+            bcount++;
+            i++;
+        }
+        //lc_printf("page %ld at block %ld count %d\n", emap->e_off, emap->e_block, emap->e_count);
     }
     assert(inode->i_dinode.di_blocks == bcount);
     if (bblock) {
         if (count < LC_BMAP_BLOCK) {
-            bblock->bb_bmap[count].b_block = 0;
+            bblock->eb_emap[count].e_block = 0;
         }
         page = lc_getPageNoBlock(gfs, fs, (char *)bblock, page);
     }
     if (pcount) {
-        block = lc_flushBmapBlocks(gfs, fs, page, pcount);
+        block = lc_flushEmapBlocks(gfs, fs, page, pcount);
         lc_replaceMetaBlocks(fs, &inode->i_bmapDirExtents, block, pcount);
     }
     inode->i_bmapDirBlock = block;
@@ -181,13 +194,13 @@ lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     inode->i_flags |= LC_INODE_DIRTY;
 }
 
-/* Read bmap blocks of a file and initialize page list */
+/* Read emap blocks of a file and initialize bmap list */
 void
 lc_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
              void *buf) {
-    struct bmapBlock *bblock = buf;
-    uint64_t i, bcount = 0;
-    struct bmap *bmap;
+    struct emapBlock *bblock = buf;
+    uint64_t i, j, bcount = 0;
+    struct emap *emap;
     uint64_t block;
 
     assert(S_ISREG(inode->i_dinode.di_mode));
@@ -209,18 +222,21 @@ lc_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
     inode->i_dinode.di_blocks = 0;
     block = inode->i_bmapDirBlock;
     while (block != LC_INVALID_BLOCK) {
-        //lc_printf("Reading bmap block %ld\n", block);
+        //lc_printf("Reading emap block %ld\n", block);
         lc_addExtent(gfs, fs, &inode->i_bmapDirExtents, block, 1);
         lc_readBlock(gfs, fs, block, bblock);
         for (i = 0; i < LC_BMAP_BLOCK; i++) {
-            bmap = &bblock->bb_bmap[i];
-            if (bmap->b_block == 0) {
+            emap = &bblock->eb_emap[i];
+            if (emap->e_block == 0) {
                 break;
             }
-            //lc_printf("page %ld at block %ld\n", bmap->b_off, bmap->b_block);
-            lc_inodeBmapAdd(inode, bmap->b_off, bmap->b_block);
+            assert(emap->e_count > 0);
+            //lc_printf("page %ld at block %ld count %d\n", emap->e_off, emap->e_block, emap->e_count);
+            for (j = 0; j < emap->e_count; j++) {
+                lc_inodeBmapAdd(inode, emap->e_off + j, emap->e_block + j);
+            }
         }
-        block = bblock->bb_next;
+        block = bblock->eb_next;
     }
     assert(inode->i_dinode.di_blocks == bcount);
 }
@@ -251,7 +267,7 @@ lc_bmapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
     if (remove && inode->i_extentLength) {
         assert(inode->i_bcount == 0);
 
-        /* If a page is partially truncated, expand bmap */
+        /* If a page is partially truncated, expand emap */
         if (size % LC_BLOCK_SIZE) {
             lc_expandBmap(inode);
         } else {
