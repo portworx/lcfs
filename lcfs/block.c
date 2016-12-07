@@ -515,19 +515,15 @@ void
 lc_freeLayerDataBlocks(struct fs *fs, uint64_t block, uint64_t count,
                        bool allocated) {
 
-    /* XXX Do not free blocks right now as pages may be still in the process of
-     * flushing.
-     */
-    if (0 && allocated) {
-        //lc_blockFree(gfs, fs, block, count, true);
-    } else {
-        //assert(fs != lc_getGlobalFs(fs->fs_gfs));
-        pthread_mutex_lock(&fs->fs_alock);
-        lc_addExtent(fs->fs_gfs, fs, &fs->fs_fextents, block, count);
-        pthread_mutex_unlock(&fs->fs_alock);
-    }
+    pthread_mutex_lock(&fs->fs_alock);
+    assert(allocated || (fs != lc_getGlobalFs(fs->fs_gfs)));
+    lc_addExtent(fs->fs_gfs, fs,
+                 allocated ? &fs->fs_fdextents : &fs->fs_fextents,
+                 block, count);
+    pthread_mutex_unlock(&fs->fs_alock);
 }
 
+/* Metadata extent for pending removal */
 void
 lc_freeLayerMetaBlocks(struct fs *fs, uint64_t block, uint64_t count) {
     pthread_mutex_lock(&fs->fs_alock);
@@ -567,12 +563,16 @@ lc_replaceMetaBlocks(struct fs *fs, struct extent **extents,
     }
 }
 
-/* Free metadata blocks allocated and freed in a layer */
+/* Free blocks allocated and freed in a layer */
 void
 lc_processFreedBlocks(struct fs *fs, bool remove) {
     if (fs->fs_fextents) {
         lc_blockFreeExtents(fs, fs->fs_fextents, remove, false, true);
         fs->fs_fextents = NULL;
+    }
+    if (fs->fs_fdextents) {
+        lc_blockFreeExtents(fs, fs->fs_fdextents, remove, false, true);
+        fs->fs_fdextents = NULL;
     }
     if (fs->fs_mextents) {
         lc_blockFreeExtents(fs, fs->fs_mextents, remove, false, true);

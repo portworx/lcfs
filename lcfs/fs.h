@@ -184,6 +184,9 @@ struct fs {
     /* Extents to be freed */
     struct extent *fs_fextents;
 
+    /* Extents to be freed after flushing done */
+    struct extent *fs_fdextents;
+
     /* Metadata extents to be freed */
     struct extent *fs_mextents;
 

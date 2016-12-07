@@ -288,7 +288,7 @@ out:
 static void
 lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
             int to_set, struct fuse_file_info *fi) {
-    bool ctime = false, mtime = false;
+    bool ctime = false, mtime = false, flush = false;
     struct inode *inode, *handle;
     struct timeval start;
     struct stat stbuf;
@@ -326,6 +326,8 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
         ctime = true;
     }
     if (to_set & FUSE_SET_ATTR_SIZE) {
+        flush = (attr->st_size < inode->i_dinode.di_size) &&
+                inode->i_private && inode->i_dinode.di_blocks;
         lc_truncate(inode, attr->st_size);
         mtime = true;
         ctime = true;
@@ -348,6 +350,9 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
 
 out:
     lc_statsAdd(fs, LC_SETATTR, err, &start);
+    if (flush && fs->fs_fdextents) {
+        lc_flushDirtyPages(fs->fs_gfs, fs);
+    }
     lc_unlock(fs);
 }
 
@@ -447,6 +452,7 @@ static void
 lc_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
     struct inode *inode = NULL;
     struct timeval start;
+    bool flush = false;
     struct fs *fs;
     int err;
 
@@ -456,10 +462,14 @@ lc_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
     err = lc_remove(fs, parent, name, (void **)&inode, false);
     fuse_reply_err(req, err);
     if (inode) {
+        flush = inode->i_private && inode->i_dinode.di_blocks;
         lc_truncate(inode, 0);
         lc_inodeUnlock(inode);
     }
     lc_statsAdd(fs, LC_UNLINK, err, &start);
+    if (flush && fs->fs_fdextents) {
+        lc_flushDirtyPages(fs->fs_gfs, fs);
+    }
     lc_unlock(fs);
 }
 

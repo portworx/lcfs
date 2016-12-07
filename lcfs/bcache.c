@@ -393,9 +393,16 @@ lc_addPageForWriteBack(struct gfs *gfs, struct fs *fs, struct page *head,
 /* Flush dirty pages of a file system before unmounting it */
 void
 lc_flushDirtyPages(struct gfs *gfs, struct fs *fs) {
+    struct extent *extents = NULL;
     struct page *page;
     uint64_t count;
 
+    if (fs->fs_fdextents) {
+        pthread_mutex_lock(&fs->fs_alock);
+        extents = fs->fs_fdextents;
+        fs->fs_fdextents = NULL;
+        pthread_mutex_unlock(&fs->fs_alock);
+    }
     if (fs->fs_dpcount && !fs->fs_removed) {
         pthread_mutex_lock(&fs->fs_plock);
         page = fs->fs_dpages;
@@ -406,6 +413,9 @@ lc_flushDirtyPages(struct gfs *gfs, struct fs *fs) {
         if (count) {
             lc_flushPageCluster(gfs, fs, page, count);
         }
+    }
+    if (extents) {
+        lc_blockFreeExtents(fs, extents, !fs->fs_removed, false, true);
     }
 }
 
