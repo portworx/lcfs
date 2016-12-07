@@ -100,6 +100,7 @@ struct ixattr {
 #define LC_INODE_XATTRDIRTY     0x08
 #define LC_INODE_REMOVED        0x10
 #define LC_INODE_SHARED         0x20
+#define LC_INODE_TMP            0x40
 
 /* Inode structure */
 struct inode {

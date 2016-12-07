@@ -24,8 +24,6 @@ lc_flushInodeDirtyPages(struct inode *inode, uint64_t page) {
         }
     }
     printf("Flushing pages of inode %ld\n", inode->i_dinode.di_ino);
-
-    /* XXX Avoid this for files in tmp directory */
     lc_flushPages(inode->i_fs->fs_gfs, inode->i_fs, inode, false);
 }
 
@@ -392,7 +390,8 @@ lc_addPages(struct inode *inode, off_t off, size_t size,
                               dpage->dp_psize);
 
         /* Flush dirty pages if the inode accumulated too many */
-        if (inode->i_dpcount >= LC_MAX_FILE_DIRTYPAGES) {
+        if ((inode->i_dpcount >= LC_MAX_FILE_DIRTYPAGES) &&
+            !(inode->i_flags & LC_INODE_TMP)) {
             lc_flushInodeDirtyPages(inode, page);
         }
         page++;

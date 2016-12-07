@@ -18,6 +18,9 @@ struct gfs {
     /* Inode mapping to gfs_snap_root */
     struct inode *gfs_snap_rootInode;
 
+    /* Inode of tmp directory */
+    ino_t gfs_tmp_root;
+
     /* List of file system roots */
     ino_t *gfs_roots;
 

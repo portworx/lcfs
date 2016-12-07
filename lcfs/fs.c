@@ -442,6 +442,11 @@ lc_setupSpecialInodes(struct gfs *gfs, struct fs *fs) {
     struct inode *dir = fs->fs_rootInode;
     ino_t ino;
 
+    ino = lc_dirLookup(fs, dir, "tmp");
+    if (ino != LC_INVALID_INODE) {
+        gfs->gfs_tmp_root = ino;
+        printf("tmp root %ld\n", ino);
+    }
     ino = lc_dirLookup(fs, dir, "lcfs");
     if (ino != LC_INVALID_INODE) {
         gfs->gfs_snap_rootInode = lc_getInode(lc_getGlobalFs(gfs), ino,

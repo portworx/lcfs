@@ -39,12 +39,17 @@ static int
 create(struct fs *fs, ino_t parent, const char *name, mode_t mode,
        uid_t uid, gid_t gid, dev_t rdev, const char *target,
        struct fuse_file_info *fi, struct fuse_entry_param *ep) {
+    struct gfs *gfs = fs->fs_gfs;
     struct inode *dir, *inode;
     ino_t ino;
 
     if (fs->fs_frozen) {
         lc_reportError(__func__, __LINE__, parent, EROFS);
         return EROFS;
+    }
+    if (!lc_hasSpace(gfs, fs->fs_pcount + 1)) {
+        lc_reportError(__func__, __LINE__, parent, ENOSPC);
+        return ENOSPC;
     }
     dir = lc_getInode(fs, parent, NULL, true, true);
     if (dir == NULL) {
@@ -68,6 +73,10 @@ create(struct fs *fs, ino_t parent, const char *name, mode_t mode,
     if (fi) {
         inode->i_ocount++;
         fi->fh = (uint64_t)inode;
+    }
+    if ((dir->i_flags & LC_INODE_TMP) ||
+        (dir->i_dinode.di_ino == gfs->gfs_tmp_root)) {
+        inode->i_flags |= LC_INODE_TMP;
     }
     lc_markInodeDirty(inode, true, false, false, false);
     lc_markInodeDirty(dir, true, true, false, false);
@@ -424,6 +433,9 @@ lc_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
         global = lc_getInodeHandle(parent) == LC_ROOT_INODE;
         if (global && (strcmp(name, "lcfs") == 0)) {
             lc_setSnapshotRoot(gfs, e.ino);
+        } else if (global && (strcmp(name, "tmp") == 0)) {
+            gfs->gfs_tmp_root = e.ino;
+            printf("tmp root %ld\n", e.ino);
         }
     }
     lc_statsAdd(fs, LC_MKDIR, err, &start);
@@ -831,8 +843,8 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
 
             /* Inode bmap needs to be stable before an inode could be cloned */
             lc_bmapFlush(fs->fs_gfs, inode->i_fs, inode);
-        } else if (!(inode->i_flags & LC_INODE_REMOVED) && inode->i_page &&
-                   (inode->i_dnext == NULL) &&
+        } else if (!(inode->i_flags & (LC_INODE_REMOVED | LC_INODE_TMP)) &&
+                   inode->i_page && (inode->i_dnext == NULL) &&
                    (fs->fs_dirtyInodesLast != inode)) {
             lc_addDirtyInode(fs, inode);
         }
@@ -1174,7 +1186,7 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
     /* Copy in the data before taking the lock */
     pcount = lc_copyPages(fs, off, size, dpages, bufv, dst);
     reserved = __sync_add_and_fetch(&fs->fs_pcount, pcount);
-    if (!lc_hasSpace(getfs(), reserved)) {
+    if (!lc_hasSpace(fs->fs_gfs, reserved)) {
         lc_reportError(__func__, __LINE__, ino, ENOSPC);
         fuse_reply_err(req, ENOSPC);
         err = ENOSPC;

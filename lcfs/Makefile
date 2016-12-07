@@ -1,6 +1,6 @@
 CC=gcc
 CFLAGS=-O3 -Wall $ `pkg-config fuse --cflags --libs`
-OBJ=lcfs.o fops.o super.o io.o block.o fs.o inode.o dir.o bmap.o bcache.o page.o xattr.o clone.o stats.o
+OBJ=lcfs.o memory.o fops.o super.o io.o block.o fs.o inode.o dir.o bmap.o bcache.o page.o xattr.o clone.o stats.o
 
 all: lcfs cstat
 
