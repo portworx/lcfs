@@ -25,7 +25,7 @@
 #include "memory.h"
 #include "inode.h"
 #include "fs.h"
-#include "block.h"
+#include "extent.h"
 #include "page.h"
 #include "stats.h"
 #include "inlines.h"
@@ -45,11 +45,18 @@ int lc_writeBlock(struct gfs *gfs, struct fs *fs, void *buf, off_t block);
 int lc_writeBlocks(struct gfs *gfs, struct fs *fs,
                     struct iovec *iov, int iovcnt, off_t block);
 
+void lc_addExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
+                  uint64_t start, uint64_t block, uint64_t count);
+uint64_t lc_removeExtent(struct fs *fs, struct extent **extents,
+                         uint64_t start, uint64_t count);
+void lc_freeExtent(struct gfs *gfs, struct fs *fs, struct extent *extent,
+                   struct extent *prev, struct extent **extents, bool layer);
+
 void lc_blockAllocatorInit(struct gfs *gfs, struct fs *fs);
 void lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs);
 bool lc_hasSpace(struct gfs *gfs, uint64_t blocks);
-void lc_addExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
-                  uint64_t block, uint64_t count);
+void lc_addSpaceExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
+                       uint64_t start, uint64_t count);
 void lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount,
                         bool remove);
 uint64_t lc_blockAlloc(struct fs *fs, uint64_t count, bool meta, bool reserve);
@@ -122,15 +129,17 @@ int lc_dirRemoveName(struct fs *fs, struct inode *dir,
                                  bool, void **));
 void lc_dirFree(struct inode *dir);
 
-uint64_t lc_inodeBmapLookup(struct inode *inode, uint64_t page);
-void lc_copyBmap(struct inode *inode);
-void lc_expandBmap(struct inode *inode);
-void lc_inodeBmapAlloc(struct inode *inode);
-void lc_inodeBmapAdd(struct inode *inode, uint64_t page, uint64_t block);
-void lc_bmapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode);
-void lc_bmapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
+uint64_t lc_inodeEmapLookup(struct gfs *gfs, struct inode *inode,
+                            uint64_t page);
+void lc_copyEmap(struct gfs *gfs, struct fs *fs, struct inode *inode);
+void lc_expandEmap(struct gfs *gfs, struct fs *fs, struct inode *inode);
+void lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
+                        uint64_t page, uint64_t block,
+                        struct extent **extents);
+void lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode);
+void lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
                  void *buf);
-void lc_bmapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
+void lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
                      size_t size, uint64_t pg, bool remove, bool *truncated);
 void lc_freeInodeDataBlocks(struct fs *fs, struct inode *inode,
                             struct extent **extents);

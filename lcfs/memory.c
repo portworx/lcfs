@@ -12,7 +12,6 @@ static const char *mrequests[] = {
     "SYMLINK",
     "PCACHE",
     "ILOCK",
-    "BMAP",
     "EXTENT",
     "BLOCK",
     "PAGE",

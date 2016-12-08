@@ -226,19 +226,19 @@ as chain and the chain is linked from the inode.  For regular files, additional
 blocks are allocated for storing data and linked from the inode.  When a file
 gets fragmented, i.e. when whole file data could not be stored contiguously on
 disk, then additional blocks are allocated to track file page offsets and
-corresponding disk locations where data is stored.  Such blocks, called bmap
-blocks are linked from the inode as well.   If the file has extended attributes,
-those are stored in additional blocks and linked from the inode as well.
-As of now, directories, bmap blocks and extended attribute blocks are keeping
-entries as a sequential list and those should be switched to use better data
-structures like B-trees etc in future.
+corresponding disk locations where data is stored, in extent format.
+Such blocks, called emap blocks are linked from the inode as well.
+If the file has extended attributes, those are stored in additional blocks and
+linked from the inode as well.  As of now, directories, emap blocks and
+extended attribute blocks are keeping entries as a sequential list and those
+should be switched to use better data structures like B-trees etc in future.
 
 All the inodes in a layer can be reached from the superblock of the layer.
 Every inode block is tracked in blocks linked from the superblock.
 Inodes are not stored in any particular oder on disk and inodes have their
 inode number within the inode.
 
-All metadata (superblocks, inodes, directories, bmap, extended attributes etc) are
+All metadata (superblocks, inodes, directories, emap, extended attributes etc) are
 cached in memory always (this may change in future).  They are read from disk when
 file system is mounted and written out when file system is unmounted.
 
@@ -369,7 +369,7 @@ Currently, ioctls are supported only on the snapshot root directory.
 Copying Up(COW, Redirect-On-Write)
 
 When a shared file is modified in a layer, its metadata is copied up
-completely which includes the inode, whole directory or whole bmap depending
+completely which includes the inode, whole directory or whole emap depending
 on the type of file, all the extended attributes etc). Shared metadata may
 still be shared in cache, but separate copies are made on disk when dirty inode
 is flushed to disk.
@@ -385,7 +385,7 @@ the file, thus individual pages of the files are not copied up.
 
 Caching
 
-As of now, all metadata (inodes, directories, bmap, extended attributes etc),
+As of now, all metadata (inodes, directories, emap, extended attributes etc),
 stay in memory until the layer is unmounted or layer/file is deleted.
 There is no upper limit on how many of those could be cached. Actual amount of
 metadata is cached, not page aligned metadata.
@@ -408,8 +408,8 @@ by the page number, for recently written/modified pages, if the file was
 recently modified.  These pages are written out when the file is closed in
 read-only layers, when a file accumulate too many dirty pages, when a layer
 accumulate too many files with dirty pages or when the file system
-unmounted/persisted.  Also each regular file inode maintains a
-bmap table indexed by the page number, if the file is fragmented on disk.
+unmounted/persisted.  Also each regular file inode maintains a list of
+extents to track emap of the file, if the file is fragmented on disk.
 
 Blocks can be cached in chunks of size 4KB, called pages in block cache.
 Pages are cached until layer is unmounted or layer is deleted.  This block

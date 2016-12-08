@@ -143,7 +143,7 @@ lc_dirRename(struct inode *dir, ino_t ino,
 /* Read a directory from disk */
 void
 lc_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf) {
-    uint64_t block = dir->i_bmapDirBlock;
+    uint64_t block = dir->i_emapDirBlock;
     int remain, dsize, count = 2;
     struct ddirent *ddirent;
     struct dblock *dblock = buf;
@@ -151,7 +151,7 @@ lc_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf) {
 
     assert(S_ISDIR(dir->i_dinode.di_mode));
     while (block != LC_INVALID_BLOCK) {
-        lc_addExtent(gfs, fs, &dir->i_bmapDirExtents, block, 1);
+        lc_addSpaceExtent(gfs, fs, &dir->i_emapDirExtents, block, 1);
         lc_readBlock(gfs, fs, block, dblock);
         dbuf = (char *)&dblock->db_dirent[0];
         remain = LC_BLOCK_SIZE - sizeof(struct dblock);
@@ -255,9 +255,9 @@ lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
     }
     if (count) {
         block = lc_dirFlushBlocks(gfs, fs, page, count);
-        lc_replaceMetaBlocks(fs, &dir->i_bmapDirExtents, block, count);
+        lc_replaceMetaBlocks(fs, &dir->i_emapDirExtents, block, count);
     }
-    dir->i_bmapDirBlock = block;
+    dir->i_emapDirBlock = block;
     assert(dir->i_dinode.di_nlink == subdir);
     dir->i_dinode.di_blocks = count;
     dir->i_dinode.di_size = count * LC_BLOCK_SIZE;

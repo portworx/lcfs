@@ -34,7 +34,7 @@ lc_newInode(struct fs *fs, bool reg, bool new) {
                                           sizeof(struct inode));
     }
     inode->i_block = LC_INVALID_BLOCK;
-    inode->i_bmapDirBlock = LC_INVALID_BLOCK;
+    inode->i_emapDirBlock = LC_INVALID_BLOCK;
     inode->i_xattrBlock = LC_INVALID_BLOCK;
     pthread_rwlock_init(&inode->i_rwlock, NULL);
     if (new) {
@@ -208,7 +208,7 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
             inode->i_block = iblock;
             lc_addInode(fs, inode);
             if (S_ISREG(inode->i_dinode.di_mode)) {
-                lc_bmapRead(gfs, fs, inode, ibuf);
+                lc_emapRead(gfs, fs, inode, ibuf);
             } else if (S_ISDIR(inode->i_dinode.di_mode)) {
                 lc_dirRead(gfs, fs, inode, ibuf);
             } else if (S_ISLNK(inode->i_dinode.di_mode)) {
@@ -249,8 +249,7 @@ lc_freeInode(struct inode *inode) {
     if (S_ISREG(inode->i_dinode.di_mode)) {
         lc_truncPages(inode, 0, false);
         assert(inode->i_page == NULL);
-        assert(inode->i_bmap == NULL);
-        assert(inode->i_bcount == 0);
+        assert(inode->i_emap == NULL);
         assert(inode->i_pcount == 0);
         assert(inode->i_dpcount == 0);
     } else if (S_ISDIR(inode->i_dinode.di_mode)) {
@@ -265,7 +264,7 @@ lc_freeInode(struct inode *inode) {
     lc_xattrFree(inode);
     assert(inode->i_xattrData == NULL);
     pthread_rwlock_destroy(&inode->i_rwlock);
-    lc_blockFreeExtents(fs, inode->i_bmapDirExtents, false, false, true);
+    lc_blockFreeExtents(fs, inode->i_emapDirExtents, false, false, true);
     if (S_ISREG(inode->i_dinode.di_mode)) {
         size += sizeof(struct rdata);
     }
@@ -305,8 +304,8 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         lc_xattrFlush(gfs, fs, inode);
     }
 
-    if (inode->i_flags & LC_INODE_BMAPDIRTY) {
-        lc_bmapFlush(gfs, fs, inode);
+    if (inode->i_flags & LC_INODE_EMAPDIRTY) {
+        lc_emapFlush(gfs, fs, inode);
     } else if (inode->i_flags & LC_INODE_DIRDIRTY) {
         lc_dirFlush(gfs, fs, inode);
     }
@@ -317,10 +316,10 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             assert(inode->i_extentLength == 0);
 
             /* Free metadata blocks allocated to the inode */
-            lc_blockFreeExtents(fs, inode->i_bmapDirExtents,
+            lc_blockFreeExtents(fs, inode->i_emapDirExtents,
                                 true, false, true);
-            inode->i_bmapDirExtents = NULL;
-            inode->i_bmapDirBlock = LC_INVALID_BLOCK;
+            inode->i_emapDirExtents = NULL;
+            inode->i_emapDirBlock = LC_INVALID_BLOCK;
             if (inode->i_xattrData && inode->i_xattrExtents) {
                 lc_blockFreeExtents(fs, inode->i_xattrExtents,
                                     true, false, true);
@@ -466,9 +465,8 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
                 inode->i_extentBlock = parent->i_extentBlock;
                 inode->i_extentLength = parent->i_extentLength;
             } else {
-                inode->i_bmap = parent->i_bmap;
-                inode->i_bcount = parent->i_bcount;
-                inode->i_flags |= (LC_INODE_BMAPDIRTY | LC_INODE_SHARED);
+                inode->i_emap = parent->i_emap;
+                inode->i_flags |= (LC_INODE_EMAPDIRTY | LC_INODE_SHARED);
             }
         } else {
             inode->i_private = true;

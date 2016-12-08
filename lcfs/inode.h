@@ -53,11 +53,8 @@ struct rdata {
     /* Dirty pages */
     struct dpage *rd_page;
 
-    /* Block map */
-    uint64_t *rd_bmap;
-
-    /* Size of bmap array */
-    uint32_t rd_bcount;
+    /* Extent map */
+    struct extent *rd_emap;
 
     /* Size of page array */
     uint32_t rd_pcount;
@@ -87,7 +84,7 @@ struct ixattr {
     /* Extended attributes */
     struct xattr *xd_xattr;
 
-    /* Extents for bmap or directory blocks */
+    /* Extents for emap or directory blocks */
     struct extent *xd_xattrExtents;
 
     /* Size of extended attributes */
@@ -95,7 +92,7 @@ struct ixattr {
 } __attribute__((packed));
 
 #define LC_INODE_DIRTY          0x01
-#define LC_INODE_BMAPDIRTY      0x02
+#define LC_INODE_EMAPDIRTY      0x02
 #define LC_INODE_DIRDIRTY       0x04
 #define LC_INODE_XATTRDIRTY     0x08
 #define LC_INODE_REMOVED        0x10
@@ -123,8 +120,8 @@ struct inode {
     /* Next entry in the dirty list */
     struct inode *i_dnext;
 
-    /* Extents for bmap or directory blocks */
-    struct extent *i_bmapDirExtents;
+    /* Extents for emap or directory blocks */
+    struct extent *i_emapDirExtents;
 
     /* Optional extended attributes */
     struct ixattr *i_xattrData;
@@ -152,13 +149,12 @@ static_assert(sizeof(struct inode) == 234, "inode size != 234");
 #define i_parent        i_dinode.di_parent
 #define i_xattrBlock    i_dinode.di_xattr
 #define i_private       i_dinode.di_private
-#define i_bmapDirBlock  i_dinode.di_bmapdir
-#define i_extentBlock   i_dinode.di_bmapdir
+#define i_emapDirBlock  i_dinode.di_emapdir
+#define i_extentBlock   i_dinode.di_emapdir
 #define i_extentLength  i_dinode.di_extentLength
 
 #define i_page          i_rdata->rd_page
-#define i_bmap          i_rdata->rd_bmap
-#define i_bcount        i_rdata->rd_bcount
+#define i_emap          i_rdata->rd_emap
 #define i_pcount        i_rdata->rd_pcount
 #define i_dpcount       i_rdata->rd_dpcount
 
@@ -171,7 +167,7 @@ static_assert(sizeof(struct inode) == 234, "inode size != 234");
 
 /* Mark inode dirty for flushing to disk */
 static inline void
-lc_markInodeDirty(struct inode *inode, bool dirty, bool dir, bool bmap,
+lc_markInodeDirty(struct inode *inode, bool dirty, bool dir, bool emap,
                   bool xattr) {
     if (dirty) {
         inode->i_flags |= LC_INODE_DIRTY;
@@ -180,9 +176,9 @@ lc_markInodeDirty(struct inode *inode, bool dirty, bool dir, bool bmap,
         assert(S_ISDIR(inode->i_dinode.di_mode));
         inode->i_flags |= LC_INODE_DIRDIRTY;
     }
-    if (bmap) {
+    if (emap) {
         assert(S_ISREG(inode->i_dinode.di_mode));
-        inode->i_flags |= LC_INODE_BMAPDIRTY;
+        inode->i_flags |= LC_INODE_EMAPDIRTY;
     }
     if (xattr) {
         inode->i_flags |= LC_INODE_XATTRDIRTY;
@@ -193,7 +189,7 @@ lc_markInodeDirty(struct inode *inode, bool dirty, bool dir, bool bmap,
 static inline bool
 lc_inodeDirty(struct inode *inode) {
     return (inode->i_flags & (LC_INODE_DIRTY | LC_INODE_DIRDIRTY |
-                              LC_INODE_BMAPDIRTY | LC_INODE_XATTRDIRTY));
+                              LC_INODE_EMAPDIRTY | LC_INODE_XATTRDIRTY));
 }
 
 #endif

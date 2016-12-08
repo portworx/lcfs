@@ -16,7 +16,7 @@
 #define LC_FH_LAYER     48ul
 #define LC_FH_INODE     0x0000FFFFFFFFFFFFul
 
-#define LC_BMAP_MAGIC  0x6452FABC
+#define LC_EMAP_MAGIC  0x6452FABC
 #define LC_DIR_MAGIC   0x7FBD853A
 #define LC_XATTR_MAGIC 0xBDEF4389
 
@@ -142,10 +142,10 @@ struct dinode {
     /* change time */
     struct timespec di_ctime;
 
-    /* Starting block for bmap or directory */
-    uint64_t di_bmapdir;
+    /* Starting block for emap or directory */
+    uint64_t di_emapdir;
 
-    /* Length of extent if directly pointed by di_bmapdir */
+    /* Length of extent if directly pointed by di_emapdir */
     uint64_t di_extentLength;
 
     /* Block tracking extended attributes */
@@ -187,12 +187,12 @@ struct emap {
     /* Count of blocks */
     uint32_t e_count;
 } __attribute__((packed));
-static_assert(sizeof(struct emap) == 20, "bmap size != 20");
+static_assert(sizeof(struct emap) == 20, "emap size != 20");
 
-/* Number of bmap entries in a block */
-#define LC_BMAP_BLOCK (LC_BLOCK_SIZE / sizeof(struct emap))
+/* Number of emap entries in a block */
+#define LC_EMAP_BLOCK (LC_BLOCK_SIZE / sizeof(struct emap))
 
-/* Bmap block structure */
+/* Emap block structure */
 struct emapBlock {
     /* Magic number */
     uint32_t eb_magic;
@@ -204,9 +204,9 @@ struct emapBlock {
     uint64_t eb_next;
 
     /* Emap entries in a block */
-    struct emap eb_emap[LC_BMAP_BLOCK];
+    struct emap eb_emap[LC_EMAP_BLOCK];
 };
-static_assert(sizeof(struct emapBlock) == LC_BLOCK_SIZE, "bmapBlock size != LC_BLOCK_SIZE");
+static_assert(sizeof(struct emapBlock) == LC_BLOCK_SIZE, "emapBlock size != LC_BLOCK_SIZE");
 
 /* Directory entry structure */
 struct ddirent {

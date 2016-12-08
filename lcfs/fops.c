@@ -847,12 +847,12 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
     }
 
     /* Flush dirty pages of a file on last close */
-    if ((inode->i_ocount == 0) && (inode->i_flags & LC_INODE_BMAPDIRTY)) {
+    if ((inode->i_ocount == 0) && (inode->i_flags & LC_INODE_EMAPDIRTY)) {
         assert(S_ISREG(inode->i_dinode.di_mode));
         if (fs->fs_readOnly) {
 
-            /* Inode bmap needs to be stable before an inode could be cloned */
-            lc_bmapFlush(fs->fs_gfs, inode->i_fs, inode);
+            /* Inode emap needs to be stable before an inode could be cloned */
+            lc_emapFlush(fs->fs_gfs, inode->i_fs, inode);
         } else if (!(inode->i_flags & (LC_INODE_REMOVED | LC_INODE_TMP)) &&
                    inode->i_page && (inode->i_dnext == NULL) &&
                    (fs->fs_dirtyInodesLast != inode)) {
@@ -1287,7 +1287,7 @@ struct fuse_lowlevel_ops lc_ll_oper = {
 #if 0
     .getlk      = lc_getlk,
     .setlk      = lc_setlk,
-    .bmap       = lc_bmap,
+    .bmap       = lc_emap,
 #endif
     .ioctl      = lc_ioctl,
 #if 0
