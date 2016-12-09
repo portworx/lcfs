@@ -23,7 +23,7 @@ lc_flushInodeDirtyPages(struct inode *inode, uint64_t page) {
             return;
         }
     }
-    printf("Flushing pages of inode %ld\n", inode->i_dinode.di_ino);
+    printf("Flushing pages of inode %ld\n", inode->i_ino);
     lc_flushPages(inode->i_fs->fs_gfs, inode->i_fs, inode, false);
 }
 
@@ -517,7 +517,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
     } while ((block == LC_INVALID_BLOCK) && rcount);
     assert(block != LC_INVALID_BLOCK);
     if (bcount != rcount) {
-        lc_printf("File system fragmented. Inode %ld is fragmented\n", inode->i_dinode.di_ino);
+        lc_printf("File system fragmented. Inode %ld is fragmented\n", inode->i_ino);
         single = false;
     }
 
@@ -532,6 +532,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
         } else if (inode->i_emap) {
             extent = inode->i_emap;
             while (extent) {
+                assert(extent->ex_type == LC_EXTENT_EMAP);
                 lc_validateExtent(gfs, extent);
                 lc_addSpaceExtent(gfs, fs, &extents, lc_getExtentBlock(extent),
                                   lc_getExtentCount(extent));
@@ -585,6 +586,8 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
             page->p_dnext = dpage;
             dpage = page;
             if (!single) {
+
+                /* XXX Do this in one step for contiguous pages */
                 lc_inodeEmapUpdate(gfs, fs, inode, i, block + count, &extents);
             }
             count++;

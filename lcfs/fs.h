@@ -241,6 +241,9 @@ struct fs {
     /* Next index in inode block array */
     int fs_inodeIndex;
 
+    /* Next index in inode block */
+    uint8_t fs_inodeBlockIndex;
+
     /* Set if readOnly snapshot */
     bool fs_readOnly;
 

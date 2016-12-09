@@ -61,7 +61,7 @@ create(struct fs *fs, ino_t parent, const char *name, mode_t mode,
         lc_dirCopy(dir);
     }
     inode = lc_inodeInit(fs, mode, uid, gid, rdev, parent, target);
-    ino = inode->i_dinode.di_ino;
+    ino = inode->i_ino;
     lc_dirAdd(dir, ino, mode, name, strlen(name));
     if (S_ISDIR(mode)) {
         assert(inode->i_dinode.di_nlink >= 2);
@@ -75,7 +75,7 @@ create(struct fs *fs, ino_t parent, const char *name, mode_t mode,
         fi->fh = (uint64_t)inode;
     }
     if ((dir->i_flags & LC_INODE_TMP) ||
-        (dir->i_dinode.di_ino == gfs->gfs_tmp_root)) {
+        (dir->i_ino == gfs->gfs_tmp_root)) {
         inode->i_flags |= LC_INODE_TMP;
     }
     lc_markInodeDirty(inode, true, false, false, false);
@@ -114,7 +114,7 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
     }
     assert(inode->i_dinode.di_nlink);
     if (rmdir) {
-        assert(inode->i_parent == dir->i_dinode.di_ino);
+        assert(inode->i_parent == dir->i_ino);
 
         /* Allow directory removals from the root file system even when
          * directories are not empty.
@@ -669,7 +669,7 @@ lc_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
         goto out;
     }
     assert(S_ISREG(inode->i_dinode.di_mode));
-    lc_dirAdd(dir, inode->i_dinode.di_ino, inode->i_dinode.di_mode, newname,
+    lc_dirAdd(dir, inode->i_ino, inode->i_dinode.di_mode, newname,
                strlen(newname));
     lc_updateInodeTimes(dir, true, true);
     lc_markInodeDirty(dir, true, true, false, false);
@@ -827,7 +827,7 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
         return;
     }
     lc_inodeLock(inode, true);
-    assert(inode->i_dinode.di_ino == lc_getInodeHandle(ino));
+    assert(inode->i_ino == lc_getInodeHandle(ino));
     assert(inode->i_fs == fs);
     assert(inode->i_ocount > 0);
     inode->i_ocount--;

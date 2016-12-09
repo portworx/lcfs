@@ -291,7 +291,7 @@ lc_removeTree(struct fs *fs, struct inode *dir) {
     bool rmdir;
 
     while (dirent != NULL) {
-        lc_printf("lc_removeTree: dir %ld nlink %ld removing %s inode %ld dir %d\n", dir->i_dinode.di_ino, dir->i_dinode.di_nlink, dirent->di_name, dirent->di_ino, S_ISDIR(dirent->di_mode));
+        lc_printf("lc_removeTree: dir %ld nlink %ld removing %s inode %ld dir %d\n", dir->i_ino, dir->i_dinode.di_nlink, dirent->di_name, dirent->di_ino, S_ISDIR(dirent->di_mode));
         rmdir = S_ISDIR(dirent->di_mode);
         lc_removeInode(fs, dir, dirent->di_ino, rmdir, NULL);
         if (rmdir) {
@@ -313,7 +313,7 @@ lc_dirRemoveName(struct fs *fs, struct inode *dir,
                  int dremove(struct fs *, struct inode *, ino_t,
                              bool, void **)) {
     struct dirent *dirent = dir->i_dirent, *pdirent = NULL;
-    ino_t ino, parent = dir->i_dinode.di_ino;
+    ino_t ino, parent = dir->i_ino;
     struct gfs *gfs = fs->fs_gfs;
     int len = strlen(name), err;
 

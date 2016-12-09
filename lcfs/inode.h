@@ -146,6 +146,7 @@ struct inode {
 }  __attribute__((packed));
 static_assert(sizeof(struct inode) == 234, "inode size != 234");
 
+#define i_ino           i_dinode.di_ino
 #define i_parent        i_dinode.di_parent
 #define i_xattrBlock    i_dinode.di_xattr
 #define i_private       i_dinode.di_private

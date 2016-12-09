@@ -13,6 +13,7 @@ lc_inodeEmapExtentLookup(struct gfs *gfs, struct inode *inode, uint64_t page) {
     struct extent *extent = inode->i_emap;
 
     while (extent) {
+        assert(extent->ex_type == LC_EXTENT_EMAP);
         lc_validateExtent(gfs, extent);
         if (page < lc_getExtentStart(extent)) {
             break;
@@ -81,6 +82,7 @@ lc_copyEmap(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     assert(inode->i_extentLength == 0);
     inode->i_emap = NULL;
     while (extent) {
+        assert(extent->ex_type == LC_EXTENT_EMAP);
         lc_validateExtent(gfs, extent);
         lc_addEmapExtent(gfs, fs, &inode->i_emap, lc_getExtentStart(extent),
                          lc_getExtentBlock(extent), lc_getExtentCount(extent));
@@ -138,7 +140,7 @@ lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     extent = inode->i_emap;
     inode->i_emap = NULL;
     if (extent) {
-        lc_printf("File %ld fragmented\n", inode->i_dinode.di_ino);
+        lc_printf("File %ld fragmented\n", inode->i_ino);
     } else {
         block = inode->i_extentBlock;
         bcount = inode->i_extentLength;
@@ -202,7 +204,7 @@ lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
         assert(inode->i_extentBlock != 0);
         return;
     }
-    lc_printf("Inode %ld with fragmented extents %ld\n", inode->i_dinode.di_ino, inode->i_dinode.di_blocks);
+    lc_printf("Inode %ld with fragmented extents, blocks %ld\n", inode->i_ino, inode->i_dinode.di_blocks);
     bcount = inode->i_dinode.di_blocks;
     inode->i_dinode.di_blocks = 0;
     block = inode->i_emapDirBlock;
@@ -273,6 +275,7 @@ lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
         prev = NULL;
         extent = inode->i_emap;
         while (extent) {
+            assert(extent->ex_type == LC_EXTENT_EMAP);
             lc_validateExtent(gfs, extent);
             if (!remove) {
                 lc_freeExtent(gfs, fs, extent, NULL, &inode->i_emap, true);

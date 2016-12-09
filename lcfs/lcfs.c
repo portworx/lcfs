@@ -90,5 +90,6 @@ main(int argc, char *argv[]) {
     }
     lc_free(NULL, gfs, sizeof(struct gfs), LC_MEMTYPE_GFS);
     lc_displayGlobalMemStats();
+    printf("%s unmounted\n", argv[1]);
     return err ? 1 : 0;
 }

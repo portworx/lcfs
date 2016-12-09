@@ -81,6 +81,10 @@ lc_newInodeBlock(struct gfs *gfs, struct fs *fs) {
     if (fs->fs_inodeBlockCount >= LC_CLUSTER_SIZE) {
         lc_flushInodeBlocks(gfs, fs);
     }
+
+    /* Instantiate a new page and link the inode buffer to list of inode pages
+     * pending write.
+     */
     if (fs->fs_inodeBlocks != NULL) {
         fs->fs_inodeBlockPages = lc_getPageNoBlock(gfs, fs,
                                                    (char *)fs->fs_inodeBlocks,

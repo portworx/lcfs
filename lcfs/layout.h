@@ -159,6 +159,14 @@ struct dinode {
 } __attribute__((packed));
 static_assert(sizeof(struct dinode) == 117, "dinode size != 117");
 
+#define LC_DINODE_SIZE      128
+static_assert(sizeof(struct dinode) <= LC_DINODE_SIZE,
+              "dinode size > LC_DINODE_SIZE");
+#define LC_INODE_BLOCK_MAX  (LC_BLOCK_SIZE / LC_DINODE_SIZE)
+
+#define LC_DINODE_INDEX     48ul
+#define LC_DINODE_BLOCK     0x0000FFFFFFFFFFFFul
+
 #define LC_IBLOCK_MAX  ((LC_BLOCK_SIZE / sizeof(uint64_t)) - 2)
 /* Inode block table */
 struct iblock {

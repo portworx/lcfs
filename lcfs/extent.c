@@ -87,22 +87,19 @@ lc_freeExtent(struct gfs *gfs, struct fs *fs, struct extent *extent,
 /* Update extent after taking off the specified extent */
 static void
 lc_updateExtent(struct fs *fs, struct extent *extent, struct extent *prev,
+                struct extent **extents, uint64_t estart, uint64_t ecount,
                 uint64_t start, uint64_t freed) {
     struct gfs *gfs = fs->fs_gfs;
     struct extent *new;
-    uint64_t estart;
     bool release;
 
-    assert(lc_getExtentCount(extent) >= freed);
-    assert(start >= lc_getExtentStart(extent));
-    assert((start + freed) <=
-           (lc_getExtentStart(extent) + lc_getExtentCount(extent)));
-    assert(freed <= lc_getExtentCount(extent));
-    estart = lc_getExtentStart(extent);
+    assert(ecount >= freed);
+    assert(start >= estart);
+    assert((start + freed) <= (estart + ecount));
     if (estart == start) {
         lc_incrExtentStart(gfs, extent, freed);
         release = lc_decrExtentCount(gfs, extent, freed);
-    } else if ((start + freed) == (estart + lc_getExtentCount(extent))) {
+    } else if ((start + freed) == (estart + ecount)) {
         release = lc_decrExtentCount(gfs, extent, freed);
     } else {
 
@@ -110,7 +107,7 @@ lc_updateExtent(struct fs *fs, struct extent *extent, struct extent *prev,
         new = lc_malloc(fs, sizeof(struct extent), LC_MEMTYPE_EXTENT);
         lc_initExtent(gfs, new, extent->ex_type, start + freed,
                       lc_getExtentBlock(extent) + freed + 1,
-                      estart + lc_getExtentCount(extent) - (start + freed),
+                      estart + ecount - (start + freed),
                       extent->ex_next);
         release = lc_decrExtentCount(gfs, extent,
                                      freed + lc_getExtentCount(new));
@@ -119,7 +116,7 @@ lc_updateExtent(struct fs *fs, struct extent *extent, struct extent *prev,
     }
 
     if (release) {
-        lc_freeExtent(gfs, fs, extent, prev, &fs->fs_aextents, true);
+        lc_freeExtent(gfs, fs, extent, prev, extents, true);
     }
 }
 
@@ -128,21 +125,22 @@ uint64_t
 lc_removeExtent(struct fs *fs, struct extent **extents, uint64_t start,
                 uint64_t count) {
     struct extent *extent = *extents, *prev = NULL;
-    uint64_t freed = 0;
+    uint64_t estart, ecount, freed = 0;
 
     while (extent) {
-        if (start < lc_getExtentStart(extent)) {
+        estart = lc_getExtentStart(extent);
+        if (start < estart) {
             break;
         }
-        if ((start >= lc_getExtentStart(extent)) &&
-            (start < (lc_getExtentStart(extent) +
-                      lc_getExtentCount(extent)))) {
-            freed = (lc_getExtentStart(extent) +
-                     lc_getExtentCount(extent)) - start;
+        if ((start >= estart) &&
+            (start < (estart + lc_getExtentCount(extent)))) {
+            ecount = lc_getExtentCount(extent);
+            freed = (estart + ecount) - start;
             if (freed > count) {
                 freed = count;
             }
-            lc_updateExtent(fs, extent, prev, start, freed);
+            lc_updateExtent(fs, extent, prev, extents, estart, ecount,
+                            start, freed);
             break;
         }
         prev = extent;

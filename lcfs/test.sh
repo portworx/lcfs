@@ -1,3 +1,4 @@
+#!/bin/bash
 set -x
 
 MNT=/tmp/lcfs-testmountpoint
@@ -5,12 +6,14 @@ LCFS=$PWD/lcfs
 XATTR=$PWD/testxattr
 CSTAT=$PWD/cstat
 
-fusermount -u $MNT
-rm -fr $MNT
+fusermount -u $MNT 2>/dev/null
+umount -f $MNT 2>/dev/null
+fusermount -u $MNT 2>/dev/null
+rm -fr $MNT 2>/dev/null
 mkdir $MNT
 
 DEVICE=/tmp/lcfs-testdevice
-rm $DEVICE
+rm $DEVICE 2>/dev/null
 dd if=/dev/zero of=$DEVICE count=60000 bs=4096
 
 $LCFS $DEVICE $MNT -f &
@@ -124,6 +127,38 @@ rmdir $MNT/lcfs
 
 df -k $MNT
 df -i $MNT
+
+#Create a fragmented file spanning multiple emap blocks.
+#Create a directory spanning multiple blocks.
+cd $MNT
+mkdir dir
+set +x
+for (( i = 0; i < 500; i += 2 ))
+do
+    dd if=/dev/zero of=file conv=notrunc count=1 bs=4096 seek=$i 2&>/dev/null
+    touch dir/file$i
+done
+set -x
+cd -
+
+fusermount -u $MNT
+sleep 10
+
+$LCFS $DEVICE $MNT -f &
+sleep 10
+cd $MNT
+ls -ltRi > /dev/null
+stat file
+stat dir
+
+set +x
+for (( i = 0; i < 500; i += 2 ))
+do
+    dd if=/dev/zero of=file conv=notrunc count=1 bs=4096 seek=$i 2&>/dev/null
+    rm dir/file$i
+done
+set -x
+cd -
 
 fusermount -u $MNT
 sleep 10

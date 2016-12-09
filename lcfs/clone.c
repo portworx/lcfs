@@ -147,7 +147,7 @@ lc_removeLayer(struct fs *rfs, struct inode *dir, ino_t ino, bool rmdir,
     ino_t root;
 
     /* There should be a file system rooted on this directory */
-    root = lc_setHandle(lc_getIndex(rfs, dir->i_dinode.di_ino, ino), ino);
+    root = lc_setHandle(lc_getIndex(rfs, dir->i_ino, ino), ino);
     return lc_getfsForRemoval(rfs->fs_gfs, root, (struct fs **)fsp);
 }
 

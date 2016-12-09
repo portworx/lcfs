@@ -131,9 +131,9 @@ lc_blockFreeExtents(struct fs *fs, struct extent *extents,
 
     while (extent) {
         tmp = extent;
+        assert(extent->ex_type == LC_EXTENT_SPACE);
         lc_validateExtent(gfs, extent);
         if (flush) {
-            lc_validateExtent(gfs, extent);
             if (count >= LC_EXTENT_BLOCK) {
                 if (eblock) {
                     page = lc_getPageNoBlock(gfs, rfs, (char *)eblock, page);
@@ -409,6 +409,7 @@ lc_replaceMetaBlocks(struct fs *fs, struct extent **extents,
 
     assert((block + count) < gfs->gfs_super->sb_tblocks);
     while (extent) {
+        assert(extent->ex_type == LC_EXTENT_SPACE);
         lc_validateExtent(gfs, extent);
         lc_freeLayerMetaBlocks(fs, lc_getExtentStart(extent),
                                lc_getExtentCount(extent));
@@ -461,6 +462,7 @@ lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs) {
     /* Count the number of free extents to find number of blocks needed */
     extent = gfs->gfs_extents;
     while (extent) {
+        assert(extent->ex_type == LC_EXTENT_SPACE);
         lc_validateExtent(gfs, extent);
         count++;
         bcount += lc_getExtentCount(extent);
