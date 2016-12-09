@@ -140,14 +140,19 @@ lc_displayStats(struct fs *fs) {
     printf("\n\n");
 
 out:
-    if (fs->fs_blocks) {
-        printf("\tblocks allocated %ld freed %ld\n",
-               fs->fs_blocks, fs->fs_freed);
-    }
+    lc_displayFtypeStats(fs);
+    lc_displayAllocStats(fs);
     printf("\t%ld inodes %ld pages\n", fs->fs_icount, fs->fs_pcount);
     printf("\t%ld reads %ld writes (%ld inodes written)\n",
            fs->fs_reads, fs->fs_writes, fs->fs_iwrite);
     printf("\n\n");
+}
+
+/* Display stats of a layer */
+void
+lc_displayLayerStats(struct fs *fs) {
+    lc_displayMemStats(fs);
+    lc_displayStats(fs);
 }
 
 /* Display stats of all file systems */
@@ -162,8 +167,7 @@ lc_displayStatsAll(struct gfs *gfs) {
             if (i == 0) {
                 lc_displayGlobalMemStats();
             }
-            lc_displayMemStats(fs);
-            lc_displayStats(fs);
+            lc_displayLayerStats(fs);
         }
     }
     pthread_mutex_unlock(&gfs->gfs_lock);
@@ -197,6 +201,7 @@ lc_displayGlobalStats(struct gfs *gfs) {
 void
 lc_statsDeinit(struct fs *fs) {
     if (stats_enabled) {
+        lc_displayStats(fs);
         pthread_mutex_destroy(&fs->fs_stats->s_lock);
         lc_free(fs, fs->fs_stats, sizeof(struct stats), LC_MEMTYPE_STATS);
     }

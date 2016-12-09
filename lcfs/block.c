@@ -57,10 +57,14 @@ lc_findFreeBlock(struct gfs *gfs, struct fs *fs,
 
                 /* Update global usage */
                 gfs->gfs_super->sb_blocks += count;
-            } else if (fs != lc_getGlobalFs(gfs)) {
+            } else {
+                fs->fs_reservedBlocks -= count;
+                if (fs != lc_getGlobalFs(gfs)) {
 
-                /* Track allocated extents for a layer */
-                lc_addSpaceExtent(gfs, fs, &fs->fs_aextents, block, count);
+                    /* Track allocated extents for a layer */
+                    lc_addSpaceExtent(gfs, fs, &fs->fs_aextents, block, count);
+                    fs->fs_blocks += count;
+                }
             }
             assert(block < gfs->gfs_super->sb_tblocks);
             return block;
@@ -84,13 +88,14 @@ lc_findFreeBlock(struct gfs *gfs, struct fs *fs,
             if (fs != lc_getGlobalFs(gfs)) {
                 lc_addSpaceExtent(gfs, fs, &fs->fs_aextents, block, count);
             }
+            fs->fs_blocks += count;
 
             /* Add unused blocks to the free reserve */
             if (count < rsize) {
                 lc_addSpaceExtent(gfs, fs, &fs->fs_extents, block + count,
-                             rsize - count);
+                                  rsize - count);
+                fs->fs_reservedBlocks += rsize - count;
             }
-            fs->fs_blocks += rsize;
         }
     }
     return block;
@@ -228,6 +233,8 @@ lc_freeLayerExtent(struct fs *fs, uint64_t block, uint64_t count) {
         freed = lc_removeExtent(fs, &fs->fs_aextents, block, count);
         if (freed) {
             lc_addSpaceExtent(fs->fs_gfs, fs, &fs->fs_extents, block, freed);
+            fs->fs_freed += freed;
+            fs->fs_reservedBlocks += freed;
         } else {
             freed = 1;
         }
@@ -244,6 +251,22 @@ lc_blockLayerFree(struct gfs *gfs, struct fs *fs, uint64_t block,
         lc_freeLayerExtent(fs, block, count);
     } else {
         lc_addSpaceExtent(fs->fs_gfs, fs, &fs->fs_extents, block, count);
+        fs->fs_reservedBlocks += count;
+    }
+}
+
+/* Display allocation stats of the layer */
+void
+lc_displayAllocStats(struct fs *fs) {
+    if (fs->fs_blocks) {
+        printf("\tblocks allocated %ld freed %ld in use %ld\n",
+               fs->fs_blocks, fs->fs_freed, fs->fs_blocks - fs->fs_freed);
+    }
+    if (fs->fs_reservedBlocks || fs->fs_blockMetaCount ||
+        fs->fs_blockInodesCount) {
+        printf("\tReserved blocks %ld Metablocks %ld Inode Blocks %ld\n",
+               fs->fs_reservedBlocks, fs->fs_blockMetaCount,
+               fs->fs_blockInodesCount);
     }
 }
 
@@ -338,6 +361,7 @@ lc_blockFree(struct gfs *gfs, struct fs *fs, uint64_t block,
 void
 lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount, bool remove) {
     struct extent *extent;
+    uint64_t freed;
 
     /* Free unused blocks from the inode pool */
     if (fs->fs_blockInodesCount) {
@@ -373,8 +397,9 @@ lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount, bool remove) {
     }
 
     /* Release any unused reserved blocks */
-    fs->fs_freed += lc_blockFreeExtents(fs, fs->fs_extents,
-                                        true, false, false);
+    freed = lc_blockFreeExtents(fs, fs->fs_extents, true, false, false);
+    assert(fs->fs_reservedBlocks == freed);
+    fs->fs_reservedBlocks -= freed;
     fs->fs_extents = NULL;
 }
 

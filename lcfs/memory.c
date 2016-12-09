@@ -148,8 +148,9 @@ lc_displayMemStats(struct fs *fs) {
            fs, fs->fs_root, fs->fs_gindex, ctime(&now.tv_sec));
     for (i = LC_MEMTYPE_GFS + 1; i < LC_MEMTYPE_MAX; i++) {
         if (fs->fs_malloc[i]) {
-            printf("\t%s Allocated %ld Freed %ld\n",
-                   mrequests[i], fs->fs_malloc[i], fs->fs_free[i]);
+            printf("\t%s Allocated %ld Freed %ld in use %ld\n",
+                   mrequests[i], fs->fs_malloc[i], fs->fs_free[i],
+                   fs->fs_malloc[i] - fs->fs_free[i]);
         }
     }
     printf("\n\tTotal memory in use %ld bytes\n\n", fs->fs_memory);

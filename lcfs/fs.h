@@ -193,6 +193,9 @@ struct fs {
     /* Blocks currently used to store extents */
     struct extent *fs_dextents;
 
+    /* Blocks reserved */
+    uint64_t fs_reservedBlocks;
+
     /* Blocks reserved for Inodes */
     uint64_t fs_blockInodes;
 

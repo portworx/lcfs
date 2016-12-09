@@ -155,6 +155,7 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
     }
     if (removed) {
         __sync_sub_and_fetch(&fs->fs_gfs->gfs_super->sb_inodes, 1);
+        lc_updateFtypeStats(fs, inode->i_dinode.di_mode, false);
     }
     return 0;
 }

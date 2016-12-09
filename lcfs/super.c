@@ -7,6 +7,7 @@ lc_superInit(struct super *super, size_t size, bool global) {
     super->sb_magic = LC_SUPER_MAGIC;
     super->sb_inodeBlock = LC_INVALID_BLOCK;
     super->sb_extentBlock = LC_INVALID_BLOCK;
+    super->sb_ftypes[LC_FTYPE_DIRECTORY] = 1;
     if (global) {
         super->sb_root = LC_ROOT_INODE;
         super->sb_version = LC_VERSION;

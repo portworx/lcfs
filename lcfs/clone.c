@@ -236,8 +236,7 @@ lc_snapIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
         if (err == 0) {
             fs = lc_getfs(root, false);
             fuse_reply_ioctl(req, 0, NULL, 0);
-            lc_displayMemStats(fs);
-            lc_displayStats(fs);
+            lc_displayLayerStats(fs);
             if ((cmd == SNAP_UMOUNT) && fs->fs_readOnly) {
                 lc_sync(gfs, fs);
             }
@@ -255,7 +254,6 @@ lc_snapIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
         if (err == 0) {
             fuse_reply_ioctl(req, 0, NULL, 0);
             fs = lc_getfs(root, true);
-            lc_displayStats(fs);
             lc_statsDeinit(fs);
             lc_statsNew(fs);
             lc_unlock(fs);

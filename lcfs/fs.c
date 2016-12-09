@@ -127,7 +127,6 @@ lc_freeLayer(struct fs *fs, bool remove) {
         pthread_mutex_destroy(fs->fs_ilock);
         lc_free(fs, fs->fs_ilock, sizeof(pthread_mutex_t), LC_MEMTYPE_ILOCK);
     }
-    lc_displayStats(fs);
     lc_statsDeinit(fs);
     pthread_mutex_destroy(&fs->fs_dilock);
     pthread_mutex_destroy(&fs->fs_plock);
@@ -138,6 +137,7 @@ lc_freeLayer(struct fs *fs, bool remove) {
         lc_free(fs, fs->fs_super, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
         lc_displayMemStats(fs);
         lc_checkMemStats(fs);
+        lc_displayFtypeStats(fs);
         lc_free(NULL, fs, sizeof(struct fs), LC_MEMTYPE_GFS);
     }
 }
@@ -558,6 +558,7 @@ lc_sync(struct gfs *gfs, struct fs *fs) {
             fs->fs_super->sb_flags &= ~LC_SUPER_MOUNTED;
             lc_syncInodes(gfs, fs);
             lc_flushDirtyPages(gfs, fs);
+            //lc_displayAllocStats(fs);
             lc_processFreedBlocks(fs, true);
             lc_freeLayerBlocks(gfs, fs, false, false);
         }

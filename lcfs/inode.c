@@ -1,5 +1,7 @@
 #include "includes.h"
 
+static bool lc_ftypeStatsEnabled = true;
+
 /* Given an inode number, return the hash index */
 static inline int
 lc_inodeHash(struct fs *fs, ino_t ino) {
@@ -346,7 +348,9 @@ lc_freeInode(struct inode *inode) {
         lc_dirFree(inode);
     } else if (S_ISLNK(inode->i_dinode.di_mode)) {
         inode->i_target = NULL;
-        size += inode->i_dinode.di_size + 1;
+        if (!(inode->i_flags & LC_INODE_SHARED)) {
+            size += inode->i_dinode.di_size + 1;
+        }
     }
     lc_xattrFree(inode);
     assert(inode->i_xattrData == NULL);
@@ -630,6 +634,7 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
     lc_addInode(fs, inode);
     lc_markInodeDirty(inode, true, dir, emap, xattr);
     __sync_add_and_fetch(&fs->fs_gfs->gfs_clones, 1);
+    lc_updateFtypeStats(fs, inode->i_dinode.di_mode, true);
     return inode;
 }
 
@@ -716,6 +721,47 @@ lc_inodeAlloc(struct fs *fs) {
     return __sync_add_and_fetch(&fs->fs_gfs->gfs_super->sb_ninode, 1);
 }
 
+/* Update file type counts in super block */
+void
+lc_updateFtypeStats(struct fs *fs, mode_t mode, bool incr) {
+    enum lc_ftypes ftype, count;
+
+    if (!lc_ftypeStatsEnabled) {
+        return;
+    }
+    if (S_ISREG(mode)) {
+        ftype = LC_FTYPE_REGULAR;
+    } else if (S_ISDIR(mode)) {
+        ftype = LC_FTYPE_DIRECTORY;
+    } else if (S_ISLNK(mode)) {
+        ftype = LC_FTYPE_SYMBOLIC_LINK;
+    } else {
+        ftype = LC_FTYPE_OTHER;
+    }
+    if (incr) {
+        __sync_add_and_fetch(&fs->fs_super->sb_ftypes[ftype], 1);
+    } else {
+        count = __sync_fetch_and_sub(&fs->fs_super->sb_ftypes[ftype], 1);
+        assert(count > 0);
+    }
+}
+
+/* Display file type stats for the layer */
+void
+lc_displayFtypeStats(struct fs *fs) {
+    struct super *super;
+
+    if (!lc_ftypeStatsEnabled) {
+        return;
+    }
+    super = fs->fs_super;
+    printf("\tRegular files %ld Directories %ld Symbolic links %ld Other %ld\n",
+           super->sb_ftypes[LC_FTYPE_REGULAR],
+           super->sb_ftypes[LC_FTYPE_DIRECTORY],
+           super->sb_ftypes[LC_FTYPE_SYMBOLIC_LINK],
+           super->sb_ftypes[LC_FTYPE_OTHER]);
+}
+
 /* Initialize a newly allocated inode */
 struct inode *
 lc_inodeInit(struct fs *fs, mode_t mode, uid_t uid, gid_t gid,
@@ -730,6 +776,7 @@ lc_inodeInit(struct fs *fs, mode_t mode, uid_t uid, gid_t gid,
         inode->i_target[len] = 0;
     }
     lc_dinodeInit(inode, lc_inodeAlloc(fs), mode, uid, gid, rdev, len, parent);
+    lc_updateFtypeStats(fs, mode, true);
     lc_addInode(fs, inode);
     lc_inodeLock(inode, true);
     return inode;

@@ -25,6 +25,15 @@
 #define LC_SUPER_RDWR      0x00000002  // Layer is readwrite
 #define LC_SUPER_MOUNTED   0x00000004  // Layer is mounted
 
+/* File types */
+enum lc_ftypes {
+    LC_FTYPE_REGULAR,
+    LC_FTYPE_DIRECTORY,
+    LC_FTYPE_SYMBOLIC_LINK,
+    LC_FTYPE_OTHER,
+    LC_FTYPE_MAX,
+};
+
 /* File system superblock */
 struct super {
 
@@ -75,8 +84,11 @@ struct super {
     /* Version of the file system layout */
     uint32_t sb_version;
 
+    /* Count of file types */
+    uint64_t sb_ftypes[LC_FTYPE_MAX];
+
     /* Padding for filling up a block */
-    uint8_t  sb_pad[LC_BLOCK_SIZE - 100];
+    uint8_t  sb_pad[LC_BLOCK_SIZE - 132];
 } __attribute__((packed));
 static_assert(sizeof(struct super) == LC_BLOCK_SIZE, "superblock size != LC_BLOCK_SIZE");
 
@@ -168,6 +180,7 @@ static_assert(sizeof(struct dinode) <= LC_DINODE_SIZE,
 #define LC_DINODE_BLOCK     0x0000FFFFFFFFFFFFul
 
 #define LC_IBLOCK_MAX  ((LC_BLOCK_SIZE / sizeof(uint64_t)) - 2)
+
 /* Inode block table */
 struct iblock {
     /* Magic number */

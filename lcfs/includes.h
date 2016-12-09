@@ -74,6 +74,7 @@ uint64_t lc_blockFreeExtents(struct fs *fs, struct extent *extents,
 void lc_replaceMetaBlocks(struct fs *fs, struct extent **extents,
                           uint64_t block, uint64_t count);
 void lc_readExtents(struct gfs *gfs, struct fs *fs);
+void lc_displayAllocStats(struct fs *fs);
 
 void lc_superRead(struct gfs *gfs, struct fs *fs, uint64_t block);
 int lc_superWrite(struct gfs *gfs, struct fs *fs);
@@ -98,6 +99,8 @@ void lc_destroyFs(struct fs *fs, bool remove);
 void lc_icache_init(struct fs *fs, size_t size);
 void lc_icache_deinit(struct icache *icache);
 ino_t lc_inodeAlloc(struct fs *fs);
+void lc_updateFtypeStats(struct fs *fs, mode_t mode, bool incr);
+void lc_displayFtypeStats(struct fs *fs);
 int lc_readInodes(struct gfs *gfs, struct fs *fs);
 void lc_destroyInodes(struct fs *fs, bool remove);
 struct inode *lc_getInode(struct fs *fs, ino_t ino, struct inode *handle,
@@ -208,6 +211,7 @@ void lc_statsNew(struct fs *fs);
 void lc_statsBegin(struct timeval *start);
 void lc_statsAdd(struct fs *fs, enum lc_stats type, bool err,
                   struct timeval *start);
+void lc_displayLayerStats(struct fs *fs);
 void lc_displayStats(struct fs *fs);
 void lc_displayStatsAll(struct gfs *gfs);
 void lc_displayGlobalStats(struct gfs *gfs);
