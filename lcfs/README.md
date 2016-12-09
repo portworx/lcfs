@@ -211,13 +211,10 @@ underlying device.
 
 Each file created in any layer has an inode to track information specific to
 that file like stat info, dirty data not flushed to disk etc.  Each inode has
-a unique identifier in the file system called inode number.  Inodes are written
-to disk and as of now, each inode takes 4KB of space on disk.  It is possible
-to combine multiple inodes to a single disk block in future, as a single inode
-does not need that much space on disk.  Files deleted in a layer does not have
-to maintain any whiteouts like in some union file systems, as their references
-from the directories are gone in that layer along with.  Inode numbers are not
-reused even after a file is deleted.
+a unique identifier in the file system called inode number.  Files deleted in
+a layer does not have to maintain any whiteouts like in some union file systems,
+as their references from the directories are gone in that layer along with.
+Inode numbers are not reused even after a file is deleted.
 
 All UNIX file types are supported.  For symbolic links, the target name is also
 stored in the same block where inode is written.  For directories, separate blocks

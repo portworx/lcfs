@@ -316,13 +316,13 @@ out:
 }
 
 /* Copy extended attributes of one inode to another */
-void
+bool
 lc_xattrCopy(struct inode *inode, struct inode *parent) {
     struct fs *fs = inode->i_fs;
     struct xattr *xattr, *new;
 
     if (parent->i_xattrData == NULL) {
-        return;
+        return false;
     }
     assert(inode->i_xattrData == NULL);
     lc_xattrInit(fs, inode);
@@ -342,7 +342,7 @@ lc_xattrCopy(struct inode *inode, struct inode *parent) {
         xattr = xattr->x_next;
     }
     inode->i_xsize = parent->i_xsize;
-    inode->i_flags |= LC_INODE_XATTRDIRTY;
+    return true;
 }
 
 /* Allocate a block and flush extended attributes */
@@ -430,8 +430,8 @@ lc_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     }
     assert(size == 0);
     inode->i_xattrBlock = block;
+    assert(inode->i_flags & LC_INODE_DIRTY);
     inode->i_flags &= ~LC_INODE_XATTRDIRTY;
-    inode->i_flags |= LC_INODE_DIRTY;
 }
 
 /* Read extended attributes */

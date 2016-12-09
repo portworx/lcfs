@@ -59,7 +59,7 @@ lc_dirCopy(struct inode *dir) {
                    dirent->di_name, dirent->di_size);
         dirent = dirent->di_next;
     }
-    dir->i_flags |= LC_INODE_DIRDIRTY;
+    lc_markInodeDirty(dir, true, true, false, false);
 }
 
 /* Free a dirent structure */
@@ -261,8 +261,8 @@ lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
     assert(dir->i_dinode.di_nlink == subdir);
     dir->i_dinode.di_blocks = count;
     dir->i_dinode.di_size = count * LC_BLOCK_SIZE;
+    assert(dir->i_flags & LC_INODE_DIRTY);
     dir->i_flags &= ~LC_INODE_DIRDIRTY;
-    dir->i_flags |= LC_INODE_DIRTY;
 }
 
 /* Free directory entries */

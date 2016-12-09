@@ -176,8 +176,7 @@ lc_markInodeDirty(struct inode *inode, bool dirty, bool dir, bool emap,
     if (dir) {
         assert(S_ISDIR(inode->i_dinode.di_mode));
         inode->i_flags |= LC_INODE_DIRDIRTY;
-    }
-    if (emap) {
+    } else if (emap) {
         assert(S_ISREG(inode->i_dinode.di_mode));
         inode->i_flags |= LC_INODE_EMAPDIRTY;
     }

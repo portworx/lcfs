@@ -70,7 +70,7 @@ lc_expandEmap(struct gfs *gfs, struct fs *fs, struct inode *inode) {
                      inode->i_extentLength);
     inode->i_extentBlock = 0;
     inode->i_extentLength = 0;
-    inode->i_flags |= LC_INODE_EMAPDIRTY;
+    lc_markInodeDirty(inode, true, false, true, false);
 }
 
 /* Create a new emap extent list for the inode, copying existing emap list */
@@ -178,8 +178,8 @@ lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         lc_replaceMetaBlocks(fs, &inode->i_emapDirExtents, block, pcount);
     }
     inode->i_emapDirBlock = block;
+    assert(inode->i_flags & LC_INODE_DIRTY);
     inode->i_flags &= ~LC_INODE_EMAPDIRTY;
-    inode->i_flags |= LC_INODE_DIRTY;
 }
 
 /* Read emap blocks of a file and initialize emap list */

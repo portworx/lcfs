@@ -1,6 +1,6 @@
 #include "includes.h"
 
-static bool memStatsEnabled = true;
+static bool memStatsEnabled = false;
 static uint64_t global_memory = 0, global_malloc = 0, global_free = 0;
 
 /* Type of malloc requests */

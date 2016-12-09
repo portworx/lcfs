@@ -191,7 +191,7 @@ void lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
 void lc_xattrGet(fuse_req_t req, ino_t ino, const char *name, size_t size);
 void lc_xattrList(fuse_req_t req, ino_t ino, size_t size);
 void lc_xattrRemove(fuse_req_t req, ino_t ino, const char *name);
-void lc_xattrCopy(struct inode *inode, struct inode *parent);
+bool lc_xattrCopy(struct inode *inode, struct inode *parent);
 void lc_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
                    void *buf);
