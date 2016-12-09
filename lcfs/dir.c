@@ -231,7 +231,8 @@ lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
             if (dblock) {
                 page = lc_dirAddPage(gfs, fs, dblock, remain, page);
             }
-            lc_mallocBlockAligned(fs, (void **)&dblock, true);
+            lc_mallocBlockAligned(fs->fs_rfs, (void **)&dblock,
+                                  LC_MEMTYPE_DATA);
             dbuf = (char *)&dblock->db_dirent[0];
             remain = LC_BLOCK_SIZE - sizeof(struct dblock);
             count++;

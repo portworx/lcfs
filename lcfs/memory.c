@@ -1,6 +1,6 @@
 #include "includes.h"
 
-static bool memStatsEnabled = false;
+static bool memStatsEnabled = true;
 static uint64_t global_memory = 0, global_malloc = 0, global_free = 0;
 
 /* Type of malloc requests */
@@ -66,6 +66,22 @@ lc_memUpdateTotal(struct fs *fs, size_t size) {
     __sync_fetch_and_sub(&fs->fs_memory, size);
 }
 
+/* Transfer some memory from a layer it its base layer */
+void
+lc_memTransferCount(struct fs *fs, uint64_t count) {
+    struct fs *rfs = fs->fs_rfs;
+    uint64_t size, freed;
+
+    if (memStatsEnabled && (fs != rfs)) {
+        size = count * LC_BLOCK_SIZE;
+        __sync_add_and_fetch(&rfs->fs_memory, size);
+        freed = __sync_fetch_and_sub(&fs->fs_memory, size);
+        assert(freed >= size);
+        __sync_add_and_fetch(&fs->fs_free[LC_MEMTYPE_DATA], count);
+        __sync_add_and_fetch(&rfs->fs_malloc[LC_MEMTYPE_DATA], count);
+    }
+}
+
 /* Allocarte requested amount of memory for the specified purpose */
 void *
 lc_malloc(struct fs *fs, size_t size, enum lc_memTypes type) {
@@ -75,12 +91,11 @@ lc_malloc(struct fs *fs, size_t size, enum lc_memTypes type) {
 
 /* Allocate block aligned memory */
 void
-lc_mallocBlockAligned(struct fs *fs, void **memptr, bool pdata) {
+lc_mallocBlockAligned(struct fs *fs, void **memptr, enum lc_memTypes type) {
     int err = posix_memalign(memptr, LC_BLOCK_SIZE, LC_BLOCK_SIZE);
 
     assert(err == 0);
-    lc_memStatsUpdate(pdata ? fs->fs_rfs : fs, LC_BLOCK_SIZE, true,
-                      pdata ? LC_MEMTYPE_DATA : LC_MEMTYPE_BLOCK);
+    lc_memStatsUpdate(fs, LC_BLOCK_SIZE, true, type);
 }
 
 /* Release previously allocated memory */

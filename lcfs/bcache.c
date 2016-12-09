@@ -257,7 +257,8 @@ retry:
         /* XXX Use a shared lock instead of a per page one */
         pthread_mutex_lock(&page->p_dlock);
         if (!page->p_dvalid) {
-            lc_mallocBlockAligned(fs, (void **)&page->p_data, true);
+            lc_mallocBlockAligned(fs->fs_rfs, (void **)&page->p_data,
+                                  LC_MEMTYPE_DATA);
             lc_readBlock(gfs, fs, block, page->p_data);
             page->p_dvalid = 1;
         }
@@ -315,7 +316,8 @@ lc_getPageNewData(struct fs *fs, uint64_t block) {
 
     page = lc_getPage(fs, block, false);
     if (page->p_data == NULL) {
-        lc_mallocBlockAligned(fs, (void **)&page->p_data, true);
+        lc_mallocBlockAligned(fs->fs_rfs, (void **)&page->p_data,
+                              LC_MEMTYPE_DATA);
     }
     page->p_hitCount = 0;
     return page;
@@ -397,6 +399,9 @@ lc_flushDirtyPages(struct gfs *gfs, struct fs *fs) {
     struct page *page;
     uint64_t count;
 
+    /* XXX This may not work correctly if another thread is in the process of
+     * flushing pages.
+     */
     if (fs->fs_fdextents) {
         pthread_mutex_lock(&fs->fs_alock);
         extents = fs->fs_fdextents;

@@ -182,8 +182,7 @@ lc_removeDirtyPage(struct gfs *gfs, struct inode *inode, uint64_t pg,
     pdata = page->dp_data;
     if (pdata) {
         if (release) {
-            lc_free(inode->i_fs->fs_rfs, pdata,
-                    LC_BLOCK_SIZE, LC_MEMTYPE_DATA);
+            lc_free(inode->i_fs, pdata, LC_BLOCK_SIZE, LC_MEMTYPE_DATA);
         } else if ((page->dp_poffset != 0) ||
                    (page->dp_psize != LC_BLOCK_SIZE)) {
 
@@ -319,7 +318,7 @@ lc_mergePage(struct gfs *gfs, struct inode *inode, uint64_t pg, char *data,
         }
     }
     memcpy(&dpage->dp_data[poffset], &data[poffset], psize);
-    lc_free(inode->i_fs->fs_rfs, data, LC_BLOCK_SIZE, LC_MEMTYPE_DATA);
+    lc_free(inode->i_fs, data, LC_BLOCK_SIZE, LC_MEMTYPE_DATA);
     return 0;
 }
 
@@ -346,7 +345,7 @@ lc_copyPages(struct fs *fs, off_t off, size_t size, struct dpage *dpages,
         if (psize > wsize) {
             psize = wsize;
         }
-        lc_mallocBlockAligned(fs, (void **)&pdata, true);
+        lc_mallocBlockAligned(fs, (void **)&pdata, LC_MEMTYPE_DATA);
         lc_updateVec(pdata, dst, poffset, psize);
         dpages[pcount].dp_data = pdata;
         dpages[pcount].dp_poffset = poffset;
@@ -578,6 +577,11 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
         pdata = lc_removeDirtyPage(gfs, inode, i, false);
         if (pdata) {
             assert(count < rcount);
+            if (!single) {
+
+                /* XXX Do this in one step for contiguous pages */
+                lc_inodeEmapUpdate(gfs, fs, inode, i, block + count, &extents);
+            }
             page = lc_getPageNew(gfs, fs, block + count, pdata);
             if (tpage == NULL) {
                 tpage = page;
@@ -585,11 +589,6 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
             assert(page->p_dnext == NULL);
             page->p_dnext = dpage;
             dpage = page;
-            if (!single) {
-
-                /* XXX Do this in one step for contiguous pages */
-                lc_inodeEmapUpdate(gfs, fs, inode, i, block + count, &extents);
-            }
             count++;
             fcount++;
             tcount++;
@@ -633,6 +632,7 @@ out:
         lc_freeInodeDataBlocks(fs, inode, &extents);
     }
     if (tcount) {
+        lc_memTransferCount(fs, tcount);
         pcount = __sync_fetch_and_sub(&fs->fs_pcount, tcount);
         assert(pcount >= tcount);
     }
@@ -650,7 +650,7 @@ lc_truncatePage(struct fs *fs, struct inode *inode, struct dpage *dpage,
 
     /* Create a dirty page if one does not exist */
     if (dpage->dp_data == NULL) {
-        lc_mallocBlockAligned(fs, (void **)&dpage->dp_data, true);
+        lc_mallocBlockAligned(fs, (void **)&dpage->dp_data, LC_MEMTYPE_DATA);
         __sync_add_and_fetch(&fs->fs_pcount, 1);
         dpage->dp_poffset = 0;
         dpage->dp_psize = 0;

@@ -19,7 +19,7 @@ lc_superInit(struct super *super, size_t size, bool global) {
 /* Read file system super block */
 void
 lc_superRead(struct gfs *gfs, struct fs *fs, uint64_t block) {
-    lc_mallocBlockAligned(fs, (void **)&fs->fs_super, false);
+    lc_mallocBlockAligned(fs, (void **)&fs->fs_super, LC_MEMTYPE_BLOCK);
     lc_readBlock(gfs, fs, block, fs->fs_super);
 }
 

@@ -138,7 +138,7 @@ lc_blockFreeExtents(struct fs *fs, struct extent *extents,
                 if (eblock) {
                     page = lc_getPageNoBlock(gfs, rfs, (char *)eblock, page);
                 }
-                lc_mallocBlockAligned(rfs, (void **)&eblock, true);
+                lc_mallocBlockAligned(rfs, (void **)&eblock, LC_MEMTYPE_DATA);
                 pcount++;
                 count = 0;
             }
@@ -190,7 +190,7 @@ lc_readExtents(struct gfs *gfs, struct fs *fs) {
     assert(block != LC_INVALID_BLOCK);
     allocated = (fs != lc_getGlobalFs(gfs));
     extents = allocated ? &fs->fs_aextents : &gfs->gfs_extents;
-    lc_mallocBlockAligned(fs, (void **)&eblock, false);
+    lc_mallocBlockAligned(fs, (void **)&eblock, LC_MEMTYPE_BLOCK);
     while (block != LC_INVALID_BLOCK) {
         //lc_printf("Reading extents from block %ld\n", block);
         lc_addSpaceExtent(gfs, rfs, &fs->fs_dextents, block, 1);

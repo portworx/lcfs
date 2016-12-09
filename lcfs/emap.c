@@ -152,7 +152,8 @@ lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             if (bblock) {
                 page = lc_getPageNoBlock(gfs, fs, (char *)bblock, page);
             }
-            lc_mallocBlockAligned(fs, (void **)&bblock, true);
+            lc_mallocBlockAligned(fs->fs_rfs, (void **)&bblock,
+                                  LC_MEMTYPE_DATA);
             pcount++;
             count = 0;
         }

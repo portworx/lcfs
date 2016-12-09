@@ -33,9 +33,10 @@
 struct gfs *getfs();
 
 void *lc_malloc(struct fs *fs, size_t size, enum lc_memTypes type);
-void lc_mallocBlockAligned(struct fs *fs, void **memptr, bool pdata);
+void lc_mallocBlockAligned(struct fs *fs, void **memptr, enum lc_memTypes type);
 void lc_free(struct fs *fs, void *ptr, size_t size, enum lc_memTypes type);
 void lc_memUpdateTotal(struct fs *fs, size_t size);
+void lc_memTransferCount(struct fs *fs, uint64_t count);
 void lc_checkMemStats(struct fs *fs);
 void lc_displayGlobalMemStats();
 void lc_displayMemStats(struct fs *fs);

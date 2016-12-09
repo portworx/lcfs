@@ -90,7 +90,8 @@ lc_newInodeBlock(struct gfs *gfs, struct fs *fs) {
                                                    (char *)fs->fs_inodeBlocks,
                                                    fs->fs_inodeBlockPages);
     }
-    lc_mallocBlockAligned(fs, (void **)&fs->fs_inodeBlocks, true);
+    lc_mallocBlockAligned(fs->fs_rfs, (void **)&fs->fs_inodeBlocks,
+                          LC_MEMTYPE_DATA);
     memset(fs->fs_inodeBlocks, 0, LC_BLOCK_SIZE);
     fs->fs_inodeIndex = 0;
     fs->fs_inodeBlockCount++;

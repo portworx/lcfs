@@ -1227,7 +1227,7 @@ out:
     if (err) {
         while (pcount) {
             pcount--;
-            lc_free(fs->fs_rfs, dpages[pcount].dp_data, LC_BLOCK_SIZE,
+            lc_free(fs, dpages[pcount].dp_data, LC_BLOCK_SIZE,
                     LC_MEMTYPE_DATA);
         }
     }

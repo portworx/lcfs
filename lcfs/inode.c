@@ -246,9 +246,9 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
 
     lc_printf("Reading inodes for fs %d %ld, block %ld\n", fs->fs_gindex, fs->fs_root, block);
     if (block != LC_INVALID_BLOCK) {
-        lc_mallocBlockAligned(fs, (void **)&buf, false);
-        lc_mallocBlockAligned(fs, (void **)&ibuf, false);
-        lc_mallocBlockAligned(fs, (void **)&xbuf, false);
+        lc_mallocBlockAligned(fs, (void **)&buf, LC_MEMTYPE_BLOCK);
+        lc_mallocBlockAligned(fs, (void **)&ibuf, LC_MEMTYPE_BLOCK);
+        lc_mallocBlockAligned(fs, (void **)&xbuf, LC_MEMTYPE_BLOCK);
     }
     while (block != LC_INVALID_BLOCK) {
         if (read) {
@@ -341,18 +341,17 @@ lc_freeInode(struct inode *inode) {
         assert(inode->i_emap == NULL);
         assert(inode->i_pcount == 0);
         assert(inode->i_dpcount == 0);
+        size += sizeof(struct rdata);
     } else if (S_ISDIR(inode->i_dinode.di_mode)) {
         lc_dirFree(inode);
     } else if (S_ISLNK(inode->i_dinode.di_mode)) {
         inode->i_target = NULL;
+        size += inode->i_dinode.di_size + 1;
     }
     lc_xattrFree(inode);
     assert(inode->i_xattrData == NULL);
     pthread_rwlock_destroy(&inode->i_rwlock);
     lc_blockFreeExtents(fs, inode->i_emapDirExtents, false, false, true);
-    if (S_ISREG(inode->i_dinode.di_mode)) {
-        size += sizeof(struct rdata);
-    }
     lc_free(fs, inode, size, LC_MEMTYPE_INODE);
 }
 

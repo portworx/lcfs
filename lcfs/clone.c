@@ -78,7 +78,7 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     /* Initialize the new layer */
     fs = lc_newFs(gfs, icsize, rw);
     lc_lock(fs, true);
-    lc_mallocBlockAligned(fs, (void **)&super, false);
+    lc_mallocBlockAligned(fs, (void **)&super, LC_MEMTYPE_BLOCK);
     lc_superInit(super, 0, false);
     fs->fs_super = super;
     fs->fs_root = root;
