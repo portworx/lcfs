@@ -9,7 +9,6 @@ static const char *mrequests[] = {
     "DIRENT",
     "ICACHE",
     "INODE",
-    "SYMLINK",
     "PCACHE",
     "ILOCK",
     "EXTENT",
