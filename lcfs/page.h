@@ -19,6 +19,8 @@ static_assert(LC_PAGE_MAX >= LC_PCACHE_SIZE, "LC_PAGE_MAX <= LC_PCACHE_SIZE");
 #define LC_MAX_FILE_DIRTYPAGES  131072
 #define LC_MAX_LAYER_DIRTYPAGES 524288
 
+#define LC_DHASH_MIN            1024
+
 /* Page cache header */
 struct pcache {
 
@@ -62,7 +64,9 @@ struct page {
 
 } __attribute__((packed));
 
-/* Page structure used for caching dirty pages of an inode */
+/* Page structure used for caching dirty pages of an inode
+ * when the inode is using an array indexed by page number.
+ */
 struct dpage {
 
     /* Data associated with page of the file */
@@ -74,4 +78,19 @@ struct dpage {
     /* Size of valid data starting from dp_poffset */
     uint16_t dp_psize;
 } __attribute__((packed));
+
+/* Page structure used for caching dirty pages of an inode
+ * when the inode is using a hash table indexed by page number.
+ */
+struct dhpage {
+    /* Page number */
+    uint64_t dh_pg;
+
+    /* Next in the hash chain */
+    struct dhpage *dh_next;
+
+    /* Details on data */
+    struct dpage dh_page;
+} __attribute__((packed));
+
 #endif

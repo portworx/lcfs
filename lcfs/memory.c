@@ -16,6 +16,7 @@ static const char *mrequests[] = {
     "PAGE",
     "DATA",
     "DPAGEHASH",
+    "HPAGE",
     "XATTR",
     "XATTRNAME",
     "XATTRVALUE",

@@ -91,6 +91,7 @@ lc_updateExtent(struct fs *fs, struct extent *extent, struct extent *prev,
                 uint64_t start, uint64_t freed) {
     struct gfs *gfs = fs->fs_gfs;
     struct extent *new;
+    uint64_t block;
     bool release;
 
     assert(ecount >= freed);
@@ -105,10 +106,9 @@ lc_updateExtent(struct fs *fs, struct extent *extent, struct extent *prev,
 
         /* Split the extent */
         new = lc_malloc(fs, sizeof(struct extent), LC_MEMTYPE_EXTENT);
-        lc_initExtent(gfs, new, extent->ex_type, start + freed,
-                      lc_getExtentBlock(extent) + freed + 1,
-                      estart + ecount - (start + freed),
-                      extent->ex_next);
+        block = lc_getExtentBlock(extent) + (start - estart) + freed;
+        lc_initExtent(gfs, new, extent->ex_type, start + freed, block,
+                      estart + ecount - (start + freed), extent->ex_next);
         release = lc_decrExtentCount(gfs, extent,
                                      freed + lc_getExtentCount(new));
         assert(!release);

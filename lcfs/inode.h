@@ -50,8 +50,13 @@ struct dirent {
 /* Data specific for regular files */
 struct rdata {
 
-    /* Dirty pages */
-    struct dpage *rd_page;
+    union {
+        /* Array of Dirty pages */
+        struct dpage *rd_page;
+
+        /* Hash table for dirty pages */
+        struct dhpage **rd_hpage;
+    };
 
     /* Extent map */
     struct extent *rd_emap;
@@ -98,6 +103,7 @@ struct ixattr {
 #define LC_INODE_REMOVED        0x10
 #define LC_INODE_SHARED         0x20
 #define LC_INODE_TMP            0x40
+#define LC_INODE_HASHED         0x80
 
 /* Inode structure */
 struct inode {
@@ -155,6 +161,7 @@ static_assert(sizeof(struct inode) == 234, "inode size != 234");
 #define i_extentLength  i_dinode.di_extentLength
 
 #define i_page          i_rdata->rd_page
+#define i_hpage         i_rdata->rd_hpage
 #define i_emap          i_rdata->rd_emap
 #define i_pcount        i_rdata->rd_pcount
 #define i_dpcount       i_rdata->rd_dpcount

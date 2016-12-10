@@ -241,6 +241,8 @@ file system is mounted and written out when file system is unmounted.
 
 The root directory of the file system has inode number 2 and cannot be removed.
 
+Anything created under tmp directory in root directory is considered temporary.
+
 Snapshot root directory
 
 There is another directory under which roots of all layers are placed and called
@@ -314,8 +316,6 @@ There should be a minimum size for the device to be formatted/mounted as a file
 system.  Operations like writes and creating new layers are failed when file
 system free space goes below a certain threshold.
 
-TODO: Handling space fragmentation due to chunk reservation
-
 File operations
 
 All file operations take the shared lock on the layer the files they want to
@@ -326,6 +326,8 @@ data, no lock on any inode is needed.
 Unlike some other graphdrivers, atomic rename is supported.
 Certain operations like hardlink, rename etc. are not supported across layers
 of the file system (if attempted manually).
+
+Access and creation times are not tracked.
 
 Writes
 
@@ -402,7 +404,9 @@ is instantiated in inode cache of the layer.
 
 Each regular file inode maintains an array for dirty pages of size 4KB indexed
 by the page number, for recently written/modified pages, if the file was
-recently modified.  These pages are written out when the file is closed in
+recently modified.  If the file is bigger than a certain size and not a
+temporary file, then a hash table is used instead of the array.
+These pages are written out when the file is closed in
 read-only layers, when a file accumulate too many dirty pages, when a layer
 accumulate too many files with dirty pages or when the file system
 unmounted/persisted.  Also each regular file inode maintains a list of
@@ -471,4 +475,7 @@ the time a layer is unmounted.  Stats for a layer can be cleared before running
 applications to trace actual operations during any time period.
 
 Memory usage on a per layer basis is tracked and reported as well.
+
+Similarly, count of files of different types in every layer is maintained.
+Also count of I/Os issued by each layer is tracked.
 

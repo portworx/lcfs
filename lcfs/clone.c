@@ -100,6 +100,7 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
 
         /* Copy the parent root directory */
         pfs = lc_getfs(pinum, false);
+        assert(rw || pfs->fs_readOnly);
         pfs->fs_frozen = true;
         assert(pfs->fs_root == lc_getInodeHandle(pinum));
         pdir = pfs->fs_rootInode;
