@@ -28,12 +28,12 @@ static void
 lc_dinodeInit(struct inode *inode, ino_t ino, mode_t mode,
               uid_t uid, gid_t gid, dev_t rdev, size_t size, ino_t parent) {
     inode->i_ino = ino;
-    inode->i_dinode.di_mode = mode;
-    inode->i_dinode.di_nlink = S_ISDIR(mode) ? 2 : 1;
+    inode->i_mode = mode;
+    inode->i_nlink = S_ISDIR(mode) ? 2 : 1;
     inode->i_dinode.di_uid = uid;
     inode->i_dinode.di_gid = gid;
     inode->i_dinode.di_rdev = rdev;
-    inode->i_dinode.di_size = size;
+    inode->i_size = size;
     inode->i_dinode.di_blocks = 0;
     inode->i_dinode.di_emapdir = LC_INVALID_BLOCK;
     inode->i_dinode.di_extentLength = 0;
@@ -174,6 +174,7 @@ lc_rootInit(struct fs *fs, ino_t root) {
 /* Set up snapshot root inode */
 void
 lc_setSnapshotRoot(struct gfs *gfs, ino_t ino) {
+    struct inode *dir;
 
     /* Switching layer root is supported just to make tests to run */
     if (gfs->gfs_snap_root) {
@@ -183,11 +184,11 @@ lc_setSnapshotRoot(struct gfs *gfs, ino_t ino) {
         printf("Switching snapshot root from %ld to %ld\n", gfs->gfs_snap_root, ino);
         gfs->gfs_snap_root = 0;
     }
-    gfs->gfs_snap_rootInode = lc_getInode(lc_getGlobalFs(gfs), ino,
-                                           NULL, false, false);
-    assert(S_ISDIR(gfs->gfs_snap_rootInode->i_dinode.di_mode));
-    lc_inodeUnlock(gfs->gfs_snap_rootInode);
+    dir = lc_getInode(lc_getGlobalFs(gfs), ino, NULL, false, false);
     gfs->gfs_snap_root = ino;
+    lc_dirConvertHashed(dir->i_fs, dir);
+    gfs->gfs_snap_rootInode = dir;
+    lc_inodeUnlock(gfs->gfs_snap_rootInode);
     printf("snapshot root inode %ld\n", ino);
 }
 
@@ -207,19 +208,19 @@ lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
         inode = (struct inode *)&buf[offset];
 
         /* Skip removed/unused inodes */
-        if (inode->i_dinode.di_nlink == 0) {
+        if (inode->i_nlink == 0) {
             continue;
         }
         empty = false;
-        reg = S_ISREG(inode->i_dinode.di_mode);
-        len = S_ISLNK(inode->i_dinode.di_mode) ? inode->i_dinode.di_size : 0;
+        reg = S_ISREG(inode->i_mode);
+        len = S_ISLNK(inode->i_mode) ? inode->i_size : 0;
         inode = lc_newInode(fs, (i << LC_DINODE_INDEX) | block, len,
                             reg, false);
         memcpy(&inode->i_dinode, &buf[offset], sizeof(struct dinode));
         lc_addInode(fs, inode);
         if (reg) {
             lc_emapRead(gfs, fs, inode, ibuf);
-        } else if (S_ISDIR(inode->i_dinode.di_mode)) {
+        } else if (S_ISDIR(inode->i_mode)) {
             lc_dirRead(gfs, fs, inode, ibuf);
         } else if (len) {
             inode->i_target = (((char *)inode) + sizeof(struct inode));
@@ -230,7 +231,7 @@ lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
         }
         lc_xattrRead(gfs, fs, inode, ibuf);
         if (inode->i_ino == fs->fs_root) {
-            assert(S_ISDIR(inode->i_dinode.di_mode));
+            assert(S_ISDIR(inode->i_mode));
             fs->fs_rootInode = inode;
         }
     }
@@ -337,19 +338,19 @@ lc_freeInode(struct inode *inode) {
     size_t size = sizeof(struct inode);
     struct fs *fs = inode->i_fs;
 
-    if (S_ISREG(inode->i_dinode.di_mode)) {
+    if (S_ISREG(inode->i_mode)) {
         lc_truncPages(inode, 0, false);
         assert(inode->i_page == NULL);
         assert(inode->i_emap == NULL);
         assert(inode->i_pcount == 0);
         assert(inode->i_dpcount == 0);
         size += sizeof(struct rdata);
-    } else if (S_ISDIR(inode->i_dinode.di_mode)) {
+    } else if (S_ISDIR(inode->i_mode)) {
         lc_dirFree(inode);
-    } else if (S_ISLNK(inode->i_dinode.di_mode)) {
+    } else if (S_ISLNK(inode->i_mode)) {
         inode->i_target = NULL;
         if (!(inode->i_flags & LC_INODE_SHARED)) {
-            size += inode->i_dinode.di_size + 1;
+            size += inode->i_size + 1;
         }
     }
     lc_xattrFree(inode);
@@ -431,7 +432,7 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
                 }
 
                 /* Start with a new block for symbolic links */
-                if (S_ISLNK(inode->i_dinode.di_mode)) {
+                if (S_ISLNK(inode->i_mode)) {
                     fs->fs_inodeBlockIndex = 0;
                 }
                 if ((fs->fs_inodeBlockIndex == 0) ||
@@ -456,7 +457,7 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
                 }
 
                 /* Use the whole block for symbolic links */
-                if (S_ISLNK(inode->i_dinode.di_mode)) {
+                if (S_ISLNK(inode->i_mode)) {
                     fs->fs_inodeBlockIndex = LC_INODE_BLOCK_MAX;
                 }
             }
@@ -466,7 +467,7 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             assert(offset < LC_BLOCK_SIZE);
             written = true;
             assert(!(inode->i_flags & LC_INODE_REMOVED) ||
-                   (inode->i_dinode.di_nlink == 0));
+                   (inode->i_nlink == 0));
 
             //lc_printf("Writing inode %ld to block %ld\n", inode->i_ino, inode->i_block);
             if (allocated) {
@@ -479,10 +480,10 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             }
             memcpy(&page->p_data[offset], &inode->i_dinode,
                    sizeof(struct dinode));
-            if (S_ISLNK(inode->i_dinode.di_mode)) {
+            if (S_ISLNK(inode->i_mode)) {
                 assert(inode->i_block == block);
                 memcpy(&page->p_data[sizeof(struct dinode)], inode->i_target,
-                       inode->i_dinode.di_size);
+                       inode->i_size);
             }
 
             /* Add the page to list of inode pages pending write, if the page
@@ -532,8 +533,8 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs) {
         inode = fs->fs_icache[i].ic_head;
         while (inode && !fs->fs_removed) {
             if ((inode->i_flags & LC_INODE_REMOVED) &&
-                S_ISREG(inode->i_dinode.di_mode) &&
-                inode->i_dinode.di_size) {
+                S_ISREG(inode->i_mode) &&
+                inode->i_size) {
                 assert(lc_inodeDirty(inode));
                 lc_truncPages(inode, 0, true);
             }
@@ -594,7 +595,7 @@ lc_destroyInodes(struct fs *fs, bool remove) {
 /* Clone an inode from a parent layer */
 struct inode *
 lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
-    bool reg = S_ISREG(parent->i_dinode.di_mode);
+    bool reg = S_ISREG(parent->i_mode);
     bool emap = false, dir = false, xattr;
     struct inode *inode;
 
@@ -618,13 +619,13 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
         } else {
             inode->i_private = true;
         }
-    } else if (S_ISDIR(inode->i_dinode.di_mode)) {
+    } else if (S_ISDIR(inode->i_mode)) {
         if (parent->i_dirent) {
             inode->i_dirent = parent->i_dirent;
             inode->i_flags |= LC_INODE_SHARED;
             dir = true;
         }
-    } else if (S_ISLNK(inode->i_dinode.di_mode)) {
+    } else if (S_ISLNK(inode->i_mode)) {
         inode->i_target = parent->i_target;
         inode->i_flags |= LC_INODE_SHARED;
     }
@@ -634,7 +635,7 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
     lc_addInode(fs, inode);
     lc_markInodeDirty(inode, true, dir, emap, xattr);
     __sync_add_and_fetch(&fs->fs_gfs->gfs_clones, 1);
-    lc_updateFtypeStats(fs, inode->i_dinode.di_mode, true);
+    lc_updateFtypeStats(fs, inode->i_mode, true);
     return inode;
 }
 

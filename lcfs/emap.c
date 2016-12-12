@@ -64,7 +64,7 @@ lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
 /* Expand a single extent to a emap list */
 void
 lc_expandEmap(struct gfs *gfs, struct fs *fs, struct inode *inode) {
-    assert(S_ISREG(inode->i_dinode.di_mode));
+    assert(S_ISREG(inode->i_mode));
     assert(inode->i_dinode.di_blocks == inode->i_extentLength);
     lc_addEmapExtent(gfs, fs, &inode->i_emap, 0, inode->i_extentBlock,
                      inode->i_extentLength);
@@ -78,7 +78,7 @@ void
 lc_copyEmap(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     struct extent *extent = inode->i_emap;
 
-    assert(S_ISREG(inode->i_dinode.di_mode));
+    assert(S_ISREG(inode->i_mode));
     assert(inode->i_extentLength == 0);
     inode->i_emap = NULL;
     while (extent) {
@@ -123,7 +123,7 @@ lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     struct page *page = NULL;
     struct emap *emap;
 
-    assert(S_ISREG(inode->i_dinode.di_mode));
+    assert(S_ISREG(inode->i_mode));
 
     /* If the file removed, nothing to write */
     if (inode->i_flags & LC_INODE_REMOVED) {
@@ -192,8 +192,8 @@ lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
     struct emap *emap;
     uint64_t block;
 
-    assert(S_ISREG(inode->i_dinode.di_mode));
-    if (inode->i_dinode.di_size == 0) {
+    assert(S_ISREG(inode->i_mode));
+    if (inode->i_size == 0) {
         assert(inode->i_dinode.di_blocks == 0);
         assert(inode->i_extentLength == 0);
         return;

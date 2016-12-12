@@ -454,12 +454,13 @@ lc_setupSpecialInodes(struct gfs *gfs, struct fs *fs) {
     }
     ino = lc_dirLookup(fs, dir, "lcfs");
     if (ino != LC_INVALID_INODE) {
-        gfs->gfs_snap_rootInode = lc_getInode(lc_getGlobalFs(gfs), ino,
-                                               NULL, false, false);
-        if (gfs->gfs_snap_rootInode) {
-            lc_inodeUnlock(gfs->gfs_snap_rootInode);
+        dir = lc_getInode(lc_getGlobalFs(gfs), ino, NULL, false, false);
+        if (dir) {
+            gfs->gfs_snap_root = ino;
+            lc_dirConvertHashed(fs, dir);
+            gfs->gfs_snap_rootInode = dir;
+            lc_inodeUnlock(dir);
         }
-        gfs->gfs_snap_root = ino;
         printf("snapshot root %ld\n", ino);
     }
 }

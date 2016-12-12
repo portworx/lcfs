@@ -25,6 +25,11 @@ struct icache {
     struct inode *ic_head;
 };
 
+#define LC_DIRCACHE_SIZE 512
+#define LC_DIRHASH_LEN   10
+#define LC_DIRHASH_SHIFT 32ul
+#define LC_DIRHASH_INDEX 0x00000000FFFFFFFFul
+
 /* Directory entry */
 struct dirent {
 
@@ -140,6 +145,9 @@ struct inode {
         /* Directory entries of a directory */
         struct dirent *i_dirent;
 
+        /* Directory hash table */
+        struct dirent **i_hdirent;
+
         /* Target of a symbolic link */
         char *i_target;
     };
@@ -153,6 +161,9 @@ struct inode {
 static_assert(sizeof(struct inode) == 234, "inode size != 234");
 
 #define i_ino           i_dinode.di_ino
+#define i_mode          i_dinode.di_mode
+#define i_size          i_dinode.di_size
+#define i_nlink         i_dinode.di_nlink
 #define i_parent        i_dinode.di_parent
 #define i_xattrBlock    i_dinode.di_xattr
 #define i_private       i_dinode.di_private
