@@ -58,8 +58,8 @@ void lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs);
 bool lc_hasSpace(struct gfs *gfs, uint64_t blocks);
 void lc_addSpaceExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
                        uint64_t start, uint64_t count);
-void lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount,
-                        bool remove);
+uint64_t lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount,
+                            bool remove);
 uint64_t lc_blockAlloc(struct fs *fs, uint64_t count, bool meta, bool reserve);
 uint64_t lc_blockAllocExact(struct fs *fs, uint64_t count,
                             bool meta, bool reserve);

@@ -3,7 +3,7 @@
 /* Calculate hash value for the name */
 static uint32_t
 lc_dirhash(const char *name, size_t size) {
-    size_t i, hsize = size > LC_DIRHASH_LEN ? LC_DIRHASH_LEN : size;
+    size_t i, hsize = (size > LC_DIRHASH_LEN) ? LC_DIRHASH_LEN : size;
     uint32_t hash = 0;
 
     for (i = 0; i < hsize; i++) {
@@ -134,6 +134,9 @@ lc_dirCopy(struct inode *dir) {
     for (i = 0; i < max; i++) {
         if (hashed) {
             dirent = dcache[i];
+            if (count == dir->i_size) {
+                break;
+            }
         }
         prev = NULL;
         while (dirent) {
@@ -292,7 +295,7 @@ lc_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf) {
     char *dbuf;
 
     assert(S_ISDIR(dir->i_mode));
-    if ((dir->i_size >= LC_DIRCACHE_MIN) &&
+    if (0 && (dir->i_size >= LC_DIRCACHE_MIN) &&
         !(dir->i_flags & LC_INODE_DHASHED)) {
         lc_dirConvertHashed(fs, dir);
     }
@@ -405,6 +408,9 @@ lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
             remain -= dsize;
             dirent = dirent->di_next;
         }
+        if (entries == dir->i_size) {
+            break;
+        }
     }
     if (dblock) {
         page = lc_dirAddPage(gfs, fs, dblock, remain, page);
@@ -426,6 +432,7 @@ void
 lc_dirFree(struct inode *dir) {
     bool hashed = (dir->i_flags & LC_INODE_DHASHED);
     struct dirent *dirent, *tmp;
+    uint64_t count = 0;
     struct fs *fs;
     int i, max;
 
@@ -442,6 +449,10 @@ lc_dirFree(struct inode *dir) {
             tmp = dirent;
             dirent = dirent->di_next;
             lc_freeDirent(fs, tmp);
+            count++;
+        }
+        if (count == dir->i_size) {
+            break;
         }
     }
     if (hashed) {
@@ -464,8 +475,8 @@ lc_removeTree(struct fs *fs, struct inode *dir) {
 
     assert(!(dir->i_flags & LC_INODE_SHARED));
     max = hashed ? LC_DIRCACHE_SIZE : 1;
-    for (i = 0; i < max; i++) {
-        dirent = hashed ?  dir->i_hdirent[i] : dir->i_dirent;
+    for (i = 0; (i < max) && dir->i_size; i++) {
+        dirent = hashed ? dir->i_hdirent[i] : dir->i_dirent;
         while (dirent != NULL) {
             lc_printf("lc_removeTree: dir %ld nlink %ld removing %s inode %ld dir %d\n", dir->i_ino, dir->i_nlink, dirent->di_name, dirent->di_ino, S_ISDIR(dirent->di_mode));
             rmdir = S_ISDIR(dirent->di_mode);
@@ -573,15 +584,18 @@ lc_dirReaddir(fuse_req_t req, struct fs *fs, struct inode *dir,
         assert(start <= LC_DIRCACHE_SIZE);
         if (start == LC_DIRCACHE_SIZE) {
             start = 0;
+            off = 0;
+        } else {
+            off &= LC_DIRHASH_INDEX;
         }
     } else {
         start = 0;
         max = 1;
+        off &= LC_DIRHASH_INDEX;
     }
-    off &= LC_DIRHASH_INDEX;
     csize = 0;
     for (i = start; i < max; i++) {
-        dirent = hashed ?  dir->i_hdirent[i] : dir->i_dirent;
+        dirent = hashed ? dir->i_hdirent[i] : dir->i_dirent;
         while (off && dirent && (dirent->di_index >= off)) {
             dirent = dirent->di_next;
         }

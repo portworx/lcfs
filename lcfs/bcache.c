@@ -131,6 +131,7 @@ lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page, bool read) {
             }
             fpage->p_block = LC_INVALID_BLOCK;
             fpage->p_cnext = NULL;
+            assert(pcache[hash].pc_pcount > 0);
             pcache[hash].pc_pcount--;
         }
     }
@@ -450,10 +451,14 @@ lc_purgeTreePages(struct gfs *gfs, struct fs *fs) {
     uint64_t i, j, count = 0;
 
     for (j = 0; j < fs->fs_pcacheSize; j++) {
+        i = fs->fs_purgeIndex++;
         if (fs->fs_purgeIndex >= fs->fs_pcacheSize) {
              fs->fs_purgeIndex = 0;
         }
-        i = fs->fs_purgeIndex++;
+        assert(i < fs->fs_pcacheSize);
+        if (pcache[i].pc_pcount == 0) {
+            continue;
+        }
         if (pthread_mutex_trylock(&pcache[i].pc_lock)) {
             break;
         }
@@ -472,6 +477,7 @@ lc_purgeTreePages(struct gfs *gfs, struct fs *fs) {
                 page->p_block = LC_INVALID_BLOCK;
                 page->p_dvalid = 0;
                 lc_freePage(gfs, fs, page);
+                assert(pcache[i].pc_pcount > 0);
                 pcache[i].pc_pcount--;
                 count++;
                 page = next;

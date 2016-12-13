@@ -17,9 +17,43 @@ lc_blockAllocatorInit(struct gfs *gfs, struct fs *fs) {
                                LC_RESERVED_BLOCKS) / 100ul;
 }
 
+/* Reclaim reserved space */
+static uint64_t
+lc_reclaimSpace(struct gfs *gfs, uint64_t blocks) {
+    uint64_t count = 0;
+    struct fs *fs;
+    int i;
+
+    pthread_mutex_lock(&gfs->gfs_lock);
+    for (i = 0; i <= gfs->gfs_scount; i++) {
+        fs = gfs->gfs_fs[i];
+        if (fs && (fs->fs_extents || fs->fs_blockInodesCount ||
+                   fs->fs_blockMetaCount) && !lc_tryLock(fs, false)) {
+            pthread_mutex_unlock(&gfs->gfs_lock);
+            if (fs->fs_extents || fs->fs_blockInodesCount ||
+                fs->fs_blockMetaCount) {
+                count += lc_freeLayerBlocks(gfs, fs, false, false);
+            }
+            lc_unlock(fs);
+            if (count >= blocks) {
+                return count;
+            }
+            pthread_mutex_lock(&gfs->gfs_lock);
+        }
+    }
+    pthread_mutex_unlock(&gfs->gfs_lock);
+    return count;
+}
+
 /* Check if file system has enough space for the operation to proceed */
 bool
 lc_hasSpace(struct gfs *gfs, uint64_t blocks) {
+    while (gfs->gfs_super->sb_tblocks <=
+           (gfs->gfs_super->sb_blocks + gfs->gfs_blocksReserved + blocks)) {
+        if (lc_reclaimSpace(gfs, blocks) == 0) {
+            break;
+        }
+    }
     return gfs->gfs_super->sb_tblocks >
            (gfs->gfs_super->sb_blocks + gfs->gfs_blocksReserved + blocks);
 }
@@ -358,22 +392,24 @@ lc_blockFree(struct gfs *gfs, struct fs *fs, uint64_t block,
 }
 
 /* Free blocks allocated/reserved by a layer */
-void
+uint64_t
 lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount, bool remove) {
     struct extent *extent;
     uint64_t freed;
 
     /* Free unused blocks from the inode pool */
+    pthread_mutex_lock(&fs->fs_alock);
     if (fs->fs_blockInodesCount) {
-        lc_blockFree(gfs, fs, fs->fs_blockInodes,
-                     fs->fs_blockInodesCount, true);
+        lc_blockLayerFree(gfs, fs, fs->fs_blockInodes,
+                          fs->fs_blockInodesCount);
         fs->fs_blockInodesCount = 0;
         fs->fs_blockInodes = 0;
+        fs->fs_inodeBlockIndex = 0;
     }
 
     /* Free unused blocks from the metadata pool */
     if (fs->fs_blockMetaCount) {
-        lc_blockFree(gfs, fs, fs->fs_blockMeta, fs->fs_blockMetaCount, true);
+        lc_blockLayerFree(gfs, fs, fs->fs_blockMeta, fs->fs_blockMetaCount);
         fs->fs_blockMetaCount = 0;
         fs->fs_blockMeta = 0;
     }
@@ -401,6 +437,8 @@ lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount, bool remove) {
     assert(fs->fs_reservedBlocks == freed);
     fs->fs_reservedBlocks -= freed;
     fs->fs_extents = NULL;
+    pthread_mutex_unlock(&fs->fs_alock);
+    return freed;
 }
 
 /* Data extent for pending removal */

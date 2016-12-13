@@ -664,11 +664,11 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
         inode->i_extentLength = bcount;
         inode->i_dinode.di_blocks = bcount;
     } else if (inode->i_extentLength && (start == inode->i_extentLength) &&
+               ((inode->i_extentBlock + inode->i_extentLength) == block) &&
                (bcount == rcount) && ((start + bcount - 1) == end)) {
 
         /* If previous extent is extended, keep the single extent layout */
         single = true;
-        assert((inode->i_extentBlock + inode->i_extentLength) == block);
         inode->i_extentLength += bcount;
         inode->i_dinode.di_blocks += bcount;
     } else if (inode->i_extentLength) {

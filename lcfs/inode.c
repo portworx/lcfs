@@ -384,6 +384,56 @@ lc_flushInodePages(struct gfs *gfs, struct fs *fs) {
     fs->fs_inodePagesCount = 0;
 }
 
+/* Allocate a block for an inode */
+static bool
+fs_allocInodeBlock(struct gfs *gfs, struct fs *fs, struct inode *inode) {
+    uint64_t block;
+    bool allocated = false;
+
+    pthread_mutex_lock(&fs->fs_alock);
+    if ((fs->fs_inodeBlocks == NULL) ||
+        (fs->fs_inodeIndex >= LC_IBLOCK_MAX)) {
+        lc_newInodeBlock(gfs, fs);
+    }
+
+    /* Start with a new block for symbolic links */
+    if (S_ISLNK(inode->i_mode)) {
+        fs->fs_inodeBlockIndex = 0;
+    }
+    if ((fs->fs_inodeBlockIndex == 0) ||
+        (fs->fs_inodeBlockIndex >= LC_INODE_BLOCK_MAX)) {
+        if (fs->fs_blockInodesCount == 0) {
+            pthread_mutex_unlock(&fs->fs_alock);
+            block = lc_blockAllocExact(fs, LC_INODE_CLUSTER_SIZE, true, true);
+            pthread_mutex_lock(&fs->fs_alock);
+            assert(fs->fs_blockInodesCount == 0);
+            fs->fs_blockInodesCount = LC_INODE_CLUSTER_SIZE;
+            fs->fs_blockInodes = block;
+        }
+        assert(fs->fs_blockInodes != LC_INVALID_BLOCK);
+        assert(fs->fs_blockInodes != 0);
+        assert(fs->fs_blockInodesCount > 0);
+        inode->i_block = fs->fs_blockInodes++;
+        fs->fs_blockInodesCount--;
+        fs->fs_inodeBlocks->ib_blks[fs->fs_inodeIndex++] = inode->i_block;
+        fs->fs_inodeBlockIndex = 1;
+        allocated = true;
+    } else {
+        assert(fs->fs_blockInodes != LC_INVALID_BLOCK);
+        assert(fs->fs_blockInodes != 0);
+        inode->i_block = ((uint64_t)fs->fs_inodeBlockIndex <<
+                          LC_DINODE_INDEX) | (fs->fs_blockInodes - 1);
+        fs->fs_inodeBlockIndex++;
+    }
+
+    /* Use the whole block for symbolic links */
+    if (S_ISLNK(inode->i_mode)) {
+        fs->fs_inodeBlockIndex = LC_INODE_BLOCK_MAX;
+    }
+    pthread_mutex_unlock(&fs->fs_alock);
+    return allocated;
+}
+
 /* Flush a dirty inode to disk */
 int
 lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
@@ -428,40 +478,7 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             (inode->i_block != LC_INVALID_BLOCK)) {
             allocated = false;
             if (inode->i_block == LC_INVALID_BLOCK) {
-                if ((fs->fs_inodeBlocks == NULL) ||
-                    (fs->fs_inodeIndex >= LC_IBLOCK_MAX)) {
-                    lc_newInodeBlock(gfs, fs);
-                }
-
-                /* Start with a new block for symbolic links */
-                if (S_ISLNK(inode->i_mode)) {
-                    fs->fs_inodeBlockIndex = 0;
-                }
-                if ((fs->fs_inodeBlockIndex == 0) ||
-                    (fs->fs_inodeBlockIndex >= LC_INODE_BLOCK_MAX)) {
-                    if (fs->fs_blockInodesCount == 0) {
-                        fs->fs_blockInodesCount = LC_INODE_CLUSTER_SIZE;
-                        fs->fs_blockInodes = lc_blockAllocExact(fs,
-                                                       fs->fs_blockInodesCount,
-                                                       true, true);
-                    }
-                    inode->i_block = fs->fs_blockInodes++;
-                    fs->fs_blockInodesCount--;
-                    fs->fs_inodeBlocks->ib_blks[fs->fs_inodeIndex++] =
-                                                            inode->i_block;
-                    fs->fs_inodeBlockIndex = 1;
-                    allocated = true;
-                } else {
-                    inode->i_block = ((uint64_t)fs->fs_inodeBlockIndex <<
-                                      LC_DINODE_INDEX) |
-                                     (fs->fs_blockInodes - 1);
-                    fs->fs_inodeBlockIndex++;
-                }
-
-                /* Use the whole block for symbolic links */
-                if (S_ISLNK(inode->i_mode)) {
-                    fs->fs_inodeBlockIndex = LC_INODE_BLOCK_MAX;
-                }
+                allocated = fs_allocInodeBlock(gfs, fs, inode);
             }
             offset = (inode->i_block >> LC_DINODE_INDEX) * LC_DINODE_SIZE;
             block = inode->i_block & LC_DINODE_BLOCK;
