@@ -184,16 +184,17 @@ lc_displayGlobalStats(struct gfs *gfs) {
            (gfs->gfs_super->sb_blocks * 100ul) / gfs->gfs_super->sb_tblocks,
            gfs->gfs_super->sb_tblocks);
     if (gfs->gfs_reads || gfs->gfs_writes) {
-        printf("Total %ld reads %ld writes\n", gfs->gfs_reads, gfs->gfs_writes);
+        printf("Total %ld reads %ld writes\n",
+               gfs->gfs_reads, gfs->gfs_writes);
     }
     if (gfs->gfs_clones) {
         printf("%ld inodes cloned\n", gfs->gfs_clones);
     }
     if (gfs->gfs_phit || gfs->gfs_pmissed || gfs->gfs_precycle ||
-        gfs->gfs_preused) {
-        printf("%ld pages hit %ld pages missed "
-               "%ld pages recycled %ld pages reused\n", gfs->gfs_phit,
-               gfs->gfs_pmissed, gfs->gfs_precycle, gfs->gfs_preused);
+        gfs->gfs_preused || gfs->gfs_purged) {
+        printf("pages %ld hit %ld missed %ld recycled %ld reused %ld purged\n",
+               gfs->gfs_phit, gfs->gfs_pmissed, gfs->gfs_precycle,
+               gfs->gfs_preused, gfs->gfs_purged);
     }
 }
 

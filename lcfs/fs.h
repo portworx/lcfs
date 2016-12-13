@@ -66,11 +66,20 @@ struct gfs {
     /* Pages recycled */
     uint64_t gfs_precycle;
 
+    /* Pages purged */
+    uint64_t gfs_purged;
+
     /* Pages reused */
     uint64_t gfs_preused;
 
     /* Last index in use in gfs_fs/gfs_roots */
     int gfs_scount;
+
+    /* Layer from pages being purged */
+    int gfs_tpIndex;
+
+    /* Pages being purged */
+    bool gfs_tpurging;
 
     /* Set if extended attributes are enabled */
     bool gfs_xattr_enabled;
@@ -168,6 +177,9 @@ struct fs {
 
     /* Dirty page count */
     uint64_t fs_dpcount;
+
+    /* pcache purged last */
+    uint64_t fs_purgeIndex;
 
     /* Lock protecting dirty page list */
     pthread_mutex_t fs_plock;

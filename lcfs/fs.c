@@ -163,7 +163,7 @@ lc_lock(struct fs *fs, bool exclusive) {
 }
 
 /* Trylock variant of the above */
-static int
+int
 lc_tryLock(struct fs *fs, bool exclusive) {
     return exclusive ? pthread_rwlock_trywrlock(&fs->fs_rwlock) :
                        pthread_rwlock_tryrdlock(&fs->fs_rwlock);

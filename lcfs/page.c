@@ -60,7 +60,7 @@ lc_flushInodeDirtyPages(struct inode *inode, uint64_t page) {
             return;
         }
     }
-    printf("Flushing pages of inode %ld\n", inode->i_ino);
+    lc_printf("Flushing pages of inode %ld\n", inode->i_ino);
     lc_flushPages(inode->i_fs->fs_gfs, inode->i_fs, inode, false);
 }
 

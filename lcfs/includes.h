@@ -85,6 +85,7 @@ uint64_t lc_getfsForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp);
 int lc_getIndex(struct fs *nfs, ino_t parent, ino_t ino);
 void lc_addfs(struct fs *fs, struct fs *pfs);
 void lc_lock(struct fs *fs, bool exclusive);
+int lc_tryLock(struct fs *fs, bool exclusive);
 void lc_unlock(struct fs *fs);
 int lc_mount(char *device, struct gfs **gfsp);
 void lc_newInodeBlock(struct gfs *gfs, struct fs *fs);
@@ -189,6 +190,7 @@ void lc_flushDirtyPages(struct gfs *gfs, struct fs *fs);
 void lc_addDirtyInode(struct fs *fs, struct inode *inode);
 void lc_flushDirtyInodeList(struct fs *fs);
 void lc_invalidateDirtyPages(struct gfs *gfs, struct fs *fs);
+void lc_purgePages(struct gfs *gfs);
 
 int lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
                void **fsp);

@@ -796,6 +796,9 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 
 out:
     lc_statsAdd(fs, LC_READ, err, &start);
+    if (fs->fs_gfs->gfs_pcount > LC_PAGE_MAX) {
+        lc_purgePages(fs->fs_gfs);
+    }
     lc_unlock(fs);
 }
 
