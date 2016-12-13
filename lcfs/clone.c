@@ -104,8 +104,12 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
         pfs->fs_frozen = true;
         assert(pfs->fs_root == lc_getInodeHandle(pinum));
         pdir = pfs->fs_rootInode;
+        dir->i_size = pdir->i_size;
         dir->i_nlink = pdir->i_nlink;
         dir->i_dirent = pdir->i_dirent;
+        if (pdir->i_flags & LC_INODE_DHASHED) {
+            dir->i_flags |= LC_INODE_DHASHED;
+        }
         lc_dirCopy(dir);
 
         /* Inode chain lock is shared with the parent */

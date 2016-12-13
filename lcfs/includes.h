@@ -120,7 +120,7 @@ void lc_invalidateInodePages(struct gfs *gfs, struct fs *fs);
 
 ino_t lc_dirLookup(struct fs *fs, struct inode *dir, const char *name);
 void lc_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,
-                int nsize);
+               int nsize);
 void lc_dirReaddir(fuse_req_t req, struct fs *fs, struct inode *dir,
                    fuse_ino_t ino, size_t size, off_t off, struct stat *st);
 void lc_dirRemove(struct inode *dir, const char *name);

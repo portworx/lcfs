@@ -7,6 +7,7 @@ static uint64_t global_memory = 0, global_malloc = 0, global_free = 0;
 static const char *mrequests[] = {
     "GFS",
     "DIRENT",
+    "DCACHE",
     "ICACHE",
     "INODE",
     "PCACHE",

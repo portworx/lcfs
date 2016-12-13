@@ -127,6 +127,7 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
             //lc_reportError(__func__, __LINE__, ino, EEXIST);
             return EEXIST;
         }
+        assert(inode->i_size == 0);
         assert(inode->i_nlink == 2);
         inode->i_nlink = 0;
         inode->i_flags |= LC_INODE_REMOVED;

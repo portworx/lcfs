@@ -19,21 +19,22 @@ lc_dirConvertHashed(struct fs *fs, struct inode *dir) {
     uint32_t hash;
 
     assert(S_ISDIR(dir->i_mode));
-    assert(fs->fs_gfs->gfs_snap_root == dir->i_ino);
     dcache = lc_malloc(fs, LC_DIRCACHE_SIZE * sizeof(struct dirent *),
-                       LC_MEMTYPE_GFS);
+                       LC_MEMTYPE_DCACHE);
     memset(dcache, 0, LC_DIRCACHE_SIZE * sizeof(struct dirent *));
     while (dirent) {
         next = dirent->di_next;
         hash = lc_dirhash(dirent->di_name, dirent->di_size);
         dirent->di_next = dcache[hash];
         dcache[hash] = dirent;
+        /* XXX readdir may break */
         dirent->di_index = dirent->di_next ?
                            (dirent->di_next->di_index + 1) : 1;
         dirent = next;
     }
     dir->i_hdirent = dcache;
-    lc_printf("Converted to hashed directory %ld\n", dir->i_ino);
+    dir->i_flags |= LC_INODE_DHASHED;
+    //lc_printf("Converted to hashed directory %ld\n", dir->i_ino);
 }
 
 /* Lookup the specified name in the directory and return correponding inode
@@ -41,14 +42,13 @@ lc_dirConvertHashed(struct fs *fs, struct inode *dir) {
  */
 ino_t
 lc_dirLookup(struct fs *fs, struct inode *dir, const char *name) {
-    bool hashed = (fs->fs_gfs->gfs_snap_root == dir->i_ino);
     struct dirent *dirent;
     int len = strlen(name);
     uint32_t hash;
     ino_t dino;
 
     assert(S_ISDIR(dir->i_mode));
-    if (hashed) {
+    if (dir->i_flags & LC_INODE_DHASHED) {
         hash = lc_dirhash(name, len);
         dirent = dir->i_hdirent[hash];
     } else {
@@ -70,13 +70,21 @@ void
 lc_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,
           int nsize) {
     struct fs *fs = dir->i_fs;
-    bool hashed = (fs->fs_gfs->gfs_snap_root == dir->i_ino);
     struct dirent *dirent;
     int hash;
 
     assert(S_ISDIR(dir->i_mode));
     assert(!(dir->i_flags & LC_INODE_SHARED));
     assert(ino > LC_ROOT_INODE);
+
+    /* Convert to a hash table when the directory grows bigger than a certain
+     * size.
+     * XXX Disable this for now.
+     */
+    if (0 && (dir->i_size >= LC_DIRCACHE_MIN) &&
+        !(dir->i_flags & LC_INODE_DHASHED)) {
+        lc_dirConvertHashed(fs, dir);
+    }
     dirent = lc_malloc(fs, sizeof(struct dirent) + nsize + 1,
                        LC_MEMTYPE_DIRENT);
     dirent->di_ino = ino;
@@ -85,7 +93,7 @@ lc_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,
     dirent->di_name[nsize] = 0;
     dirent->di_size = nsize;
     dirent->di_mode = mode & S_IFMT;
-    if (hashed) {
+    if (dir->i_flags & LC_INODE_DHASHED) {
         hash = lc_dirhash(name, nsize);
         dirent->di_next = dir->i_hdirent[hash];
         dir->i_hdirent[hash] = dirent;
@@ -94,26 +102,67 @@ lc_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,
         dir->i_dirent = dirent;
     }
     dirent->di_index = dirent->di_next ? (dirent->di_next->di_index + 1) : 1;
+    dir->i_size++;
 }
 
 /* Copy directory entries from one directory to another */
 void
 lc_dirCopy(struct inode *dir) {
-    struct dirent *dirent = dir->i_dirent;
+    bool hashed = (dir->i_flags & LC_INODE_DHASHED);
+    struct dirent *dirent, *new, *prev, **dcache;
+    struct fs *fs = dir->i_fs;
+    uint64_t count = 0;
+    uint32_t i, max;
+    size_t nsize;
 
     assert(dir->i_flags & LC_INODE_SHARED);
     assert(S_ISDIR(dir->i_mode));
-    assert(dir->i_fs->fs_gfs->gfs_snap_root != dir->i_ino);
     assert(dir->i_nlink >= 2);
-    dir->i_dirent = NULL;
-    dir->i_flags &= ~LC_INODE_SHARED;
-
-    /* XXX Directory ordering is lost here */
-    while (dirent) {
-        lc_dirAdd(dir, dirent->di_ino, dirent->di_mode,
-                  dirent->di_name, dirent->di_size);
-        dirent = dirent->di_next;
+    if (hashed) {
+        dcache = dir->i_hdirent;
+        dir->i_hdirent = NULL;
+        lc_dirConvertHashed(fs, dir);
+        max = LC_DIRCACHE_SIZE;
+        dirent = NULL;
+    } else {
+        dirent = dir->i_dirent;
+        dir->i_dirent = NULL;
+        max = 1;
+        dcache = NULL;
     }
+    dir->i_flags &= ~LC_INODE_SHARED;
+    for (i = 0; i < max; i++) {
+        if (hashed) {
+            dirent = dcache[i];
+        }
+        prev = NULL;
+        while (dirent) {
+            nsize = dirent->di_size;
+            new = lc_malloc(fs, sizeof(struct dirent) + nsize + 1,
+                            LC_MEMTYPE_DIRENT);
+            new->di_ino = dirent->di_ino;
+            new->di_name = ((char *)new) + sizeof(struct dirent);
+            memcpy(new->di_name, dirent->di_name, nsize);
+            new->di_name[nsize] = 0;
+            new->di_size = nsize;
+            new->di_mode = dirent->di_mode;
+            new->di_index = dirent->di_index;
+            new->di_next = NULL;
+            if (prev == NULL) {
+                if (hashed) {
+                    dir->i_hdirent[i] = new;
+                } else {
+                    dir->i_dirent = new;
+                }
+            } else {
+                prev->di_next = new;
+            }
+            count++;
+            prev = new;
+            dirent = dirent->di_next;
+        }
+    }
+    assert(dir->i_size == count);
     lc_markInodeDirty(dir, true, true, false, false);
 }
 
@@ -127,20 +176,33 @@ lc_freeDirent(struct fs *fs, struct dirent *dirent) {
 /* Remove a directory entry */
 void
 lc_dirRemove(struct inode *dir, const char *name) {
-    struct dirent *dirent = dir->i_dirent, *pdirent = NULL;
+    bool hashed = (dir->i_flags & LC_INODE_DHASHED);
+    struct dirent *dirent, *pdirent = NULL;
     int len = strlen(name);
+    uint32_t hash;
 
     assert(S_ISDIR(dir->i_mode));
-    assert(dir->i_fs->fs_gfs->gfs_snap_root != dir->i_ino);
     assert(!(dir->i_flags & LC_INODE_SHARED));
+    if (hashed) {
+        hash = lc_dirhash(name, len);
+        dirent = dir->i_hdirent[hash];
+    } else {
+        hash = -1;
+        dirent = dir->i_dirent;
+    }
     while (dirent != NULL) {
         if ((len == dirent->di_size) &&
             (strcmp(name, dirent->di_name) == 0)) {
             if (pdirent == NULL) {
-                dir->i_dirent = dirent->di_next;
+                if (hashed) {
+                    dir->i_hdirent[hash] = dirent->di_next;
+                } else {
+                    dir->i_dirent = dirent->di_next;
+                }
             } else {
                 pdirent->di_next = dirent->di_next;
             }
+            dir->i_size--;
             lc_freeDirent(dir->i_fs, dirent);
             return;
         }
@@ -154,17 +216,40 @@ lc_dirRemove(struct inode *dir, const char *name) {
 void
 lc_dirRename(struct inode *dir, ino_t ino,
               const char *name, const char *newname) {
-    struct dirent *dirent = dir->i_dirent, *pdirent = NULL, *new;
-    struct fs *fs = dir->i_fs;
-    int len = strlen(name);
+    bool hashed = (dir->i_flags & LC_INODE_DHASHED);
+    struct dirent *dirent, *pdirent = NULL, *new;
+    int len = strlen(name), hash, newhash = 0;
+    struct fs *fs;
 
     assert(S_ISDIR(dir->i_mode));
     assert(!(dir->i_flags & LC_INODE_SHARED));
-    assert(fs->fs_gfs->gfs_snap_root != dir->i_ino);
+    if (hashed) {
+        hash = lc_dirhash(name, len);
+        dirent = dir->i_hdirent[hash];
+    } else {
+        dirent = dir->i_dirent;
+        hash = -1;
+    }
     while (dirent != NULL) {
         if ((dirent->di_ino == ino) && (len == dirent->di_size) &&
             (strcmp(name, dirent->di_name) == 0)) {
+            fs = dir->i_fs;
             len = strlen(newname);
+            if (hashed) {
+                newhash = lc_dirhash(newname, len);
+                if (hash != newhash) {
+                    if (pdirent == NULL) {
+                        dir->i_hdirent[hash] = dirent->di_next;
+                    } else {
+                        pdirent->di_next = dirent->di_next;
+                    }
+                    dirent->di_next = dir->i_hdirent[newhash];
+                    dir->i_hdirent[newhash] = dirent;
+                    dirent->di_index = dirent->di_next ?
+                                       (dirent->di_next->di_index + 1) : 1;
+                    pdirent = NULL;
+                }
+            }
 
             /* Existing name can be used if size is not growing */
             if (len > dirent->di_size) {
@@ -174,7 +259,11 @@ lc_dirRename(struct inode *dir, ino_t ino,
                 lc_freeDirent(fs, dirent);
                 dirent = new;
                 if (pdirent == NULL) {
-                    dir->i_dirent = dirent;
+                    if (hashed) {
+                        dir->i_hdirent[newhash] = dirent;
+                    } else {
+                        dir->i_dirent = dirent;
+                    }
                 } else {
                     pdirent->di_next = dirent;
                 }
@@ -196,13 +285,18 @@ lc_dirRename(struct inode *dir, ino_t ino,
 /* Read a directory from disk */
 void
 lc_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf) {
-    uint64_t block = dir->i_emapDirBlock;
+    uint64_t block = dir->i_emapDirBlock, entries = 0;
     int remain, dsize, count = 2;
     struct ddirent *ddirent;
     struct dblock *dblock = buf;
     char *dbuf;
 
     assert(S_ISDIR(dir->i_mode));
+    if ((dir->i_size >= LC_DIRCACHE_MIN) &&
+        !(dir->i_flags & LC_INODE_DHASHED)) {
+        lc_dirConvertHashed(fs, dir);
+    }
+    dir->i_size = 0;
     while (block != LC_INVALID_BLOCK) {
         lc_addSpaceExtent(gfs, fs, &dir->i_emapDirExtents, block, 1);
         lc_readBlock(gfs, fs, block, dblock);
@@ -219,12 +313,14 @@ lc_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf) {
             if (S_ISDIR(ddirent->di_type)) {
                 count++;
             }
+            entries++;
             dbuf += dsize;
             remain -= dsize;
         }
         block = dblock->db_next;
     }
     assert(dir->i_nlink == count);
+    assert(dir->i_size == entries);
 }
 
 /* Allocate a directory block and flush to disk */
@@ -265,13 +361,13 @@ lc_dirAddPage(struct gfs *gfs, struct fs *fs, struct dblock *dblock,
 /* Flush directory entries */
 void
 lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
-    bool hashed = (gfs->gfs_snap_root == dir->i_ino);
-    uint64_t block = LC_INVALID_BLOCK, count = 0;
+    uint64_t block = LC_INVALID_BLOCK, count = 0, entries = 0;
+    bool hashed = (dir->i_flags & LC_INODE_DHASHED);
     int i, remain = 0, dsize, subdir = 2, max;
-    struct dirent *dirent = dir->i_dirent;
     struct dblock *dblock = NULL;
     struct page *page = NULL;
     struct ddirent *ddirent;
+    struct dirent *dirent;
     char *dbuf = NULL;
 
     assert(S_ISDIR(dir->i_mode));
@@ -304,6 +400,7 @@ lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
             if (S_ISDIR(dirent->di_mode)) {
                 subdir++;
             }
+            entries++;
             dbuf += dsize;
             remain -= dsize;
             dirent = dirent->di_next;
@@ -318,8 +415,8 @@ lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
     }
     dir->i_emapDirBlock = block;
     assert(dir->i_nlink == subdir);
+    assert(dir->i_size == entries);
     dir->i_dinode.di_blocks = count;
-    dir->i_size = count * LC_BLOCK_SIZE;
     assert(dir->i_flags & LC_INODE_DIRTY);
     dir->i_flags &= ~LC_INODE_DIRDIRTY;
 }
@@ -327,18 +424,17 @@ lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
 /* Free directory entries */
 void
 lc_dirFree(struct inode *dir) {
+    bool hashed = (dir->i_flags & LC_INODE_DHASHED);
     struct dirent *dirent, *tmp;
     struct fs *fs;
-    bool hashed;
     int i, max;
 
     if (dir->i_flags & LC_INODE_SHARED) {
-        dir->i_flags &= ~LC_INODE_SHARED;
+        dir->i_flags &= ~(LC_INODE_SHARED | LC_INODE_DHASHED);
         dir->i_dirent = NULL;
         return;
     }
     fs = dir->i_fs;
-    hashed = (fs->fs_gfs->gfs_snap_root == dir->i_ino);
     max = hashed ? LC_DIRCACHE_SIZE : 1;
     for (i = 0; i < max; i++) {
         dirent = hashed ? dir->i_hdirent[i] : dir->i_dirent;
@@ -350,8 +446,9 @@ lc_dirFree(struct inode *dir) {
     }
     if (hashed) {
         lc_free(fs, dir->i_hdirent, LC_DIRCACHE_SIZE * sizeof(struct dirent *),
-                LC_MEMTYPE_GFS);
+                LC_MEMTYPE_DCACHE);
         dir->i_hdirent = NULL;
+        dir->i_flags &= ~LC_INODE_DHASHED;
     } else {
         dir->i_dirent = NULL;
     }
@@ -360,23 +457,34 @@ lc_dirFree(struct inode *dir) {
 /* Remove a directory tree */
 void
 lc_removeTree(struct fs *fs, struct inode *dir) {
-    struct dirent *dirent = dir->i_dirent;
+    bool hashed = (dir->i_flags & LC_INODE_DHASHED);
+    struct dirent *dirent;
+    int i, max;
     bool rmdir;
 
     assert(!(dir->i_flags & LC_INODE_SHARED));
-    while (dirent != NULL) {
-        lc_printf("lc_removeTree: dir %ld nlink %ld removing %s inode %ld dir %d\n", dir->i_ino, dir->i_nlink, dirent->di_name, dirent->di_ino, S_ISDIR(dirent->di_mode));
-        rmdir = S_ISDIR(dirent->di_mode);
-        lc_removeInode(fs, dir, dirent->di_ino, rmdir, NULL);
-        if (rmdir) {
-            assert(dir->i_nlink > 2);
-            dir->i_nlink--;
-        } else {
-            assert(dir->i_nlink >= 2);
+    max = hashed ? LC_DIRCACHE_SIZE : 1;
+    for (i = 0; i < max; i++) {
+        dirent = hashed ?  dir->i_hdirent[i] : dir->i_dirent;
+        while (dirent != NULL) {
+            lc_printf("lc_removeTree: dir %ld nlink %ld removing %s inode %ld dir %d\n", dir->i_ino, dir->i_nlink, dirent->di_name, dirent->di_ino, S_ISDIR(dirent->di_mode));
+            rmdir = S_ISDIR(dirent->di_mode);
+            lc_removeInode(fs, dir, dirent->di_ino, rmdir, NULL);
+            if (rmdir) {
+                assert(dir->i_nlink > 2);
+                dir->i_nlink--;
+            } else {
+                assert(dir->i_nlink >= 2);
+            }
+            if (hashed) {
+                dir->i_hdirent[i] = dirent->di_next;
+            } else {
+                dir->i_dirent = dirent->di_next;
+            }
+            dir->i_size--;
+            lc_freeDirent(fs, dirent);
+            dirent = hashed ? dir->i_hdirent[i] : dir->i_dirent;
         }
-        dir->i_dirent = dirent->di_next;
-        lc_freeDirent(fs, dirent);
-        dirent = dir->i_dirent;
     }
 }
 
@@ -386,11 +494,11 @@ lc_dirRemoveName(struct fs *fs, struct inode *dir,
                  const char *name, bool rmdir, void **fsp,
                  int dremove(struct fs *, struct inode *, ino_t,
                              bool, void **)) {
+    bool hashed = (dir->i_flags & LC_INODE_DHASHED);
     struct dirent *dirent, *pdirent = NULL;
     int len = strlen(name), err, hash;
     ino_t ino, parent = dir->i_ino;
     struct gfs *gfs = fs->fs_gfs;
-    bool hashed = (gfs->gfs_snap_root == dir->i_ino);
 
     assert(S_ISDIR(dir->i_mode));
     if (hashed) {
@@ -436,6 +544,7 @@ lc_dirRemoveName(struct fs *fs, struct inode *dir,
                 } else {
                     pdirent->di_next = dirent->di_next;
                 }
+                dir->i_size--;
                 lc_freeDirent(fs, dirent);
             }
             return err;
@@ -450,8 +559,8 @@ lc_dirRemoveName(struct fs *fs, struct inode *dir,
 void
 lc_dirReaddir(fuse_req_t req, struct fs *fs, struct inode *dir,
               fuse_ino_t ino, size_t size, off_t off, struct stat *st) {
-    bool hashed = (fs->fs_gfs->gfs_snap_root == dir->i_ino);
-    struct dirent *dirent;
+    bool hashed = (dir->i_flags & LC_INODE_DHASHED);
+    struct dirent *dirent = NULL;
     size_t csize, esize;
     int max, start;
     char buf[size];
@@ -461,19 +570,23 @@ lc_dirReaddir(fuse_req_t req, struct fs *fs, struct inode *dir,
     if (hashed) {
         max = LC_DIRCACHE_SIZE;
         start = off >> LC_DIRHASH_SHIFT;
-        off &= LC_DIRHASH_INDEX;
+        assert(start <= LC_DIRCACHE_SIZE);
+        if (start == LC_DIRCACHE_SIZE) {
+            start = 0;
+        }
     } else {
         start = 0;
         max = 1;
     }
+    off &= LC_DIRHASH_INDEX;
     csize = 0;
     for (i = start; i < max; i++) {
-        dirent = hashed ? dir->i_hdirent[i] : dir->i_dirent;
+        dirent = hashed ?  dir->i_hdirent[i] : dir->i_dirent;
         while (off && dirent && (dirent->di_index >= off)) {
             dirent = dirent->di_next;
         }
         off = 0;
-        hoff = hashed ? (i << LC_DIRHASH_SHIFT) : 0;
+        hoff = (hashed ? i : LC_DIRCACHE_SIZE) << LC_DIRHASH_SHIFT;
         while (dirent != NULL) {
             assert(dirent->di_ino > LC_ROOT_INODE);
             st->st_ino = lc_setHandle(lc_getIndex(fs, ino, dirent->di_ino),

@@ -185,10 +185,12 @@ lc_setSnapshotRoot(struct gfs *gfs, ino_t ino) {
         gfs->gfs_snap_root = 0;
     }
     dir = lc_getInode(lc_getGlobalFs(gfs), ino, NULL, false, false);
-    gfs->gfs_snap_root = ino;
-    lc_dirConvertHashed(dir->i_fs, dir);
-    gfs->gfs_snap_rootInode = dir;
-    lc_inodeUnlock(gfs->gfs_snap_rootInode);
+    if (dir) {
+        gfs->gfs_snap_root = ino;
+        lc_dirConvertHashed(dir->i_fs, dir);
+        gfs->gfs_snap_rootInode = dir;
+        lc_inodeUnlock(dir);
+    }
     printf("snapshot root inode %ld\n", ino);
 }
 
@@ -623,6 +625,9 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
         if (parent->i_dirent) {
             inode->i_dirent = parent->i_dirent;
             inode->i_flags |= LC_INODE_SHARED;
+            if (parent->i_flags & LC_INODE_DHASHED) {
+                inode->i_flags |= LC_INODE_DHASHED;
+            }
             dir = true;
         }
     } else if (S_ISLNK(inode->i_mode)) {

@@ -25,6 +25,7 @@ struct icache {
     struct inode *ic_head;
 };
 
+#define LC_DIRCACHE_MIN  32
 #define LC_DIRCACHE_SIZE 512
 #define LC_DIRHASH_LEN   10
 #define LC_DIRHASH_SHIFT 32ul
@@ -109,6 +110,7 @@ struct ixattr {
 #define LC_INODE_SHARED         0x20
 #define LC_INODE_TMP            0x40
 #define LC_INODE_HASHED         0x80
+#define LC_INODE_DHASHED        0x80
 
 /* Inode structure */
 struct inode {
