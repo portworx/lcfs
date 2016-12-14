@@ -47,6 +47,10 @@ create(struct fs *fs, ino_t parent, const char *name, mode_t mode,
         lc_reportError(__func__, __LINE__, parent, EROFS);
         return EROFS;
     }
+    if (parent == gfs->gfs_snap_root) {
+        lc_reportError(__func__, __LINE__, parent, EPERM);
+        return EPERM;
+    }
     if (!lc_hasSpace(gfs, fs->fs_pcount + 1)) {
         lc_reportError(__func__, __LINE__, parent, ENOSPC);
         return ENOSPC;
@@ -119,10 +123,10 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
         /* Allow directory removals from the root file system even when
          * directories are not empty.
          */
-        if ((inode->i_dirent != NULL) && (fs == lc_getGlobalFs(fs->fs_gfs))) {
+        if (inode->i_size && (fs == lc_getGlobalFs(fs->fs_gfs))) {
             lc_removeTree(fs, inode);
         }
-        if (inode->i_dirent != NULL) {
+        if (inode->i_size) {
             lc_inodeUnlock(inode);
             //lc_reportError(__func__, __LINE__, ino, EEXIST);
             return EEXIST;

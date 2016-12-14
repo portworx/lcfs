@@ -81,7 +81,7 @@ lc_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,
      * size.
      * XXX Disable this for now.
      */
-    if (0 && (dir->i_size >= LC_DIRCACHE_MIN) &&
+    if ((dir->i_size >= LC_DIRCACHE_MIN) &&
         !(dir->i_flags & LC_INODE_DHASHED)) {
         lc_dirConvertHashed(fs, dir);
     }
@@ -295,7 +295,7 @@ lc_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf) {
     char *dbuf;
 
     assert(S_ISDIR(dir->i_mode));
-    if (0 && (dir->i_size >= LC_DIRCACHE_MIN) &&
+    if ((dir->i_size >= LC_DIRCACHE_MIN) &&
         !(dir->i_flags & LC_INODE_DHASHED)) {
         lc_dirConvertHashed(fs, dir);
     }
@@ -572,28 +572,31 @@ lc_dirReaddir(fuse_req_t req, struct fs *fs, struct inode *dir,
               fuse_ino_t ino, size_t size, off_t off, struct stat *st) {
     bool hashed = (dir->i_flags & LC_INODE_DHASHED);
     struct dirent *dirent = NULL;
-    size_t csize, esize;
+    size_t csize = 0, esize;
     int max, start;
     char buf[size];
     off_t i, hoff;
 
     assert(S_ISDIR(dir->i_mode));
     if (hashed) {
-        max = LC_DIRCACHE_SIZE;
-        start = off >> LC_DIRHASH_SHIFT;
-        assert(start <= LC_DIRCACHE_SIZE);
-        if (start == LC_DIRCACHE_SIZE) {
-            start = 0;
-            off = 0;
+        if (off) {
+            start = off >> LC_DIRHASH_SHIFT;
+            assert(start <= LC_DIRCACHE_SIZE);
+            if (start == LC_DIRCACHE_SIZE) {
+                start = 0;
+                off = 0;
+            } else {
+                off &= LC_DIRHASH_INDEX;
+            }
         } else {
-            off &= LC_DIRHASH_INDEX;
+            start = 0;
         }
+        max = LC_DIRCACHE_SIZE;
     } else {
         start = 0;
         max = 1;
         off &= LC_DIRHASH_INDEX;
     }
-    csize = 0;
     for (i = start; i < max; i++) {
         dirent = hashed ? dir->i_hdirent[i] : dir->i_dirent;
         while (off && dirent && (dirent->di_index >= off)) {
@@ -622,6 +625,8 @@ out:
     if (csize) {
         fuse_reply_buf(req, buf, csize);
     } else {
+        assert(i == max);
+        assert(dirent == NULL);
         fuse_reply_buf(req, NULL, 0);
     }
 }
