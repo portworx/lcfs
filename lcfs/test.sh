@@ -45,9 +45,9 @@ ls file1
 cat file1
 rm file1
 
-sudo mknod block b 10 5
-sudo mknod char c 10 5
-sudo mknod unbuffer u 10 5
+mknod block b 10 5
+mknod char c 10 5
+mknod unbuffer u 10 5
 mknod fifo p
 ls -lRi
 
@@ -109,6 +109,7 @@ ls -ltRi
 cd -
 
 service docker stop
+../plugin/lcfs_plugin &
 dockerd -s lcfs -g $MNT 2>/dev/null &
 sleep 10
 docker run hello-world
@@ -181,4 +182,5 @@ fusermount -u $MNT
 sleep 10
 
 rm -fr $MNT $DEVICE
+pkill lcfs_plugin
 wait

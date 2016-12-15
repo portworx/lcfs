@@ -6,11 +6,9 @@ import (
     "path"
     "syscall"
     "unsafe"
-    "time"
-    "runtime"
-    "fmt"
 
     "github.com/Sirupsen/logrus"
+    "github.com/docker/docker/pkg/reexec"
     "github.com/docker/docker/pkg/archive"
     "github.com/docker/docker/pkg/idtools"
     "github.com/docker/docker/daemon/graphdriver"
@@ -23,55 +21,71 @@ type pDriver struct {
 
 var _ graphdriver.ProtoDriver = &pDriver{}
 
+// String prints the name of the driver (lcfs).
 func (p *pDriver) String() string {
-    logrus.Infof("Graphdriver String\n")
-    return "pxg"
+    logrus.Infof("Graphdriver String")
+    return "lcfs"
 }
+
+// CreateReadWrite creates a layer that is writable for use as a container
+// file system.
 func (p *pDriver) CreateReadWrite(id, parent string, storageOpt *graphdriver.CreateOpts) error {
-    logrus.Infof("Graphdriver CreateReadWrite - id %s parent %s\n", id, parent)
+    logrus.Infof("Graphdriver CreateReadWrite - id %s parent %s", id, parent)
     return nil
 }
+
+// Create a read-only layer given id.
 func (p *pDriver) Create(id, parent string, storageOpt *graphdriver.CreateOpts) error {
-    logrus.Infof("Graphdriver Create - id %s parent %s\n", id, parent)
+    logrus.Infof("Graphdriver Create - id %s parent %s", id, parent)
     return nil
 }
+
+// Remove the layer with given id.
 func (p *pDriver) Remove(id string) error {
-    logrus.Infof("Graphdriver Remove id %s\n", id)
+    logrus.Infof("Graphdriver Remove id %s", id)
     return nil
 }
+
+// Get the requested filesystem id.
 func (p *pDriver) Get(id, mountLabel string) (dir string, err error) {
-    logrus.Infof("Graphdriver Get - id %s mountLabel %s\n", id, mountLabel)
+    logrus.Infof("Graphdriver Get - id %s mountLabel %s", id, mountLabel)
     dir = path.Join(p.home, id)
-    logrus.Infof("Graphdriver Get returning dir %s\n", dir)
     return dir, nil
 }
+
+// Put is kind of unmounting the file system.
 func (p *pDriver) Put(id string) error {
-    logrus.Infof("Graphdriver Put id %s\n", id)
+    logrus.Infof("Graphdriver Put id %s", id)
     return nil
 }
+
+// Exists checks if the id exists in the filesystem.
 func (p *pDriver) Exists(id string) bool {
-    logrus.Infof("Graphdriver Exists id %s\n", id)
+    logrus.Infof("Graphdriver Exists id %s", id)
     return false
 }
+
 func (p *pDriver) Status() [][2]string {
-    logrus.Infof("Graphdriver Status\n")
+    logrus.Infof("Graphdriver Status")
     return nil
 }
 func (p *pDriver) GetMetadata(id string) (map[string]string, error) {
-    logrus.Infof("Graphdriver GetMetadata id %s\n", id)
+    logrus.Infof("Graphdriver GetMetadata id %s", id)
     return nil, nil
 }
 func (p *pDriver) Cleanup() error {
-    logrus.Infof("Graphdriver Cleanup\n")
+    logrus.Infof("Graphdriver Cleanup")
     return nil
 }
 
+// Init initializes the Naive Diff driver
 func Init(root string, options []string, uidMaps, gidMaps []idtools.IDMap) (graphdriver.Driver, error) {
-    logrus.Infof("Graphdriver Init - root %s options %+v\n", root, options)
-    d := graphdriver.NewNaiveDiffDriver(&pDriver{home: path.Join(root, "lcfs")}, uidMaps, gidMaps)
+    logrus.Infof("Graphdriver Init - root %s options %+v", root, options)
+    d := graphdriver.NewNaiveDiffDriver(&pDriver{home: root}, uidMaps, gidMaps)
     return d, nil
 }
 
+// Driver contains information about the filesystem mounted.
 type Driver struct {
     driver graphdriver.Driver
     init graphdriver.InitFunc
@@ -81,26 +95,27 @@ type Driver struct {
 
 // Copied from lcfs.h
 const (
-    SNAP_CREATE = 101
-    CLONE_CREATE = 102
-    SNAP_REMOVE = 103
-    SNAP_MOUNT = 104
-    SNAP_UMOUNT = 105
-    SNAP_STAT = 106
-    UMOUNT_ALL = 107
+    SnapCreate = 101
+    CloneCreate = 102
+    SnapRemove = 103
+    SnapMount = 104
+    SnapUmount = 105
+    SnapStat = 106
+    UmountAll = 107
 )
 
+// Init initializes the storage driver.
 func (d *Driver) Init(home string, options []string, uidMaps, gidMaps []idtools.IDMap) error {
-    logrus.Infof("Init - home %s options %+v\n", home, options)
+    logrus.Infof("Init - home %s options %+v", home, options)
     driver, err := d.init(home, options, nil, nil)
     if err != nil {
         logrus.Errorf("err %v\n", err)
         return err
     }
     d.driver = driver
-    d.home = path.Join(home, "lcfs")
+    d.home = home
     d.options = options
-    logrus.Infof("Init - basedir %s\n", d.home)
+    logrus.Infof("Init - basedir %s", d.home)
     if err := idtools.MkdirAllAs(d.home, 0700, 0, 0); err != nil {
         logrus.Errorf("err %v\n", err)
         return err
@@ -114,6 +129,7 @@ func (d *Driver) ioctl(cmd int, parent, id string) error {
     var name string
     var plen int
 
+    logrus.Infof("lcfs ioctl cmd %d parent %s id %s", cmd, parent, id)
     // Open snapshot root directory
     fd, err := syscall.Open(d.home, syscall.O_DIRECTORY, 0)
     if err != nil {
@@ -145,45 +161,46 @@ func (d *Driver) ioctl(cmd int, parent, id string) error {
 
 // Create the filesystem with given id.
 func (d *Driver) Create(id string, parent string, mountLabel string, storageOpt map[string]string) error {
-    logrus.Infof("Create - id %s parent %s\n", id, parent)
-    return d.ioctl(SNAP_CREATE, parent, id)
+    logrus.Infof("Create - id %s parent %s", id, parent)
+    return d.ioctl(SnapCreate, parent, id)
 }
 
 // CreateReadWrite creates a layer that is writable for use as a container
 // file system.
 func (d *Driver) CreateReadWrite(id string, parent string, mountLabel string, storageOpt map[string]string) error {
-    logrus.Infof("CreateReadWrite - id %s parent %s\n", id, parent)
-    return d.ioctl(CLONE_CREATE, parent, id)
+    logrus.Infof("CreateReadWrite - id %s parent %s", id, parent)
+    return d.ioctl(CloneCreate, parent, id)
 }
 
-// Remove the filesystem with given id.
+// Remove the layer with given id.
 func (d *Driver) Remove(id string) error {
-    logrus.Infof("Remove - id %s \n", id)
-    return d.ioctl(SNAP_REMOVE, "", id)
+    logrus.Infof("Remove - id %s", id)
+    return d.ioctl(SnapRemove, "", id)
 }
 
-// Get the requested filesystem id.
+// Get the requested layer id.
 func (d *Driver) Get(id, mountLabel string) (string, error) {
-    logrus.Infof("Get - id %s mountLabel %s\n", id, mountLabel)
+    logrus.Infof("Get - id %s mountLabel %s", id, mountLabel)
     dir := path.Join(d.home, id)
-    err := d.ioctl(SNAP_MOUNT, "", id)
+    err := d.ioctl(SnapMount, "", id)
     if err != nil {
         logrus.Errorf("err %v\n", err)
         return "", err
     }
-    logrus.Infof("Get returning dir %s\n", dir)
     return dir, nil
 }
 
-// Put is kind of unmounting the file system.
+// Put is kind of unmounting the layer
 func (d *Driver) Put(id string) error {
-    logrus.Infof("Put - id %s \n", id)
-    return d.ioctl(SNAP_UMOUNT, "", id)
+    logrus.Infof("Put - id %s ", id)
+    return d.ioctl(SnapUmount, "", id)
 }
 
+// Exists returns whether a filesystem layer with the specifie
+// ID exists on this driver.
 func (d *Driver) Exists(id string) bool {
-    logrus.Infof("Exists - id %s \n", id)
-    err := d.ioctl(SNAP_STAT, "", id)
+    logrus.Infof("Exists - id %s", id)
+    err := d.ioctl(SnapStat, "", id)
     return err == nil
 }
 
@@ -191,25 +208,26 @@ func (d *Driver) Exists(id string) bool {
 // Output contains "Build Version" and "Library Version" of the lcfs libraries used.
 // Version information can be used to check compatibility with your kernel.
 func (d *Driver) Status() [][2]string {
-    logrus.Infof("Status \n")
+    logrus.Infof("Status")
     return [][2]string{[2]string{"Build Version", "1.0"},
                        [2]string{"Library Version", "1.0"}}
 }
 
 // GetMetadata returns empty metadata for this driver.
 func (d *Driver) GetMetadata(id string) (map[string]string, error) {
-    logrus.Infof("GetMetadata - id %s \n", id)
+    logrus.Infof("GetMetadata - id %s", id)
     return nil, nil
 }
 
 // Cleanup unmounts the home directory.
 func (d *Driver) Cleanup() error {
-    logrus.Infof("Cleanup \n")
-    return d.ioctl(UMOUNT_ALL, "", "")
+    logrus.Infof("Cleanup")
+    return d.ioctl(UmountAll, "", "")
 }
 
+// Diff produces an archive of the changes between the specified
 func (d *Driver) Diff(id, parent string) io.ReadCloser {
-    logrus.Infof("Diff - id %s parent %s\n", id, parent)
+    logrus.Infof("Diff - id %s parent %s", id, parent)
     archive, err := d.driver.Diff(id, parent)
     if err != nil {
         logrus.Errorf("Diff: error in stream %v\n", err)
@@ -229,8 +247,10 @@ func changeKind(c archive.ChangeType) graphPlugin.ChangeKind {
     return 0
 }
 
+// Changes produces a list of changes between the specified layer
+// and its parent layer. If parent is "", then all changes will be ADD changes.
 func (d *Driver) Changes(id, parent string) ([]graphPlugin.Change, error) {
-    logrus.Infof("Changes - id %s parent %s\n", id, parent)
+    logrus.Infof("Changes - id %s parent %s", id, parent)
     cs, err := d.driver.Changes(id, parent)
     if err != nil {
         logrus.Errorf("Changes: err %v\n", err)
@@ -247,29 +267,32 @@ func (d *Driver) Changes(id, parent string) ([]graphPlugin.Change, error) {
     return changes, nil
 }
 
-// XXX This is somehow broken with docker 
+// ApplyDiff extracts the changeset from the given diff into the
+// layer with the specified id and parent, returning the size of the
+// new layer in bytes.
 func (d *Driver) ApplyDiff(id, parent string, archive io.Reader) (int64, error) {
-    logrus.Infof("ApplyDiff - id %s parent %s archive %+v\n", id, parent, archive)
-        go func() {
-            time.Sleep(10 * time.Second)
-            buf := make([]byte, 1<<20)
-            runtime.Stack(buf, true)
-            fmt.Printf("\n%s\n", buf)
-        } ()
+    logrus.Infof("ApplyDiff - id %s parent %s", id, parent)
     return d.driver.ApplyDiff(id, parent, archive)
 }
 
+// DiffSize calculates the changes between the specified layer
+// and its parent and returns the size in bytes of the changes
+// relative to its base filesystem directory.
 func (d *Driver) DiffSize(id, parent string) (int64, error) {
-    logrus.Infof("DiffSize - id %s parent %s\n", id, parent)
+    logrus.Infof("DiffSize - id %s parent %s", id, parent)
     return d.driver.DiffSize(id, parent)
 }
 
 func main() {
-    logrus.Infof("Starting to serve requests\n")
+    if reexec.Init() {
+        logrus.Errorf("reexec.Init failed")
+        return;
+    }
+    logrus.Infof("Starting to serve requests")
     handler := graphPlugin.NewHandler(&Driver{driver: nil, init: Init,
                                       home: "", options: nil})
-    if err := handler.ServeUnix("root", "pxg"); err != nil {
-    //if err := handler.ServeTCP("pxg", ":32456", nil); err != nil {
+    if err := handler.ServeUnix("root", "lcfs"); err != nil {
+    //if err := handler.ServeTCP("lcfs", ":32456", nil); err != nil {
         log.Fatalf("Error %v", err)
     }
     for {

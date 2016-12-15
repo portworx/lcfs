@@ -4,39 +4,6 @@ This file system driver is implemented using fuse low level API.
 
     git clone git@github.com:portworx/px-graph
 
-*  Download docker sources and add files for this driver.
-   Build docker and install that. (TODO: Use docker plugin)
-
-    git clone git@github.com:docker/docker
-    
-    cd docker
-
-    mkdir daemon/graphdriver/lcfs
-
-    cp ../px-graph/docker/daemon/graphdriver/lcfs/* daemon/graphdriver/lcfs
-
-    cp ../px-graph/docker/daemon/graphdriver/register/lcfs* daemon/graphdriver/register
-
-    git add --all
-    
-    make build && make binary
-    
-    sudo service docker stop
-    
-    sudo cp bundles/latest/binary-client/docker /usr/bin
-    
-    sudo cp bundles/latest/binary-daemon/dockerd /usr/bin/dockerd
-    
-    sudo cp bundles/latest/binary-daemon/docker-runc /usr/bin
-    
-    sudo cp bundles/latest/binary-daemon/docker-containerd /usr/bin
-    
-    sudo cp bundles/latest/binary-daemon/docker-containerd-ctr /usr/bin
-    
-    sudo cp bundles/latest/binary-daemon/docker-containerd-shim /usr/bin
-    
-    sudo service docker start
-
 *  Install fuse library.
 
     Download fuse library from the following link.
@@ -59,10 +26,21 @@ This file system driver is implemented using fuse low level API.
 
     On Centos, run "sudo yum install gperftools"
 
-*  Build this directory by running make. (cd ../px-graph/fs; make)
+*  Build lcfs directory by running make. (cd px-graph/lcfs; make)
 
 *  Mount a device/file - "sudo ./lcfs 'device' 'mnt'".
    For debugging, options -f or -d could be specified.
+
+*  Build px-graph/plugin/lcfs_plugin.go after installing the necessary go packages.
+   Set up GOPATH and run the following commands.
+
+   go get github.com/Sirupsen/logrus github.com/docker/docker/daemon/graphdriver github.com/docker/docker/pkg/archive github.com/docker/docker/exec github.com/docker/go-plugins-helpers/graphdriver
+
+   cd ../px-graph/plugin
+
+   go build -o lcfs_plugin lcfs_plugin.go
+
+   sudo ./lcfs_plugin
 
 *  Stop docker and start docker with arguments "-s lcfs -g 'mnt'".
    -g argument is needed only if 'mnt' is not /var/lib/docker.
