@@ -5,6 +5,8 @@
 
 #define LC_EXTENT_SPACE 0x0
 #define LC_EXTENT_EMAP  0x1
+#define LC_EXTENT_EMAP_CSIZE    16
+#define LC_EXTENT_EMAP_MAX ((1 << LC_EXTENT_EMAP_CSIZE) - 1)
 
 /* Representing an extent on disk */
 struct extent {
@@ -22,7 +24,7 @@ struct extent {
         struct {
 
             /* Count of blocks */
-            uint64_t ex_bcount:16;
+            uint64_t ex_bcount:LC_EXTENT_EMAP_CSIZE;
 
             /* Start block number */
             uint64_t ex_block:48;
@@ -83,6 +85,7 @@ lc_setExtentCount(struct extent *extent, uint64_t count) {
     if (extent->ex_type == LC_EXTENT_SPACE) {
         extent->ex_count = count;
     } else {
+        assert(count <= LC_EXTENT_EMAP_MAX);
         extent->ex_bcount = count;
     }
 }
@@ -127,6 +130,7 @@ lc_incrExtentCount(struct gfs *gfs, struct extent *extent, uint64_t count) {
     if (extent->ex_type == LC_EXTENT_SPACE) {
         extent->ex_count += count;
     } else {
+        assert((extent->ex_bcount + count) <= LC_EXTENT_EMAP_MAX);
         extent->ex_bcount += count;
     }
     lc_validateExtent(gfs, extent);
@@ -154,8 +158,11 @@ lc_decrExtentCount(struct gfs *gfs, struct extent *extent, uint64_t count) {
 /* Check if two extents are adjacent and can be combined */
 static inline bool
 lc_extentAdjacent(uint64_t estart, uint64_t eblock, uint64_t count,
-                  uint64_t nstart, uint64_t nblock) {
+                  uint64_t nstart, uint64_t nblock, uint64_t ncount) {
     if (eblock) {
+        if ((ncount + count) > LC_EXTENT_EMAP_MAX) {
+            return false;
+        }
         return (((estart + count) == nstart) && ((eblock + count) == nblock));
     }
     assert(nblock == 0);

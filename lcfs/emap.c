@@ -4,7 +4,18 @@
 static void
 lc_addEmapExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
                  uint64_t page, uint64_t block, uint64_t count) {
-    lc_addExtent(gfs, fs, extents, page, block, count);
+    uint64_t ecount;
+
+    while (count) {
+        ecount = count;
+        if (ecount > LC_EXTENT_EMAP_MAX) {
+            ecount = LC_EXTENT_EMAP_MAX;
+        }
+        lc_addExtent(gfs, fs, extents, page, block, ecount);
+        page += ecount;
+        block += ecount;
+        count -= ecount;
+    }
 }
 
 /* Check the inode extent list for the block mapping to the page */

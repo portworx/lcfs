@@ -387,7 +387,11 @@ Caching
 As of now, all metadata (inodes, directories, emap, extended attributes etc),
 stay in memory until the layer is unmounted or layer/file is deleted.
 There is no upper limit on how many of those could be cached. Actual amount of
-metadata is cached, not page aligned metadata.
+metadata is cached, not page aligned metadata.  Almost all these are tracked
+using sequential lists in cache with the exception of directories bigger than a
+certain size which would use a hash table for tracking file names.  Snapshot
+root directory uses a hash table always irrespective of the number of layers
+present.
 
 Each layer maintains a hash table for its inodes using a hash generated using
 the inode number.  This hash table is private to that layer.

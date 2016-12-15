@@ -575,12 +575,13 @@ void
 lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
               bool release) {
     uint64_t count = 0, bcount = 0, start, end = 0, fcount = 0;
-    uint64_t i, lpage, pcount, block, tcount = 0, rcount;
+    uint64_t lpage, pcount, block, tcount = 0, rcount;
     struct page *page, *dpage = NULL, *tpage = NULL;
     struct extent *extents = NULL, *extent;
     bool single = true;
     struct dpage *dp;
     char *pdata;
+    int64_t i;
 
     assert(S_ISREG(inode->i_mode));
     assert(!(inode->i_flags & LC_INODE_SHARED));

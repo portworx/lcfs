@@ -135,6 +135,7 @@ int lc_dirRemoveName(struct fs *fs, struct inode *dir,
                      int dremove(struct fs *, struct inode *, ino_t,
                                  bool, void **));
 void  lc_dirConvertHashed(struct fs *fs, struct inode *dir);
+void lc_dirFreeHash(struct fs *fs, struct inode *dir);
 void lc_dirFree(struct inode *dir);
 
 uint64_t lc_inodeEmapLookup(struct gfs *gfs, struct inode *inode,

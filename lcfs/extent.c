@@ -8,7 +8,7 @@ lc_mergeExtents(struct gfs *gfs, struct fs *fs,
     if (next &&
         lc_extentAdjacent(lc_getExtentStart(extent), lc_getExtentBlock(extent),
                           lc_getExtentCount(extent), lc_getExtentStart(next),
-                          lc_getExtentBlock(next))) {
+                          lc_getExtentBlock(next), lc_getExtentCount(next))) {
         lc_incrExtentCount(gfs, extent, lc_getExtentCount(next));
         extent->ex_next = next->ex_next;
         lc_free(fs, next, sizeof(struct extent), LC_MEMTYPE_EXTENT);
@@ -16,7 +16,8 @@ lc_mergeExtents(struct gfs *gfs, struct fs *fs,
     if (prev &&
         lc_extentAdjacent(lc_getExtentStart(prev), lc_getExtentBlock(prev),
                           lc_getExtentCount(prev), lc_getExtentStart(extent),
-                          lc_getExtentBlock(extent))) {
+                          lc_getExtentBlock(extent),
+                          lc_getExtentCount(extent))) {
         lc_incrExtentCount(gfs, prev, lc_getExtentCount(extent));
         prev->ex_next = extent->ex_next;
         lc_free(fs, extent, sizeof(struct extent), LC_MEMTYPE_EXTENT);
@@ -37,12 +38,12 @@ lc_addExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
         estart = lc_getExtentStart(extent);
         eblock = lc_getExtentBlock(extent);
         ecount = lc_getExtentCount(extent);
-        if (lc_extentAdjacent(estart, eblock, ecount, start, block)) {
+        if (lc_extentAdjacent(estart, eblock, ecount, start, block, count)) {
             lc_incrExtentCount(gfs, extent, count);
             lc_mergeExtents(gfs, fs, extent, extent->ex_next, NULL);
             return;
         }
-        if (lc_extentAdjacent(start, block, count, estart, eblock)) {
+        if (lc_extentAdjacent(start, block, count, estart, eblock, ecount)) {
             lc_decrExtentStart(NULL, extent, count);
             lc_incrExtentCount(gfs, extent, count);
             lc_mergeExtents(gfs, fs, extent, NULL, prev);

@@ -427,6 +427,15 @@ lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
     dir->i_flags &= ~LC_INODE_DIRDIRTY;
 }
 
+/* Free directory hash table */
+void
+lc_dirFreeHash(struct fs *fs, struct inode *dir) {
+    lc_free(fs, dir->i_hdirent, LC_DIRCACHE_SIZE * sizeof(struct dirent *),
+            LC_MEMTYPE_DCACHE);
+    dir->i_hdirent = NULL;
+    dir->i_flags &= ~LC_INODE_DHASHED;
+}
+
 /* Free directory entries */
 void
 lc_dirFree(struct inode *dir) {
@@ -456,10 +465,7 @@ lc_dirFree(struct inode *dir) {
         }
     }
     if (hashed) {
-        lc_free(fs, dir->i_hdirent, LC_DIRCACHE_SIZE * sizeof(struct dirent *),
-                LC_MEMTYPE_DCACHE);
-        dir->i_hdirent = NULL;
-        dir->i_flags &= ~LC_INODE_DHASHED;
+        lc_dirFreeHash(fs, dir);
     } else {
         dir->i_dirent = NULL;
     }

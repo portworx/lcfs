@@ -124,6 +124,7 @@ sleep 10
 service docker start
 
 rmdir $MNT/lcfs
+mkdir $MNT/lcfs/dir
 
 df -k $MNT
 df -i $MNT
@@ -158,6 +159,7 @@ do
     rm dir/file$i
 done
 set -x
+rmdir dir
 cd -
 
 fusermount -u $MNT

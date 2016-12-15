@@ -6,6 +6,9 @@ import (
     "path"
     "syscall"
     "unsafe"
+    "time"
+    "runtime"
+    "fmt"
 
     "github.com/Sirupsen/logrus"
     "github.com/docker/docker/pkg/archive"
@@ -87,7 +90,7 @@ const (
     UMOUNT_ALL = 107
 )
 
-func (d *Driver) Init(home string, options, uidMaps, gidMaps []string) error {
+func (d *Driver) Init(home string, options []string, uidMaps, gidMaps []idtools.IDMap) error {
     logrus.Infof("Init - home %s options %+v\n", home, options)
     driver, err := d.init(home, options, nil, nil)
     if err != nil {
@@ -247,6 +250,12 @@ func (d *Driver) Changes(id, parent string) ([]graphPlugin.Change, error) {
 // XXX This is somehow broken with docker 
 func (d *Driver) ApplyDiff(id, parent string, archive io.Reader) (int64, error) {
     logrus.Infof("ApplyDiff - id %s parent %s archive %+v\n", id, parent, archive)
+        go func() {
+            time.Sleep(10 * time.Second)
+            buf := make([]byte, 1<<20)
+            runtime.Stack(buf, true)
+            fmt.Printf("\n%s\n", buf)
+        } ()
     return d.driver.ApplyDiff(id, parent, archive)
 }
 

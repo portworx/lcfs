@@ -134,6 +134,9 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
         assert(inode->i_size == 0);
         assert(inode->i_nlink == 2);
         inode->i_nlink = 0;
+        if (inode->i_flags & LC_INODE_DHASHED) {
+            lc_dirFreeHash(fs, inode);
+        }
         inode->i_flags |= LC_INODE_REMOVED;
         removed = true;
     } else {
