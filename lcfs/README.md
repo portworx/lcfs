@@ -24,12 +24,6 @@ This file system driver is implemented using fuse low level API.
 
     If needed, export PKG_CONFIG_PATH with /usr/local/lib/pkgconfig.
 
-    **OR** alternately, use yum on RedHat/CentOS to download the most current package:
-
-    ```
-    yum install -y fuse
-    ```
-
 3. Install tcmalloc or remove that from Makefile.
 
     On Ubuntu, run 
@@ -55,7 +49,7 @@ This file system driver is implemented using fuse low level API.
     Set up GOPATH and run the following commands.
 
     ```
-    go get github.com/Sirupsen/logrus github.com/docker/docker/daemon/graphdriver github.com/docker/docker/pkg/archive github.com/docker/docker/exec github.com/docker/go-plugins-helpers/graphdriver
+    go get github.com/Sirupsen/logrus github.com/docker/docker/daemon/graphdriver github.com/docker/docker/pkg/archive github.com/docker/docker/reexec github.com/docker/go-plugins-helpers/graphdriver
 
     cd ../px-graph/plugin
     go build -o lcfs_plugin lcfs_plugin.go
@@ -72,4 +66,6 @@ This file system driver is implemented using fuse low level API.
 
 9.  For displaying stats, run "cstat 'id' [-c]" from 'mnt'/lcfs directory.
 
-    Make sure fuse mount is running in forground mode (-d/-f option). Otherwise, stats are displayed whenever a layer is unmounted.
+    Make sure fuse mount is running in forground mode (-d/-f option).
+    
+    Normally, stats are displayed whenever a layer is unmounted.

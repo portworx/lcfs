@@ -831,9 +831,8 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
 
     /* Nothing to do if inode is not part of this layer */
     if (inode->i_fs != fs) {
-        if (inval && (inode->i_size > 0) &&
-            S_ISREG(inode->i_mode)) {
-            *inval = true;
+        if (inval) {
+            *inval = (inode->i_size > 0) && S_ISREG(inode->i_mode);
         }
         fuse_reply_err(req, 0);
         return;

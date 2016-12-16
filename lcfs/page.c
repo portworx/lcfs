@@ -52,11 +52,13 @@ lc_flushInodeDirtyPages(struct inode *inode, uint64_t page) {
 
     /* Do not trigger flush if the last page is not fully filled up for a
      * sequentially written file.
+     * XXX Dont do this when the system is running low on memory.
      */
     if (inode->i_extentLength || (inode->i_emap == NULL)) {
         dpage = lc_findDirtyPage(inode, page);
-        if (dpage->dp_data &&
-            (dpage->dp_poffset || (dpage->dp_psize != LC_BLOCK_SIZE))) {
+        if ((dpage == NULL) ||
+            (dpage->dp_data &&
+             (dpage->dp_poffset || (dpage->dp_psize != LC_BLOCK_SIZE)))) {
             return;
         }
     }
@@ -845,7 +847,7 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
     lc_emapTruncate(gfs, fs, inode, size, pg, remove, &truncated);
 
     /* Remove dirty pages past the new size from the dirty list */
-    if (inode->i_dpcount == 0) {
+    if (size && (inode->i_dpcount == 0)) {
         return;
     }
     freed = 0;

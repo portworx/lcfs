@@ -406,7 +406,7 @@ lc_flushDirtyPages(struct gfs *gfs, struct fs *fs) {
     /* XXX This may not work correctly if another thread is in the process of
      * flushing pages.
      */
-    if (fs->fs_fdextents) {
+    if (0 && fs->fs_fdextents) {
         pthread_mutex_lock(&fs->fs_alock);
         extents = fs->fs_fdextents;
         fs->fs_fdextents = NULL;

@@ -1,6 +1,6 @@
-# px-graph -- Portworx Graph driver for Docker
+# LCFS -- Portworx Graph driver for Docker
 
-This file system driver is implemented using fuse low level API.
+This file system driver is implemented using fuse low level API. LCFS stands for Layer Cloning File System.
 
 ## Introduction
 
