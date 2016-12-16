@@ -52,6 +52,7 @@ mknod fifo p
 ls -lRi
 
 ln file file1
+ln fifo fifo.lnk
 ls -Ril
 cat file1
 rm file1

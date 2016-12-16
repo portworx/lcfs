@@ -677,7 +677,7 @@ lc_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
         err = ENOENT;
         goto out;
     }
-    assert(S_ISREG(inode->i_mode));
+    assert(!S_ISDIR(inode->i_mode));
     lc_dirAdd(dir, inode->i_ino, inode->i_mode, newname,
                strlen(newname));
     lc_updateInodeTimes(dir, true, true);
