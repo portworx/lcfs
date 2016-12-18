@@ -259,8 +259,8 @@ lc_freeInodeDataBlocks(struct fs *fs, struct inode *inode,
 void
 lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
                 size_t size, uint64_t pg, bool remove, bool *truncated) {
+    struct extent *extents = NULL, *extent, *prev, *next;
     uint64_t bcount = 0, estart, ecount, eblock, freed;
-    struct extent *extents = NULL, *extent, *prev;
 
     /* Take care of files with single extent */
     if (remove && inode->i_extentLength) {
@@ -297,12 +297,11 @@ lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
             estart = lc_getExtentStart(extent);
             ecount = lc_getExtentCount(extent);
             eblock = lc_getExtentBlock(extent);
+            next = extent->ex_next;
             if (pg < estart) {
                 bcount += ecount;
                 lc_addSpaceExtent(gfs, fs, &extents, eblock, ecount);
                 lc_freeExtent(gfs, fs, extent, prev, &inode->i_emap, true);
-                assert(prev == NULL);
-                extent = inode->i_emap;
             } else if (pg < (estart + ecount)) {
                 freed = (estart + ecount) - pg;
                 if ((size % LC_BLOCK_SIZE) != 0) {
@@ -319,22 +318,18 @@ lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
                     if (freed == ecount) {
                         lc_freeExtent(gfs, fs, extent, prev, &inode->i_emap,
                                       true);
-                        assert(prev == NULL);
-                        extent = inode->i_emap;
                     } else {
                         lc_decrExtentCount(gfs, extent, freed);
                         prev = extent;
-                        extent = extent->ex_next;
                     }
                 } else {
                     prev = extent;
-                    extent = extent->ex_next;
                 }
             } else {
                 assert(bcount == 0);
                 prev = extent;
-                extent = extent->ex_next;
             }
+            extent = next;
         }
     }
 

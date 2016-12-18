@@ -25,4 +25,8 @@ enum lc_memTypes {
     LC_MEMTYPE_MAX = 19,
 };
 
+#define LC_MEMORY_LWM       25
+#define LC_MEMORY_HWM       10
+#define LC_PAGE_MEMORY_HWM  90
+
 #endif

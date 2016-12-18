@@ -14,6 +14,7 @@
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <sys/sysinfo.h>
 #include <sys/time.h>
 #include <sys/xattr.h>
 #include <pthread.h>
@@ -35,6 +36,9 @@ struct gfs *getfs();
 void *lc_malloc(struct fs *fs, size_t size, enum lc_memTypes type);
 void lc_mallocBlockAligned(struct fs *fs, void **memptr, enum lc_memTypes type);
 void lc_free(struct fs *fs, void *ptr, size_t size, enum lc_memTypes type);
+bool lc_checkMemoryAvailable(bool recheck);
+bool lc_lowMemory(void);
+void lc_waitMemory(bool force);
 void lc_memUpdateTotal(struct fs *fs, size_t size);
 void lc_memTransferCount(struct fs *fs, uint64_t count);
 void lc_checkMemStats(struct fs *fs);
@@ -189,12 +193,13 @@ void lc_truncatePage(struct fs *fs, struct inode *inode, struct dpage *dpage,
 void lc_truncPages(struct inode *inode, off_t size, bool remove);
 void lc_flushDirtyPages(struct gfs *gfs, struct fs *fs);
 void lc_addDirtyInode(struct fs *fs, struct inode *inode);
-void lc_flushDirtyInodeList(struct fs *fs);
+void lc_flushDirtyInodeList(struct fs *fs, bool force);
 void lc_invalidateDirtyPages(struct gfs *gfs, struct fs *fs);
-void lc_purgePages(struct gfs *gfs);
+void lc_purgePages(struct gfs *gfs, bool force);
+void lc_flushInodeDirtyPages(struct inode *inode, uint64_t page);
 
 int lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
-               void **fsp);
+                   void **fsp);
 
 void lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
                   const char *value, size_t size, int flags);

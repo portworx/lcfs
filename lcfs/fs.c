@@ -342,10 +342,27 @@ lc_gfsAlloc(int fd) {
     memset(gfs->gfs_fs, 0, sizeof(struct fs *) * LC_MAX);
     gfs->gfs_roots = lc_malloc(NULL, sizeof(ino_t) * LC_MAX, LC_MEMTYPE_GFS);
     memset(gfs->gfs_roots, 0, sizeof(ino_t) * LC_MAX);
+    pthread_cond_init(&gfs->gfs_mcond, NULL);
     pthread_mutex_init(&gfs->gfs_lock, NULL);
     pthread_mutex_init(&gfs->gfs_alock, NULL);
     gfs->gfs_fd = fd;
     return gfs;
+}
+
+/* Free resources allocated for the global file system */
+static void
+lc_gfsDeinit(struct gfs *gfs) {
+    assert(gfs->gfs_pcount == 0);
+    if (gfs->gfs_fd) {
+        fsync(gfs->gfs_fd);
+        close(gfs->gfs_fd);
+    }
+    assert(gfs->gfs_count == 0);
+    lc_free(NULL, gfs->gfs_fs, sizeof(struct fs *) * LC_MAX, LC_MEMTYPE_GFS);
+    lc_free(NULL, gfs->gfs_roots, sizeof(ino_t) * LC_MAX, LC_MEMTYPE_GFS);
+    pthread_cond_destroy(&gfs->gfs_mcond);
+    pthread_mutex_destroy(&gfs->gfs_lock);
+    pthread_mutex_destroy(&gfs->gfs_alock);
 }
 
 /* Initialize a file system after reading its super block */
@@ -661,15 +678,6 @@ lc_unmount(struct gfs *gfs) {
     pthread_mutex_unlock(&gfs->gfs_lock);
     assert(gfs->gfs_count == 1);
     lc_umountSync(gfs);
-    assert(gfs->gfs_pcount == 0);
-    if (gfs->gfs_fd) {
-        fsync(gfs->gfs_fd);
-        close(gfs->gfs_fd);
-    }
-    assert(gfs->gfs_count == 0);
-    lc_free(NULL, gfs->gfs_fs, sizeof(struct fs *) * LC_MAX, LC_MEMTYPE_GFS);
-    lc_free(NULL, gfs->gfs_roots, sizeof(ino_t) * LC_MAX, LC_MEMTYPE_GFS);
-    pthread_mutex_destroy(&gfs->gfs_lock);
-    pthread_mutex_destroy(&gfs->gfs_alock);
+    lc_gfsDeinit(gfs);
 }
 

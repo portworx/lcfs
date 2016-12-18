@@ -1252,8 +1252,7 @@ lc_readdirplus(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 /* Initialize a new file system */
 static void
 lc_init(void *userdata, struct fuse_conn_info *conn) {
-    conn->want |= FUSE_CAP_SPLICE_WRITE | FUSE_CAP_SPLICE_MOVE |
-                  FUSE_CAP_WRITEBACK_CACHE;
+    conn->want |= FUSE_CAP_SPLICE_WRITE | FUSE_CAP_SPLICE_MOVE;
     conn->want &= ~FUSE_CAP_HANDLE_KILLPRIV;
 }
 

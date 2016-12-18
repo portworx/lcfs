@@ -42,6 +42,9 @@ struct gfs {
     /* Lock protecting allocations */
     pthread_mutex_t gfs_alock;
 
+    /* condition on threads wait on low memory */
+    pthread_cond_t gfs_mcond;
+
     /* Count of pages in use */
     uint64_t gfs_pcount;
 
@@ -174,6 +177,9 @@ struct fs {
     /* Dirty pages pending write */
     /* XXX Use an array? */
     struct page *fs_dpages;
+
+    /* Flusher index */
+    uint64_t fs_flusher;
 
     /* Dirty page count */
     uint64_t fs_dpcount;

@@ -773,6 +773,9 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
         fuse_reply_buf(req, NULL, 0);
         return;
     }
+    if (!lc_checkMemoryAvailable(false)) {
+        lc_waitMemory(true);
+    }
     pcount = (size / LC_BLOCK_SIZE) + 2;
     fsize = sizeof(struct fuse_bufvec) + (sizeof(struct fuse_buf) * pcount);
     bufv = alloca(fsize);
@@ -804,9 +807,8 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 
 out:
     lc_statsAdd(fs, LC_READ, err, &start);
-    if (fs->fs_gfs->gfs_pcount > LC_PAGE_MAX) {
-        lc_purgePages(fs->fs_gfs);
-    }
+    lc_checkMemoryAvailable(true);
+    lc_waitMemory(false);
     lc_unlock(fs);
 }
 
@@ -825,14 +827,16 @@ static void
 lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
                  struct fuse_file_info *fi, bool *inval) {
     struct inode *inode;
+    bool reg;
 
     assert(fi);
     inode = (struct inode *)fi->fh;
+    reg = S_ISREG(inode->i_mode);
 
     /* Nothing to do if inode is not part of this layer */
     if (inode->i_fs != fs) {
         if (inval) {
-            *inval = (inode->i_size > 0) && S_ISREG(inode->i_mode);
+            *inval = reg && (inode->i_size > 0);
         }
         fuse_reply_err(req, 0);
         return;
@@ -845,29 +849,33 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
 
     /* Invalidate pages of shared files in kernel page cache */
     if (inval) {
-        *inval = (inode->i_ocount == 0) && (inode->i_size > 0) &&
+        *inval = reg && (inode->i_ocount == 0) && (inode->i_size > 0) &&
                  (!inode->i_private || fs->fs_readOnly ||
                   (fs->fs_snap != NULL));
     }
     fuse_reply_err(req, 0);
 
     /* Truncate a removed file on last close */
-    if ((inode->i_ocount == 0) && (inode->i_flags & LC_INODE_REMOVED) &&
-        S_ISREG(inode->i_mode)) {
+    if (reg && (inode->i_ocount == 0) && (inode->i_flags & LC_INODE_REMOVED)) {
         lc_truncate(inode, 0);
     }
 
     /* Flush dirty pages of a file on last close */
     if ((inode->i_ocount == 0) && (inode->i_flags & LC_INODE_EMAPDIRTY)) {
-        assert(S_ISREG(inode->i_mode));
+        assert(reg);
         if (fs->fs_readOnly) {
 
             /* Inode emap needs to be stable before an inode could be cloned */
             lc_emapFlush(fs->fs_gfs, inode->i_fs, inode);
         } else if (!(inode->i_flags & (LC_INODE_REMOVED | LC_INODE_TMP)) &&
-                   inode->i_page && (inode->i_dnext == NULL) &&
-                   (fs->fs_dirtyInodesLast != inode)) {
-            lc_addDirtyInode(fs, inode);
+                   inode->i_dpcount) {
+            if (lc_lowMemory() || (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES)) {
+                lc_flushInodeDirtyPages(inode, inode->i_size / LC_BLOCK_SIZE);
+            }
+            if (inode->i_dpcount && (inode->i_dnext == NULL) &&
+                (fs->fs_dirtyInodesLast != inode)) {
+                lc_addDirtyInode(fs, inode);
+            }
         }
     }
     lc_inodeUnlock(inode);
@@ -1160,6 +1168,9 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, ino, 0, NULL);
+    if (!lc_checkMemoryAvailable(false)) {
+        lc_waitMemory(true);
+    }
     size = bufv->buf[bufv->idx].size;
     pcount = (size / LC_BLOCK_SIZE) + 2;
     wsize = sizeof(struct fuse_bufvec) + (sizeof(struct fuse_buf) * pcount);
@@ -1215,7 +1226,10 @@ out:
     }
     lc_statsAdd(fs, LC_WRITE_BUF, err, &start);
     if (!err && (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES)) {
-        lc_flushDirtyInodeList(fs);
+        lc_flushDirtyInodeList(fs, false);
+    }
+    if (!lc_checkMemoryAvailable(true)) {
+        lc_flushDirtyInodeList(fs, true);
     }
     lc_unlock(fs);
 }

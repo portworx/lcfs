@@ -81,6 +81,7 @@ lc_destroy_pages(struct gfs *gfs, struct fs *fs, struct pcache *pcache,
         pthread_mutex_unlock(&pcache[i].pc_lock);
         pthread_mutex_destroy(&pcache[i].pc_lock);
         count += pcount;
+        sched_yield();
     }
     lc_free(fs, pcache, sizeof(struct pcache) * fs->fs_pcacheSize,
             LC_MEMTYPE_PCACHE);
@@ -94,7 +95,7 @@ void
 lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page, bool read) {
     struct page *cpage, *prev = NULL, *fpage = NULL, *fprev = NULL;
     struct pcache *pcache = fs->fs_pcache;
-    uint64_t hash, hit;
+    uint64_t hash, hit, count = 0;
 
     hash = lc_pageBlockHash(fs, page->p_block);
     pthread_mutex_lock(&pcache[hash].pc_lock);
@@ -102,12 +103,27 @@ lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page, bool read) {
     page->p_refCount--;
 
     /* If page was read, increment hit count */
-    if (read) {
+    if (page->p_nocache && (page->p_refCount == 0)) {
+        if (pcache[hash].pc_head != page) {
+            cpage = pcache[hash].pc_head;
+            while (cpage) {
+                if (cpage->p_cnext == page) {
+                    fprev = cpage;
+                    break;
+                }
+                cpage = cpage->p_cnext;
+            }
+            assert(fprev);
+        }
+        fpage = page;
+    } else if (read) {
         page->p_hitCount++;
     }
 
     /* Free a page if page cache is above limit */
-    if (pcache[hash].pc_pcount > (LC_PAGE_MAX / fs->fs_pcacheSize)) {
+    if ((fpage == NULL) && (lc_lowMemory() ||
+                            (pcache[hash].pc_pcount >
+                             (LC_PAGE_MAX / fs->fs_pcacheSize)))) {
         cpage = pcache[hash].pc_head;
         hit = page->p_hitCount;
 
@@ -118,22 +134,26 @@ lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page, bool read) {
                 fpage = cpage;
                 hit = cpage->p_hitCount;
             }
+            if ((hit == 0) && fpage && (count > LC_CACHE_PURGE_CHECK_MAX)) {
+                break;
+            }
             prev = cpage;
             cpage = cpage->p_cnext;
+            count++;
         }
+    }
 
-        /* If a page is picked for freeing, take off page from block cache */
-        if (fpage) {
-            if (fprev == NULL) {
-                pcache[hash].pc_head = fpage->p_cnext;
-            } else {
-                fprev->p_cnext = fpage->p_cnext;
-            }
-            fpage->p_block = LC_INVALID_BLOCK;
-            fpage->p_cnext = NULL;
-            assert(pcache[hash].pc_pcount > 0);
-            pcache[hash].pc_pcount--;
+    /* If a page is picked for freeing, take off page from block cache */
+    if (fpage) {
+        if (fprev == NULL) {
+            pcache[hash].pc_head = fpage->p_cnext;
+        } else {
+            fprev->p_cnext = fpage->p_cnext;
         }
+        fpage->p_block = LC_INVALID_BLOCK;
+        fpage->p_cnext = NULL;
+        assert(pcache[hash].pc_pcount > 0);
+        pcache[hash].pc_pcount--;
     }
     pthread_mutex_unlock(&pcache[hash].pc_lock);
     if (fpage) {
@@ -161,9 +181,7 @@ lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head) {
         }
         page = next;
     }
-    if (gfs->gfs_pcount > LC_PAGE_MAX) {
-        lc_purgePages(gfs);
-    }
+    lc_waitMemory(false);
 }
 
 /* Release pages */
@@ -487,29 +505,39 @@ lc_purgeTreePages(struct gfs *gfs, struct fs *fs) {
             page = page->p_cnext;
         }
         pthread_mutex_unlock(&pcache[i].pc_lock);
-        if (gfs->gfs_pcount < LC_PAGE_MAX) {
+        if ((gfs->gfs_pcount < LC_PAGE_MAX) && !lc_lowMemory()) {
             break;
         }
+        sched_yield();
     }
     return count;
 }
 
 /* Free pages when running low on memory */
 void
-lc_purgePages(struct gfs *gfs) {
+lc_purgePages(struct gfs *gfs, bool force) {
     uint64_t count = 0;
     struct fs *fs;
     int i;
 
-    if (gfs->gfs_tpurging) {
-        return;
-    }
-    if (pthread_mutex_trylock(&gfs->gfs_lock)) {
-        return;
-    }
-    if (gfs->gfs_tpurging) {
-        pthread_mutex_unlock(&gfs->gfs_lock);
-        return;
+    if (force) {
+        pthread_mutex_lock(&gfs->gfs_lock);
+        if (gfs->gfs_tpurging) {
+            pthread_cond_wait(&gfs->gfs_mcond, &gfs->gfs_lock);
+            pthread_mutex_unlock(&gfs->gfs_lock);
+            return;
+        }
+    } else {
+        if (gfs->gfs_tpurging) {
+            return;
+        }
+        if (pthread_mutex_trylock(&gfs->gfs_lock)) {
+            return;
+        }
+        if (gfs->gfs_tpurging) {
+            pthread_mutex_unlock(&gfs->gfs_lock);
+            return;
+        }
     }
     gfs->gfs_tpurging = true;
     for (i = 0; i <= gfs->gfs_scount; i++) {
@@ -517,21 +545,31 @@ lc_purgePages(struct gfs *gfs) {
             gfs->gfs_tpIndex = 0;
         }
         fs = gfs->gfs_fs[gfs->gfs_tpIndex++];
-        if (fs && (fs->fs_parent == NULL) && !lc_tryLock(fs, false)) {
+        if (fs && !lc_tryLock(fs, false)) {
             pthread_mutex_unlock(&gfs->gfs_lock);
-            count += lc_purgeTreePages(gfs, fs);
-            lc_unlock(fs);
-            if (pthread_mutex_trylock(&gfs->gfs_lock)) {
-                break;
+            if (fs->fs_pcount) {
+                lc_flushDirtyInodeList(fs, true);
             }
+            if (fs->fs_parent == NULL) {
+                count += lc_purgeTreePages(gfs, fs);
+            }
+            lc_unlock(fs);
+            lc_checkMemoryAvailable(true);
+            if (!lc_lowMemory()) {
+                pthread_cond_broadcast(&gfs->gfs_mcond);
+            }
+            pthread_mutex_lock(&gfs->gfs_lock);
         }
-        if (gfs->gfs_pcount < LC_PAGE_MAX) {
+        if ((gfs->gfs_pcount < LC_PAGE_MAX) && !lc_lowMemory()) {
             break;
         }
+        sched_yield();
     }
+    gfs->gfs_tpurging = false;
+    pthread_cond_broadcast(&gfs->gfs_mcond);
     if (count) {
         gfs->gfs_purged += count;
     }
-    gfs->gfs_tpurging = false;
     pthread_mutex_unlock(&gfs->gfs_lock);
+    lc_checkMemoryAvailable(true);
 }
