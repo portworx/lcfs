@@ -1,4 +1,4 @@
-# Building px-graph
+# Building px-graph with fuse v2.9.7
 
 This file system driver is implemented using fuse low level API.
 
@@ -10,11 +10,11 @@ This file system driver is implemented using fuse low level API.
 
 2. Install fuse library.
 
-    a.  Download fuse library from the following link:
+   a.  Download fuse library from the following link:
 
    * https://github.com/libfuse/libfuse/releases/download/fuse-2.9.7/fuse-2.9.7.tar.gz
 
-    b.  Install tools to build fuse:
+   b.  Install tools to build fuse:
 
    * **Centos:** 
      `yum install gcc libstdc++-devel gcc-c++ curl-devel libxml2-devel openssl-devel mailcap`
@@ -30,7 +30,7 @@ This file system driver is implemented using fuse low level API.
     make install
     ```
 
-    If needed, export PKG_CONFIG_PATH with /usr/local/lib/pkgconfig.
+   If needed, export PKG_CONFIG_PATH with /usr/local/lib/pkgconfig. Configure LD_LIBRARY_PATH if necessary.
 
 4. Install tcmalloc or remove that from Makefile.
 
