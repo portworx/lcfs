@@ -10,11 +10,19 @@ This file system driver is implemented using fuse low level API.
 
 2. Install fuse library.
 
-    Download fuse library from the following link:
+    a.  Download fuse library from the following link:
 
-    https://github.com/libfuse/libfuse/releases/download/fuse-2.9.7/fuse-2.9.7.tar.gz
+   * https://github.com/libfuse/libfuse/releases/download/fuse-2.9.7/fuse-2.9.7.tar.gz
 
-    Untar it and build/install using following commands:
+    b.  Install tools to build fuse:
+
+   * **Centos:** 
+     `yum install gcc libstdc++-devel gcc-c++ curl-devel libxml2-devel openssl-devel mailcap`
+
+   * **Ubuntu:**
+     `apt-get install build-essential libcurl4-openssl-dev libxml2-dev mime-support`
+
+3. Untar it and build/install using following commands:
 
     ```
     ./configure
@@ -24,7 +32,7 @@ This file system driver is implemented using fuse low level API.
 
     If needed, export PKG_CONFIG_PATH with /usr/local/lib/pkgconfig.
 
-3. Install tcmalloc or remove that from Makefile.
+4. Install tcmalloc or remove that from Makefile.
 
     On Ubuntu, run 
 
@@ -38,13 +46,13 @@ This file system driver is implemented using fuse low level API.
     sudo yum install gperftools
     ```
 
-4. Build lcfs directory by running make. (cd px-graph/lcfs; make)
+5. Build lcfs directory by running make. (cd px-graph/lcfs; make)
 
-5. Mount a device/file - "sudo ./lcfs 'device' 'mnt'".
+6. Mount a device/file - "sudo ./lcfs 'device' 'mnt'".
 
     For debugging, options -f or -d could be specified.
 
-6. Build px-graph/plugin/lcfs_plugin.go after installing the necessary go packages.
+7. Build px-graph/plugin/lcfs_plugin.go after installing the necessary go packages.
 
     Set up GOPATH and run the following commands.
 
@@ -56,16 +64,16 @@ This file system driver is implemented using fuse low level API.
     sudo ./lcfs_plugin
     ```
 
-7.  Stop docker and start docker with arguments "-s lcfs -g 'mnt'".
+8. Stop docker and start docker with arguments "-s lcfs -g 'mnt'".
 
     `-g` argument is needed only if 'mnt' is not /var/lib/docker.
 
     These options could be configured in file /etc/default/docker or specified as arguments like "sudo dockerd -g 'mnt' -s lcfs".
 
-8.  Run experiments, stop docker, umount - "sudo fusermount -u 'mnt'"
+9. Run experiments, stop docker, umount - "sudo fusermount -u 'mnt'"
 
-9.  For displaying stats, run "cstat 'id' [-c]" from 'mnt'/lcfs directory.
+10. For displaying stats, run "cstat 'id' [-c]" from 'mnt'/lcfs directory.
 
-    Make sure fuse mount is running in forground mode (-d/-f option).
-    
-    Normally, stats are displayed whenever a layer is unmounted.
+   Make sure fuse mount is running in forground mode (-d/-f option).
+
+   Normally, stats are displayed whenever a layer is unmounted.
