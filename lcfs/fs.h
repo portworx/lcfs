@@ -1,7 +1,8 @@
 #ifndef _LC_H_
 #define _LC_H_
 
-#define LC_MAX  4096ul
+/* Maximum number of layers */
+#define LC_LAYER_MAX  4096ul
 
 /* Global file system */
 struct gfs {
@@ -281,7 +282,7 @@ struct fs {
 /* Set up inode handle using inode number and file system id */
 static inline uint64_t
 lc_setHandle(uint64_t gindex, ino_t ino) {
-    assert(gindex < LC_MAX);
+    assert(gindex < LC_LAYER_MAX);
     return (gindex << LC_FH_LAYER) | ino;
 }
 
@@ -290,7 +291,7 @@ static inline uint64_t
 lc_getFsHandle(uint64_t handle) {
     int gindex = handle >> LC_FH_LAYER;
 
-    assert(gindex < LC_MAX);
+    assert(gindex < LC_LAYER_MAX);
     return gindex;
 }
 

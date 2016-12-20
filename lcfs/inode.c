@@ -163,12 +163,12 @@ lc_updateInodeTimes(struct inode *inode, bool mtime, bool ctime) {
 /* Initialize root inode of a file system */
 void
 lc_rootInit(struct fs *fs, ino_t root) {
-    struct inode *inode = lc_newInode(fs, LC_INVALID_BLOCK, 0, false, false);
+    struct inode *dir = lc_newInode(fs, LC_INVALID_BLOCK, 0, false, false);
 
-    lc_dinodeInit(inode, root, S_IFDIR | 0755, 0, 0, 0, 0, root);
-    lc_addInode(fs, inode);
-    fs->fs_rootInode = inode;
-    lc_markInodeDirty(inode, true, true, false, false);
+    lc_dinodeInit(dir, root, S_IFDIR | 0755, 0, 0, 0, 0, root);
+    lc_addInode(fs, dir);
+    fs->fs_rootInode = dir;
+    lc_markInodeDirty(dir, LC_INODE_DIRDIRTY);
 }
 
 /* Set up snapshot root inode */
@@ -614,12 +614,24 @@ lc_destroyInodes(struct fs *fs, bool remove) {
     }
 }
 
+/* Clone the root directory from parent */
+void
+lc_cloneRootDir(struct inode *pdir, struct inode *dir) {
+    dir->i_size = pdir->i_size;
+    dir->i_nlink = pdir->i_nlink;
+    dir->i_dirent = pdir->i_dirent;
+    if (pdir->i_flags & LC_INODE_DHASHED) {
+        dir->i_flags |= LC_INODE_DHASHED;
+    }
+    lc_dirCopy(dir);
+}
+
 /* Clone an inode from a parent layer */
 struct inode *
 lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
     bool reg = S_ISREG(parent->i_mode);
-    bool emap = false, dir = false, xattr;
     struct inode *inode;
+    int flags = 0;
 
     inode = lc_newInode(fs, LC_INVALID_BLOCK, 0, reg, false);
     memcpy(&inode->i_dinode, &parent->i_dinode, sizeof(struct dinode));
@@ -636,7 +648,7 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
             } else {
                 inode->i_emap = parent->i_emap;
                 inode->i_flags |= LC_INODE_SHARED;
-                emap = true;
+                flags |= LC_INODE_EMAPDIRTY;
             }
         } else {
             inode->i_private = true;
@@ -648,7 +660,7 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
             if (parent->i_flags & LC_INODE_DHASHED) {
                 inode->i_flags |= LC_INODE_DHASHED;
             }
-            dir = true;
+            flags |= LC_INODE_DIRDIRTY;
         }
     } else if (S_ISLNK(inode->i_mode)) {
         inode->i_target = parent->i_target;
@@ -656,9 +668,11 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
     }
     inode->i_parent = (parent->i_parent == parent->i_fs->fs_root) ?
                       fs->fs_root : parent->i_parent;
-    xattr = lc_xattrCopy(inode, parent);
+    if (lc_xattrCopy(inode, parent)) {
+        flags |= LC_INODE_XATTRDIRTY;
+    }
     lc_addInode(fs, inode);
-    lc_markInodeDirty(inode, true, dir, emap, xattr);
+    lc_markInodeDirty(inode, flags);
     __sync_add_and_fetch(&fs->fs_gfs->gfs_clones, 1);
     lc_updateFtypeStats(fs, inode->i_mode, true);
     return inode;

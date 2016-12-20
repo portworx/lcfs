@@ -187,26 +187,12 @@ static_assert(sizeof(struct inode) == 234, "inode size != 234");
 #define i_xsize         i_xattrData->xd_xsize
 #define i_xattrExtents  i_xattrData->xd_xattrExtents
 
-/* XXX Replace ino_t with fuse_ino_t */
-/* XXX Make inode numbers 32 bit */
-
 /* Mark inode dirty for flushing to disk */
 static inline void
-lc_markInodeDirty(struct inode *inode, bool dirty, bool dir, bool emap,
-                  bool xattr) {
-    if (dirty) {
-        inode->i_flags |= LC_INODE_DIRTY;
-    }
-    if (dir) {
-        assert(S_ISDIR(inode->i_dinode.di_mode));
-        inode->i_flags |= LC_INODE_DIRDIRTY;
-    } else if (emap) {
-        assert(S_ISREG(inode->i_dinode.di_mode));
-        inode->i_flags |= LC_INODE_EMAPDIRTY;
-    }
-    if (xattr) {
-        inode->i_flags |= LC_INODE_XATTRDIRTY;
-    }
+lc_markInodeDirty(struct inode *inode, uint32_t flags) {
+    assert(!(flags & LC_INODE_DIRDIRTY) || S_ISDIR(inode->i_dinode.di_mode));
+    assert(!(flags & LC_INODE_EMAPDIRTY) || S_ISREG(inode->i_dinode.di_mode));
+    inode->i_flags |= flags | LC_INODE_DIRTY;
 }
 
 /* Check an inode is dirty or not */

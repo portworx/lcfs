@@ -98,7 +98,7 @@ lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
                 }
                 xattr->x_size = size;
                 lc_updateInodeTimes(inode, false, true);
-                lc_markInodeDirty(inode, true, false, false, true);
+                lc_markInodeDirty(inode, LC_INODE_XATTRDIRTY);
                 lc_inodeUnlock(inode);
                 goto out;
             }
@@ -119,7 +119,7 @@ lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
     fuse_reply_err(req, 0);
     lc_xattrLink(inode, name, len, value, size);
     lc_updateInodeTimes(inode, false, true);
-    lc_markInodeDirty(inode, true, false, false, true);
+    lc_markInodeDirty(inode, LC_INODE_XATTRDIRTY);
     lc_inodeUnlock(inode);
 
 out:
@@ -298,7 +298,7 @@ lc_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
             assert(inode->i_xsize >= len);
             inode->i_xsize -= len;
             lc_updateInodeTimes(inode, false, true);
-            lc_markInodeDirty(inode, true, false, false, true);
+            lc_markInodeDirty(inode, LC_INODE_XATTRDIRTY);
             lc_inodeUnlock(inode);
             goto out;
         }

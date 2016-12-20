@@ -45,6 +45,8 @@ main(int argc, char *argv[]) {
         usage(argv[0]);
         exit(EINVAL);
     }
+
+    /* XXX Block signals around lc_mount/lc_unmount calls */
     err = lc_mount(argv[1], &gfs);
     if (err) {
         printf("Mounting %s failed, err %d\n", argv[1], err);

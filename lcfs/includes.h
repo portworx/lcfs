@@ -95,7 +95,7 @@ int lc_mount(char *device, struct gfs **gfsp);
 void lc_newInodeBlock(struct gfs *gfs, struct fs *fs);
 void lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs);
 void lc_invalidateInodeBlocks(struct gfs *gfs, struct fs *fs);
-void lc_sync(struct gfs *gfs, struct fs *fs);
+void lc_sync(struct gfs *gfs, struct fs *fs, bool super);
 void lc_unmount(struct gfs *gfs);
 void lc_syncAllLayers(struct gfs *gfs);
 struct fs *lc_newFs(struct gfs *gfs, size_t icsize, bool rw);
@@ -114,6 +114,7 @@ struct inode *lc_inodeInit(struct fs *fs, mode_t mode,
                             uid_t uid, gid_t gid, dev_t rdev, ino_t parent,
                             const char *target);
 void lc_rootInit(struct fs *fs, ino_t root);
+void lc_cloneRootDir(struct inode *pdir, struct inode *dir);
 void lc_setSnapshotRoot(struct gfs *gfs, ino_t ino);
 void lc_updateInodeTimes(struct inode *inode, bool mtime, bool ctime);
 void lc_syncInodes(struct gfs *gfs, struct fs *fs);
@@ -143,7 +144,7 @@ void lc_dirFreeHash(struct fs *fs, struct inode *dir);
 void lc_dirFree(struct inode *dir);
 
 uint64_t lc_inodeEmapLookup(struct gfs *gfs, struct inode *inode,
-                            uint64_t page);
+                            uint64_t page, struct extent **extents);
 void lc_copyEmap(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void lc_expandEmap(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,

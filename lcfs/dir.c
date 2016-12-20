@@ -166,7 +166,7 @@ lc_dirCopy(struct inode *dir) {
         }
     }
     assert(dir->i_size == count);
-    lc_markInodeDirty(dir, true, true, false, false);
+    lc_markInodeDirty(dir, LC_INODE_DIRDIRTY);
 }
 
 /* Free a dirent structure */
@@ -551,7 +551,7 @@ lc_dirRemoveName(struct fs *fs, struct inode *dir,
                 } else {
                     err = 0;
                 }
-                lc_markInodeDirty(dir, true, true, false, false);
+                lc_markInodeDirty(dir, LC_INODE_DIRDIRTY);
                 if (pdirent == NULL) {
                     if (hashed) {
                         dir->i_hdirent[hash] = dirent->di_next;
@@ -583,6 +583,9 @@ lc_dirReaddir(fuse_req_t req, struct fs *fs, struct inode *dir,
     char buf[size];
     off_t i, hoff;
 
+    /* FUSE/Kernel takes care of ./.. entries in a directory.
+     * See FUSE_CAP_EXPORT_SUPPORT
+     */
     assert(S_ISDIR(dir->i_mode));
     if (hashed) {
         if (off) {

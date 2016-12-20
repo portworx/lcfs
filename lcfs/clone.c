@@ -71,7 +71,7 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     /* Allocate root inode and add to the directory */
     lc_dirAdd(pdir, root, S_IFDIR, name, strlen(name));
     pdir->i_nlink++;
-    lc_markInodeDirty(pdir, true, true, false, false);
+    lc_markInodeDirty(pdir, LC_INODE_DIRDIRTY);
     lc_updateInodeTimes(pdir, true, true);
     lc_inodeUnlock(pdir);
 
@@ -101,16 +101,11 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
         /* Copy the parent root directory */
         pfs = lc_getfs(pinum, false);
         assert(rw || pfs->fs_readOnly);
+
+        /* XXX Make sure no inodes are locked for this layer */
         pfs->fs_frozen = true;
         assert(pfs->fs_root == lc_getInodeHandle(pinum));
-        pdir = pfs->fs_rootInode;
-        dir->i_size = pdir->i_size;
-        dir->i_nlink = pdir->i_nlink;
-        dir->i_dirent = pdir->i_dirent;
-        if (pdir->i_flags & LC_INODE_DHASHED) {
-            dir->i_flags |= LC_INODE_DHASHED;
-        }
-        lc_dirCopy(dir);
+        lc_cloneRootDir(pfs->fs_rootInode, dir);
 
         /* Inode chain lock is shared with the parent */
         fs->fs_parent = pfs;
@@ -243,7 +238,7 @@ lc_snapIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
             fuse_reply_ioctl(req, 0, NULL, 0);
             lc_displayLayerStats(fs);
             if ((cmd == SNAP_UMOUNT) && fs->fs_readOnly) {
-                lc_sync(gfs, fs);
+                lc_sync(gfs, fs, false);
             }
             lc_unlock(fs);
         } else if (cmd == SNAP_STAT) {

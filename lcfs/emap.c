@@ -20,8 +20,9 @@ lc_addEmapExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
 
 /* Check the inode extent list for the block mapping to the page */
 static uint64_t
-lc_inodeEmapExtentLookup(struct gfs *gfs, struct inode *inode, uint64_t page) {
-    struct extent *extent = inode->i_emap;
+lc_inodeEmapExtentLookup(struct gfs *gfs, struct inode *inode, uint64_t page,
+                         struct extent **extents) {
+    struct extent *extent = extents ? *extents : inode->i_emap;
 
     while (extent) {
         assert(extent->ex_type == LC_EXTENT_EMAP);
@@ -31,25 +32,32 @@ lc_inodeEmapExtentLookup(struct gfs *gfs, struct inode *inode, uint64_t page) {
         }
         if ((page >= lc_getExtentStart(extent)) &&
             (page < (lc_getExtentStart(extent) + lc_getExtentCount(extent)))) {
+            if (extents) {
+                *extents = extent;
+            }
             return lc_getExtentBlock(extent) + (page -
                                                 lc_getExtentStart(extent));
         }
         extent = extent->ex_next;
+    }
+    if (extents) {
+        *extents = NULL;
     }
     return LC_PAGE_HOLE;
 }
 
 /* Lookup inode emap for the specified page */
 uint64_t
-lc_inodeEmapLookup(struct gfs *gfs, struct inode *inode, uint64_t page) {
+lc_inodeEmapLookup(struct gfs *gfs, struct inode *inode, uint64_t page,
+                   struct extent **extents) {
 
     /* Check if the inode has a single direct extent */
     if (inode->i_extentLength && (page < inode->i_extentLength)) {
         return inode->i_extentBlock + page;
     }
 
-    /* If the file fragmented, lookup in the emap hash table */
-    return lc_inodeEmapExtentLookup(gfs, inode, page);
+    /* If the file fragmented, lookup in the emap list */
+    return lc_inodeEmapExtentLookup(gfs, inode, page, extents);
 }
 
 /* Add a emap entry to the inode */
@@ -61,7 +69,7 @@ lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
     assert(!(inode->i_flags & LC_INODE_SHARED));
     assert(inode->i_extentLength == 0);
 
-    oblock = lc_inodeEmapExtentLookup(gfs, inode, page);
+    oblock = lc_inodeEmapExtentLookup(gfs, inode, page, NULL);
     if (oblock != LC_PAGE_HOLE) {
         freed = lc_removeExtent(fs, &inode->i_emap, page, 1);
         assert(freed == 1);
@@ -81,7 +89,7 @@ lc_expandEmap(struct gfs *gfs, struct fs *fs, struct inode *inode) {
                      inode->i_extentLength);
     inode->i_extentBlock = 0;
     inode->i_extentLength = 0;
-    lc_markInodeDirty(inode, true, false, true, false);
+    lc_markInodeDirty(inode, LC_INODE_EMAPDIRTY);
 }
 
 /* Create a new emap extent list for the inode, copying existing emap list */
@@ -143,9 +151,6 @@ lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         assert(inode->i_dpcount == 0);
         inode->i_flags &= ~LC_INODE_EMAPDIRTY;
         return;
-    }
-    if (inode->i_flags & LC_INODE_SHARED) {
-        lc_copyEmap(gfs, fs, inode);
     }
     lc_flushPages(gfs, fs, inode, true);
     extent = inode->i_emap;
