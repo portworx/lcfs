@@ -162,6 +162,7 @@ lc_mallocBlockAligned(struct fs *fs, void **memptr, enum lc_memTypes type) {
 /* Release previously allocated memory */
 void
 lc_free(struct fs *fs, void *ptr, size_t size, enum lc_memTypes type) {
+    assert(size || (type == LC_MEMTYPE_GFS));
     free(ptr);
     lc_memStatsUpdate(fs, size, false, type);
 }
@@ -172,9 +173,6 @@ lc_checkMemStats(struct fs *fs) {
     enum lc_memTypes i;
 
     if (!memStatsEnabled) {
-        return;
-    }
-    if (fs->fs_memory == 0) {
         return;
     }
     for (i = LC_MEMTYPE_GFS + 1; i < LC_MEMTYPE_MAX; i++) {

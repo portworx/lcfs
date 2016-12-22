@@ -152,7 +152,7 @@ lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         inode->i_flags &= ~LC_INODE_EMAPDIRTY;
         return;
     }
-    lc_flushPages(gfs, fs, inode, true);
+    lc_flushPages(gfs, fs, inode, true, false);
     extent = inode->i_emap;
     inode->i_emap = NULL;
     if (extent) {

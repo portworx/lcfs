@@ -323,7 +323,6 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
             }
         }
         block = buf->ib_next;
-        sched_yield();
     }
     assert(fs->fs_rootInode != NULL);
     assert(!flush);
@@ -563,7 +562,6 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs) {
             }
             inode = inode->i_cnext;
         }
-        sched_yield();
     }
     if (fs->fs_inodePagesCount && !fs->fs_removed) {
         lc_flushInodePages(gfs, fs);
@@ -600,7 +598,6 @@ lc_destroyInodes(struct fs *fs, bool remove) {
         assert(fs->fs_icache[i].ic_head == NULL);
         //pthread_mutex_unlock(&fs->fs_icache[i].ic_lock);
         pthread_mutex_destroy(&fs->fs_icache[i].ic_lock);
-        sched_yield();
     }
 
     /* XXX reuse this cache for another file system */

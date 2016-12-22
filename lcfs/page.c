@@ -46,8 +46,8 @@ lc_findDirtyPage(struct inode *inode, uint64_t pg) {
 }
 
 /* Flush dirty pages if the inode accumulated too many */
-void
-lc_flushInodeDirtyPages(struct inode *inode, uint64_t page) {
+bool
+lc_flushInodeDirtyPages(struct inode *inode, uint64_t page, bool unlock) {
     struct dpage *dpage;
 
     /* Do not trigger flush if the last page is not fully filled up for a
@@ -59,11 +59,12 @@ lc_flushInodeDirtyPages(struct inode *inode, uint64_t page) {
         if ((dpage == NULL) ||
             (dpage->dp_data &&
              (dpage->dp_poffset || (dpage->dp_psize != LC_BLOCK_SIZE)))) {
-            return;
+            return false;
         }
     }
     lc_printf("Flushing pages of inode %ld\n", inode->i_ino);
-    lc_flushPages(inode->i_fs->fs_gfs, inode->i_fs, inode, false);
+    lc_flushPages(inode->i_fs->fs_gfs, inode->i_fs, inode, false, unlock);
+    return true;
 }
 
 /* Add inode to the file system dirty list */
@@ -106,6 +107,7 @@ void
 lc_flushDirtyInodeList(struct fs *fs, bool force) {
     struct inode *inode, *prev = NULL, *next;
     struct gfs *gfs = fs->fs_gfs;
+    bool flushed;
     uint64_t id;
 
     if ((fs->fs_dirtyInodes == NULL) || fs->fs_removed) {
@@ -133,17 +135,19 @@ lc_flushDirtyInodeList(struct fs *fs, bool force) {
             if (inode->i_dpcount && !(inode->i_flags & LC_INODE_REMOVED) &&
                 ((inode->i_ocount == 0) || force)) {
                 pthread_mutex_unlock(&fs->fs_dilock);
-                lc_flushInodeDirtyPages(inode, inode->i_size / LC_BLOCK_SIZE);
-                if (inode->i_dpcount && (inode->i_ocount == 0)) {
-                    lc_addDirtyInode(fs, inode);
+                flushed = lc_flushInodeDirtyPages(inode,
+                                         inode->i_size / LC_BLOCK_SIZE, true);
+                if (!flushed) {
+                    if (inode->i_dpcount && (inode->i_ocount == 0)) {
+                        lc_addDirtyInode(fs, inode);
+                    }
+                    pthread_rwlock_unlock(&inode->i_rwlock);
                 }
-                pthread_rwlock_unlock(&inode->i_rwlock);
             } else {
                 pthread_rwlock_unlock(&inode->i_rwlock);
                 inode = next;
                 continue;
             }
-            sched_yield();
             if (force) {
                 if (lc_checkMemoryAvailable(true)) {
                     pthread_cond_broadcast(&gfs->gfs_mcond);
@@ -531,7 +535,7 @@ lc_addPages(struct inode *inode, off_t off, size_t size,
         /* Flush dirty pages if the inode accumulated too many */
         if ((inode->i_dpcount >= LC_MAX_FILE_DIRTYPAGES) &&
             !(inode->i_flags & LC_INODE_TMP)) {
-            lc_flushInodeDirtyPages(inode, page);
+            lc_flushInodeDirtyPages(inode, page, false);
         }
         page++;
         count++;
@@ -601,10 +605,10 @@ lc_readPages(fuse_req_t req, struct inode *inode, off_t soffset,
 /* Flush dirty pages of an inode */
 void
 lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
-              bool release) {
-    uint64_t count = 0, bcount = 0, start, end = 0, fcount = 0;
+              bool release, bool unlock) {
     uint64_t lpage, pcount, block, tcount = 0, rcount;
     struct page *page, *dpage = NULL, *tpage = NULL;
+    uint64_t count = 0, bcount = 0, start, end = 0;
     struct extent *extents = NULL, *extent;
     struct extent *emap = inode->i_emap;
     bool single = true, nocache;
@@ -614,7 +618,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
 
     assert(S_ISREG(inode->i_mode));
 
-    /* If inode does not have any pages, return */
+    /* If inode does not have any pages, skip most of the work */
     if ((inode->i_dpcount == 0) || (inode->i_size == 0)) {
         goto out;
     }
@@ -706,8 +710,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
     } else if (inode->i_extentLength) {
         lc_expandEmap(gfs, fs, inode);
     }
-    nocache = inode->i_private &&
-              (!fs->fs_readOnly || (fs->fs_snap == NULL)) && lc_lowMemory();
+    nocache = inode->i_private;
 
     /* Queue the dirty pages for flushing after associating with newly
      * allocated blocks
@@ -715,10 +718,6 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
     for (i = start; i <= end; i++) {
         if ((count == rcount) && (bcount > tcount)) {
             assert(!single);
-            lc_addPageForWriteBack(gfs, fs, dpage, tpage, fcount);
-            dpage = NULL;
-            tpage = NULL;
-            fcount = 0;
             rcount = bcount - tcount;
             do {
                 block = lc_blockAlloc(fs, rcount, false, true);
@@ -747,33 +746,8 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
             page->p_dnext = dpage;
             dpage = page;
             count++;
-            fcount++;
             tcount++;
-
-            /* Issue write after accumulating certain number of pages,
-             * otherwise queue the page for later flushing.
-             */
-            if (fs->fs_dpcount &&
-                ((fcount + fs->fs_dpcount) >= LC_CLUSTER_SIZE)) {
-                lc_addPageForWriteBack(gfs, fs, dpage, tpage, fcount);
-                dpage = NULL;
-                tpage = NULL;
-                fcount = 0;
-                sched_yield();
-            } else if (fcount >= LC_CLUSTER_SIZE) {
-                if (fs->fs_dpcount) {
-                    lc_flushDirtyPages(gfs, fs);
-                }
-                lc_flushPageCluster(gfs, fs, page, fcount);
-                dpage = NULL;
-                tpage = NULL;
-                fcount = 0;
-                sched_yield();
-            }
         }
-    }
-    if (fcount) {
-        lc_addPageForWriteBack(gfs, fs, dpage, tpage, fcount);
     }
     assert(bcount == tcount);
     assert(inode->i_dpcount == 0);
@@ -787,7 +761,7 @@ out:
                     LC_MEMTYPE_DPAGEHASH);
             inode->i_hpage = NULL;
             inode->i_flags &= ~LC_INODE_HASHED;
-        } else {
+        } else if (inode->i_pcount) {
             lc_free(fs, inode->i_page, inode->i_pcount * sizeof(struct dpage),
                     LC_MEMTYPE_DPAGEHASH);
             inode->i_page = NULL;
@@ -797,7 +771,15 @@ out:
     if (extents) {
         lc_freeInodeDataBlocks(fs, inode, &extents);
     }
+
+    /* Unlock the inode before issuing I/Os if we can.  As we never overwrite
+     * in place, it is safe to do so.
+     */
+    if (unlock) {
+        lc_inodeUnlock(inode);
+    }
     if (tcount) {
+        lc_addPageForWriteBack(gfs, fs, dpage, tpage, tcount);
         lc_memTransferCount(fs, tcount);
         pcount = __sync_fetch_and_sub(&fs->fs_pcount, tcount);
         assert(pcount >= tcount);
@@ -943,14 +925,10 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
             }
         }
         if (size == 0) {
-            if (inode->i_page) {
-                lc_free(fs, inode->i_page,
-                        inode->i_pcount * sizeof(struct dpage),
-                        LC_MEMTYPE_DPAGEHASH);
-                inode->i_page = NULL;
-                inode->i_pcount = 0;
-            }
-            assert(inode->i_pcount == 0);
+            lc_free(fs, inode->i_page, inode->i_pcount * sizeof(struct dpage),
+                    LC_MEMTYPE_DPAGEHASH);
+            inode->i_page = NULL;
+            inode->i_pcount = 0;
         }
     }
     assert((inode->i_dpcount == 0) || size);

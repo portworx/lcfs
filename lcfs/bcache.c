@@ -81,7 +81,6 @@ lc_destroy_pages(struct gfs *gfs, struct fs *fs, struct pcache *pcache,
         pthread_mutex_unlock(&pcache[i].pc_lock);
         pthread_mutex_destroy(&pcache[i].pc_lock);
         count += pcount;
-        sched_yield();
     }
     lc_free(fs, pcache, sizeof(struct pcache) * fs->fs_pcacheSize,
             LC_MEMTYPE_PCACHE);
@@ -368,7 +367,8 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
              * XXX This could happen when metadata and userdata are flushed
              * concurrently OR files flushed concurrently.
              */
-            if (i && ((page->p_block + 1) != block)) {
+            if ((i && ((page->p_block + 1) != block)) ||
+                (bcount >= LC_CLUSTER_SIZE)) {
                 //lc_printf("Not contigous, block %ld previous block %ld i %ld count %ld\n", block, page->p_block, i, count);
                 lc_writeBlocks(gfs, fs, &iovec[j + 1], bcount, block);
                 bcount = 0;
@@ -395,7 +395,6 @@ lc_addPageForWriteBack(struct gfs *gfs, struct fs *fs, struct page *head,
     struct page *page = NULL;
     uint64_t count = 0;
 
-    assert(count < LC_CLUSTER_SIZE);
     pthread_mutex_lock(&fs->fs_plock);
     tail->p_dnext = fs->fs_dpages;
     fs->fs_dpages = head;
@@ -490,7 +489,7 @@ lc_purgeTreePages(struct gfs *gfs, struct fs *fs) {
                     prev->p_cnext = page->p_cnext;
                 }
                 next = page->p_cnext;
-                lc_printf("fs %p Freeing page %p, block %ld\n", fs, page, page->p_block);
+                //lc_printf("fs %p Freeing page %p, block %ld\n", fs, page, page->p_block);
                 page->p_cnext = NULL;
                 page->p_block = LC_INVALID_BLOCK;
                 page->p_dvalid = 0;
@@ -508,7 +507,6 @@ lc_purgeTreePages(struct gfs *gfs, struct fs *fs) {
         if ((gfs->gfs_pcount < LC_PAGE_MAX) && !lc_lowMemory()) {
             break;
         }
-        sched_yield();
     }
     return count;
 }
@@ -563,7 +561,6 @@ lc_purgePages(struct gfs *gfs, bool force) {
         if ((gfs->gfs_pcount < LC_PAGE_MAX) && !lc_lowMemory()) {
             break;
         }
-        sched_yield();
     }
     gfs->gfs_tpurging = false;
     pthread_cond_broadcast(&gfs->gfs_mcond);

@@ -866,16 +866,19 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
         if (fs->fs_readOnly) {
 
             /* Inode emap needs to be stable before an inode could be cloned */
-            lc_flushPages(fs->fs_gfs, fs, inode, true);
+            lc_flushPages(fs->fs_gfs, fs, inode, true, true);
+            return;
         } else if (!(inode->i_flags & (LC_INODE_REMOVED | LC_INODE_TMP)) &&
                    inode->i_dpcount) {
-            if (lc_lowMemory() ||
-                (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES)) {
-                lc_flushInodeDirtyPages(inode, inode->i_size / LC_BLOCK_SIZE);
-            }
             if (inode->i_dpcount && (inode->i_dnext == NULL) &&
                 (fs->fs_dirtyInodesLast != inode)) {
                 lc_addDirtyInode(fs, inode);
+            }
+            if ((lc_lowMemory() ||
+                 (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES)) &&
+                lc_flushInodeDirtyPages(inode, inode->i_size / LC_BLOCK_SIZE,
+                                        true)) {
+                return;
             }
         }
     }

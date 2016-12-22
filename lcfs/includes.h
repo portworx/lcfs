@@ -188,7 +188,7 @@ void lc_readPages(fuse_req_t req, struct inode *inode, off_t soffset,
                   off_t endoffset, struct page **pages,
                   struct fuse_bufvec *bufv);
 void lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
-                   bool release);
+                   bool release, bool unlock);
 void lc_truncatePage(struct fs *fs, struct inode *inode, struct dpage *dpage,
                      uint64_t pg, uint16_t poffset);
 void lc_truncPages(struct inode *inode, off_t size, bool remove);
@@ -197,7 +197,7 @@ void lc_addDirtyInode(struct fs *fs, struct inode *inode);
 void lc_flushDirtyInodeList(struct fs *fs, bool force);
 void lc_invalidateDirtyPages(struct gfs *gfs, struct fs *fs);
 void lc_purgePages(struct gfs *gfs, bool force);
-void lc_flushInodeDirtyPages(struct inode *inode, uint64_t page);
+bool lc_flushInodeDirtyPages(struct inode *inode, uint64_t page, bool unlock);
 
 int lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
                    void **fsp);

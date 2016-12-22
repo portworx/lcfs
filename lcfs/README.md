@@ -48,7 +48,9 @@ This file system driver is implemented using fuse low level API.
 
 5. Build lcfs directory by running make. (cd px-graph/lcfs; make)
 
-6. Mount a device/file - "sudo ./lcfs 'device' 'mnt'".
+6. Mount a device/file - "sudo ./lcfs 'device' 'mnt'". Check output of mount
+   command to make sure device is mounted correctly.  It is recommended to use
+   an empty directory as mount point.
 
     For debugging, options -f or -d could be specified.
 
