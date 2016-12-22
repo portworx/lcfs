@@ -67,14 +67,17 @@ struct rdata {
     /* Extent map */
     struct extent *rd_emap;
 
-    /* First dirty page */
-    uint64_t rd_fpage;
-
-    /* Last dirty page */
-    uint64_t rd_lpage;
+    /* Next entry in the dirty list */
+    struct inode *rd_dnext;
 
     /* Index of last flusher */
     uint64_t rd_flusher;
+
+    /* First dirty page */
+    uint32_t rd_fpage;
+
+    /* Last dirty page */
+    uint32_t rd_lpage;
 
     /* Size of page array */
     uint32_t rd_pcount;
@@ -82,6 +85,7 @@ struct rdata {
     /* Count of dirty pages */
     uint32_t rd_dpcount;
 } __attribute__((packed));
+static_assert(sizeof(struct rdata) == 48, "rdata size != 48");
 
 /* Extended attributes of an inode */
 struct xattr {
@@ -139,9 +143,6 @@ struct inode {
     /* Next entry in the hash list */
     struct inode *i_cnext;
 
-    /* Next entry in the dirty list */
-    struct inode *i_dnext;
-
     /* Extents for emap or directory blocks */
     struct extent *i_emapDirExtents;
 
@@ -167,9 +168,11 @@ struct inode {
     uint32_t i_ocount;
 
     /* Various flags */
-    uint8_t i_flags;
+    uint32_t i_flags;
 }  __attribute__((packed));
-static_assert(sizeof(struct inode) == 234, "inode size != 234");
+static_assert(sizeof(struct inode) == 216, "inode size != 216");
+static_assert((sizeof(struct inode) % sizeof(void *)) == 0,
+              "Inode size is not aligned");
 
 #define i_ino           i_dinode.di_ino
 #define i_mode          i_dinode.di_mode
@@ -188,6 +191,7 @@ static_assert(sizeof(struct inode) == 234, "inode size != 234");
 #define i_pcount        i_rdata->rd_pcount
 #define i_dpcount       i_rdata->rd_dpcount
 #define i_flusher       i_rdata->rd_flusher
+#define i_dnext         i_rdata->rd_dnext
 #define i_fpage         i_rdata->rd_fpage
 #define i_lpage         i_rdata->rd_lpage
 

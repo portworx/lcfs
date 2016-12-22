@@ -88,6 +88,7 @@ lc_flushInodeDirtyPages(struct inode *inode, uint64_t page, bool unlock) {
 /* Add inode to the file system dirty list */
 void
 lc_addDirtyInode(struct fs *fs, struct inode *inode) {
+    assert(S_ISREG(inode->i_mode));
     pthread_mutex_lock(&fs->fs_dilock);
     if ((inode->i_dnext == NULL) && (fs->fs_dirtyInodesLast != inode)) {
         if (fs->fs_dirtyInodesLast) {
@@ -106,6 +107,7 @@ static struct inode *
 lc_removeDirtyInode(struct fs *fs, struct inode *inode, struct inode *prev) {
     struct inode *next = inode->i_dnext;
 
+    assert(S_ISREG(inode->i_mode));
     if (prev) {
         prev->i_dnext = next;
     } else {

@@ -27,19 +27,21 @@ lc_icache_init(struct fs *fs, size_t size) {
 static void
 lc_dinodeInit(struct inode *inode, ino_t ino, mode_t mode,
               uid_t uid, gid_t gid, dev_t rdev, size_t size, ino_t parent) {
-    inode->i_ino = ino;
-    inode->i_mode = mode;
-    inode->i_nlink = S_ISDIR(mode) ? 2 : 1;
-    inode->i_dinode.di_uid = uid;
-    inode->i_dinode.di_gid = gid;
-    inode->i_dinode.di_rdev = rdev;
-    inode->i_size = size;
-    inode->i_dinode.di_blocks = 0;
-    inode->i_dinode.di_emapdir = LC_INVALID_BLOCK;
-    inode->i_dinode.di_extentLength = 0;
-    inode->i_dinode.di_xattr = LC_INVALID_BLOCK;
-    inode->i_parent = lc_getInodeHandle(parent);
-    inode->i_private = S_ISREG(mode);
+    struct dinode *dinode = &inode->i_dinode;
+
+    dinode->di_ino = ino;
+    dinode->di_mode = mode;
+    dinode->di_nlink = S_ISDIR(mode) ? 2 : 1;
+    dinode->di_uid = uid;
+    dinode->di_gid = gid;
+    dinode->di_rdev = rdev;
+    dinode->di_size = size;
+    dinode->di_blocks = 0;
+    dinode->di_emapdir = LC_INVALID_BLOCK;
+    dinode->di_extentLength = 0;
+    dinode->di_xattr = LC_INVALID_BLOCK;
+    dinode->di_parent = lc_getInodeHandle(parent);
+    dinode->di_private = S_ISREG(mode) ? 1 : 0;
     lc_updateInodeTimes(inode, true, true);
 }
 
@@ -57,7 +59,6 @@ lc_newInode(struct fs *fs, uint64_t block, uint64_t len, bool reg, bool new) {
     inode->i_fs = fs;
     pthread_rwlock_init(&inode->i_rwlock, NULL);
     inode->i_cnext = NULL;
-    inode->i_dnext = NULL;
     inode->i_emapDirExtents = NULL;
     inode->i_xattrData = NULL;
     inode->i_ocount = 0;
