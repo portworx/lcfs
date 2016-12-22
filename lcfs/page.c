@@ -710,7 +710,8 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
     } else if (inode->i_extentLength) {
         lc_expandEmap(gfs, fs, inode);
     }
-    nocache = inode->i_private;
+    nocache = inode->i_private && !fs->fs_readOnly &&
+              ((fs->fs_parent == NULL) || !fs->fs_parent->fs_readOnly);
 
     /* Queue the dirty pages for flushing after associating with newly
      * allocated blocks
@@ -779,8 +780,8 @@ out:
         lc_inodeUnlock(inode);
     }
     if (tcount) {
-        lc_addPageForWriteBack(gfs, fs, dpage, tpage, tcount);
         lc_memTransferCount(fs, tcount);
+        lc_addPageForWriteBack(gfs, fs, dpage, tpage, tcount);
         pcount = __sync_fetch_and_sub(&fs->fs_pcount, tcount);
         assert(pcount >= tcount);
     }

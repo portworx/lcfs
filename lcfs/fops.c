@@ -852,7 +852,7 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
     if (inval) {
         *inval = reg && (inode->i_ocount == 0) && (inode->i_size > 0) &&
                  (!inode->i_private || fs->fs_readOnly ||
-                  (fs->fs_snap != NULL));
+                  (fs->fs_parent && fs->fs_parent->fs_readOnly));
     }
 
     /* Truncate a removed file on last close */
