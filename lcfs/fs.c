@@ -387,18 +387,15 @@ lc_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
         assert(pfs->fs_snap == NULL);
         pfs->fs_snap = fs;
         pfs->fs_frozen = true;
+        lc_linkParent(fs, pfs);
         fs->fs_parent = pfs;
-        fs->fs_pcache = pfs->fs_pcache;
-        fs->fs_pcacheSize = pfs->fs_pcacheSize;
-        fs->fs_ilock = pfs->fs_ilock;
-        fs->fs_rfs = pfs->fs_rfs;
     } else if (pfs->fs_parent == NULL) {
 
         /* Base layer */
         assert(pfs->fs_next == NULL);
         fs->fs_prev = pfs;
         pfs->fs_next = fs;
-        lc_pcache_init(fs, LC_PCACHE_SIZE);
+        lc_pcache_init(fs, LC_PCACHE_SIZE, LC_PCLOCK_COUNT);
         fs->fs_ilock = lc_malloc(fs, sizeof(pthread_mutex_t),
                                  LC_MEMTYPE_ILOCK);
         pthread_mutex_init(fs->fs_ilock, NULL);
@@ -409,11 +406,8 @@ lc_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
         assert(pfs->fs_next == NULL);
         fs->fs_prev = pfs;
         pfs->fs_next = fs;
-        fs->fs_pcache = pfs->fs_pcache;
-        fs->fs_pcacheSize = pfs->fs_pcacheSize;
+        lc_linkParent(fs, pfs);
         fs->fs_parent = pfs->fs_parent;
-        fs->fs_ilock = pfs->fs_ilock;
-        fs->fs_rfs = pfs->fs_rfs;
     }
 
     /* Add the layer to the global list */
@@ -517,7 +511,7 @@ lc_mount(char *device, struct gfs **gfsp) {
     fs->fs_root = LC_ROOT_INODE;
     fs->fs_sblock = LC_SUPER_BLOCK;
     fs->fs_rfs = fs;
-    lc_pcache_init(fs, LC_PCACHE_SIZE_MIN);
+    lc_pcache_init(fs, LC_PCACHE_SIZE_MIN, LC_PCLOCK_COUNT);
     gfs->gfs_fs[0] = fs;
     gfs->gfs_roots[0] = LC_ROOT_INODE;
 

@@ -119,8 +119,14 @@ struct fs {
     /* Page block hash table */
     struct pcache *fs_pcache;
 
+    /* Locks for the page cache lists */
+    pthread_mutex_t *fs_pcacheLocks;
+
     /* Number of hash lists in pcache */
-    uint64_t fs_pcacheSize;
+    uint32_t fs_pcacheSize;
+
+    /* Number of page cache locks */
+    uint32_t fs_pcacheLockCount;
 
     /* Lock protecting layer inode chains */
     pthread_mutex_t *fs_ilock;

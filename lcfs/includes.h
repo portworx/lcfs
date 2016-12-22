@@ -158,7 +158,7 @@ void lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
 void lc_freeInodeDataBlocks(struct fs *fs, struct inode *inode,
                             struct extent **extents);
 
-void lc_pcache_init(struct fs *fs, uint64_t size);
+void lc_pcache_init(struct fs *fs, uint32_t count, uint32_t lcount);
 void lc_destroy_pages(struct gfs *gfs, struct fs *fs, struct pcache *pcache,
                       bool remove);
 struct page *lc_getPage(struct fs *fs, uint64_t block, bool read);
@@ -213,6 +213,7 @@ void lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
                    void *buf);
 void lc_xattrFree(struct inode *inode);
 
+void lc_linkParent(struct fs *fs, struct fs *pfs);
 void lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
                   const char *parent, size_t size, bool rw);
 void lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name);

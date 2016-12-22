@@ -12,6 +12,8 @@
 #define LC_PAGE_MAX         1200000
 static_assert(LC_PAGE_MAX >= LC_PCACHE_SIZE, "LC_PAGE_MAX <= LC_PCACHE_SIZE");
 
+#define LC_PCLOCK_COUNT     1024
+
 #define LC_PAGECACHE_SIZE  32
 #define LC_CLUSTER_SIZE    256
 
@@ -26,10 +28,6 @@ static_assert(LC_PAGE_MAX >= LC_PCACHE_SIZE, "LC_PAGE_MAX <= LC_PCACHE_SIZE");
 
 /* Page cache header */
 struct pcache {
-
-    /* Lock protecting the hash chain */
-    pthread_mutex_t pc_lock;
-
     /* Page hash chains */
     struct page *pc_head;
 
