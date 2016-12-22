@@ -95,7 +95,7 @@ func (d *Driver) ioctl(cmd int, parent, id string) error {
         return err
     }
 
-    // Create a name string which includes both parent and id 
+    // Create a name string which includes both parent and id
     if parent != "" {
         name = path.Join(parent, id)
         plen = len(parent)
