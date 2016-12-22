@@ -838,7 +838,13 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
     /* Nothing to do if inode is not part of this layer */
     if (inode->i_fs != fs) {
         if (inval) {
-            *inval = reg && (inode->i_size > 0);
+
+            /* Invalidate pages in kernel page cache if multiple layers are
+             * reading shared data from parent layer.
+             */
+            *inval = reg && (inode->i_size > 0) &&
+                    (fs->fs_readOnly || fs->fs_next || fs->fs_prev ||
+                     fs->fs_parent->fs_readOnly);
         }
         return;
     }
@@ -863,7 +869,7 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
     /* Flush dirty pages of a file on last close */
     if ((inode->i_ocount == 0) && (inode->i_flags & LC_INODE_EMAPDIRTY)) {
         assert(reg);
-        if (fs->fs_readOnly) {
+        if (fs->fs_readOnly || (fs->fs_parent && fs->fs_parent->fs_readOnly)) {
 
             /* Inode emap needs to be stable before an inode could be cloned */
             lc_flushPages(fs->fs_gfs, fs, inode, true, true);

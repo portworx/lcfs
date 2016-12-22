@@ -148,7 +148,7 @@ uint64_t lc_inodeEmapLookup(struct gfs *gfs, struct inode *inode,
 void lc_copyEmap(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void lc_expandEmap(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
-                        uint64_t page, uint64_t block,
+                        uint64_t pstart, uint64_t bstart, uint64_t pcount,
                         struct extent **extents);
 void lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,

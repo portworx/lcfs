@@ -92,6 +92,11 @@ lc_inodeLock(struct inode *inode, bool exclusive) {
 /* Unlock the inode */
 void
 lc_inodeUnlock(struct inode *inode) {
+
+    /* fs_frozen cannot be set while an inode is locked.  That is made sure by
+     * syncing all dirty data as part of unmount of a layer after locking the
+     * layer exclusively, which could be used as a parent layer.
+     */
     if (inode->i_fs->fs_frozen) {
         return;
     }

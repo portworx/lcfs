@@ -28,6 +28,10 @@ lc_inodeEmapExtentLookup(struct gfs *gfs, struct inode *inode, uint64_t page,
         assert(extent->ex_type == LC_EXTENT_EMAP);
         lc_validateExtent(gfs, extent);
         if (page < lc_getExtentStart(extent)) {
+            if (extents) {
+                *extents = extent;
+                extents = NULL;
+            }
             break;
         }
         if ((page >= lc_getExtentStart(extent)) &&
@@ -60,24 +64,72 @@ lc_inodeEmapLookup(struct gfs *gfs, struct inode *inode, uint64_t page,
     return lc_inodeEmapExtentLookup(gfs, inode, page, extents);
 }
 
-/* Add a emap entry to the inode */
+/* Add newly allocated blocks to the emap of the inode */
 void
 lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
-                   uint64_t page, uint64_t block, struct extent **extents) {
-    uint64_t oblock, freed;
+                   uint64_t pstart, uint64_t bstart, uint64_t pcount,
+                   struct extent **extents) {
+    uint64_t page = pstart, pg = -1, count = pcount, block, blk = -1;
+    struct extent *extent = inode->i_emap;
+    uint64_t end, ecount, bcount = 0;
 
     assert(!(inode->i_flags & LC_INODE_SHARED));
     assert(inode->i_extentLength == 0);
+    assert(count);
 
-    oblock = lc_inodeEmapExtentLookup(gfs, inode, page, NULL);
-    if (oblock != LC_PAGE_HOLE) {
-        freed = lc_removeExtent(fs, &inode->i_emap, page, 1);
-        assert(freed == 1);
-        lc_addSpaceExtent(gfs, fs, extents, oblock, 1);
-    } else {
-        inode->i_dinode.di_blocks++;
+    while (count) {
+        if (extent == NULL) {
+            inode->i_dinode.di_blocks += count;
+            break;
+        }
+        block = lc_inodeEmapExtentLookup(gfs, inode, page, &extent);
+        if (block != LC_PAGE_HOLE) {
+            if (bcount == 0) {
+                pg = page;
+                blk = block;
+            }
+            if ((blk + bcount) != block) {
+                ecount = lc_removeExtent(fs, &inode->i_emap, pg, bcount);
+                assert(ecount == bcount);
+                lc_addSpaceExtent(gfs, fs, extents, blk, bcount);
+                extent = inode->i_emap;
+                pg = page;
+                blk = block;
+                bcount = 1;
+            } else {
+                bcount++;
+            }
+
+            /* Check if the last extent has more blocks */
+            if (extent && (page >= lc_getExtentStart(extent)) &&
+                (page < (lc_getExtentStart(extent) +
+                         lc_getExtentCount(extent)))) {
+                end = lc_getExtentStart(extent) + lc_getExtentCount(extent);
+                if (end > page) {
+                    ecount = end - page;
+                    if (ecount > count) {
+                        ecount = count;
+                    }
+                    if (ecount) {
+                        bcount += (ecount - 1);
+                        page += ecount;
+                        count -= ecount;
+                        continue;
+                    }
+                }
+            }
+        } else {
+            inode->i_dinode.di_blocks++;
+        }
+        page++;
+        count--;
     }
-    lc_addEmapExtent(gfs, fs, &inode->i_emap, page, block, 1);
+    if (bcount) {
+        ecount = lc_removeExtent(fs, &inode->i_emap, pg, bcount);
+        assert(ecount == bcount);
+        lc_addSpaceExtent(gfs, fs, extents, blk, bcount);
+    }
+    lc_addEmapExtent(gfs, fs, &inode->i_emap, pstart, bstart, pcount);
 }
 
 /* Expand a single extent to a emap list */

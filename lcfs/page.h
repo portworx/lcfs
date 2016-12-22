@@ -66,7 +66,7 @@ struct page {
     /* Lock protecting data read */
     pthread_mutex_t p_dlock;
 
-} __attribute__((packed));
+};
 
 /* Page structure used for caching dirty pages of an inode
  * when the inode is using an array indexed by page number.

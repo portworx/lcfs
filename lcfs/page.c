@@ -8,6 +8,24 @@ lc_dpageHash(uint64_t page) {
     return page % LC_DHASH_MIN;
 }
 
+/* Initialize page markers tracked with the inode */
+static void
+lc_initInodePageMarkers(struct inode *inode) {
+    inode->i_fpage = ((inode->i_size + LC_BLOCK_SIZE - 1) / LC_BLOCK_SIZE) + 1;
+    inode->i_lpage = 0;
+}
+
+/* Update page markers tracked with the inode */
+static void
+lc_updateInodePageMarkers(struct inode *inode, uint64_t pg) {
+    if (inode->i_fpage > pg) {
+        inode->i_fpage = pg;
+    }
+    if (inode->i_lpage < pg) {
+        inode->i_lpage = pg;
+    }
+}
+
 /* Add a page to dirty page hash */
 static void
 lc_addDirtyPage(struct fs *fs, struct dhpage **dhpage, uint64_t page,
@@ -408,6 +426,7 @@ lc_mergePage(struct gfs *gfs, struct inode *inode, uint64_t pg, char *data,
         assert(inode->i_pcount == 0);
         lc_addDirtyPage(fs, inode->i_hpage, pg, data, poffset, psize);
         inode->i_dpcount++;
+        lc_updateInodePageMarkers(inode, pg);
         return 1;
     }
 
@@ -418,8 +437,11 @@ lc_mergePage(struct gfs *gfs, struct inode *inode, uint64_t pg, char *data,
         dpage->dp_poffset = poffset;
         dpage->dp_psize = psize;
         inode->i_dpcount++;
+        lc_updateInodePageMarkers(inode, pg);
         return 1;
     }
+    assert(inode->i_fpage <= pg);
+    assert(inode->i_lpage >= pg);
 
     /* If the current dirty page is partial page and this new write is not a
      * contiguous write, initialize exisitng page correctly and copy new data.
@@ -525,6 +547,9 @@ lc_addPages(struct inode *inode, off_t off, size_t size,
         lc_copyEmap(gfs, fs, inode);
     }
     lc_inodeAllocPages(inode);
+    if (inode->i_dpcount == 0) {
+        lc_initInodePageMarkers(inode);
+    }
 
     /* Link the dirty pages to the inode, merging with any existing ones */
     while (count < pcount) {
@@ -606,13 +631,11 @@ lc_readPages(fuse_req_t req, struct inode *inode, off_t soffset,
 void
 lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
               bool release, bool unlock) {
-    uint64_t lpage, pcount, block, tcount = 0, rcount;
+    uint64_t lpage, pcount = 0, block, tcount = 0, rcount, bstart = -1;
+    uint64_t count = 0, bcount, start, end = 0, pstart = -1;
     struct page *page, *dpage = NULL, *tpage = NULL;
-    uint64_t count = 0, bcount = 0, start, end = 0;
-    struct extent *extents = NULL, *extent;
-    struct extent *emap = inode->i_emap;
-    bool single = true, nocache;
-    struct dpage *dp;
+    struct extent *extents = NULL, *extent, *tmp;
+    bool single, nocache;
     char *pdata;
     int64_t i;
 
@@ -627,42 +650,17 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
     }
     lpage = (inode->i_size + LC_BLOCK_SIZE - 1) / LC_BLOCK_SIZE;
     assert((inode->i_flags & LC_INODE_HASHED) || (lpage < inode->i_pcount));
-
-    /* Count the dirty pages and check if whole file can be placed
-     * contiguous on disk
-     */
-    start = lpage + 1;
-    for (i = 0; i <= lpage; i++) {
-        dp = lc_findDirtyPage(inode, i);
-        if (dp && dp->dp_data) {
-            start = i;
-            break;
-        }
-    }
+    bcount = inode->i_dpcount;
+    start = inode->i_fpage;
+    end = inode->i_lpage;
     assert(start <= lpage);
-    end = lpage + 1;
-    for (i = lpage; i >= 0; i--) {
-        dp = lc_findDirtyPage(inode, i);
-        if (dp && dp->dp_data) {
-            end = i;
-            break;
-        }
-    }
     assert(end <= lpage);
     assert(start <= end);
-    if (start || ((end + 1) != inode->i_dpcount)) {
-        lc_printf("Fragmented file, start %ld end %ld pcount %d\n", start, end, inode->i_dpcount);
-        single = false;
-    } else if (inode->i_extentLength || inode->i_emap) {
-        for (i = start; i <= end; i++) {
-            if (lc_inodeEmapLookup(gfs, inode, i, &emap) != LC_PAGE_HOLE) {
-                lc_printf("Fragmented after overwriting, start %ld end %ld pcount %d\n", start, end, inode->i_dpcount);
-                single = false;
-                break;
-            }
-        }
-    }
-    bcount = inode->i_dpcount;
+    assert(bcount <= (end - start + 1));
+
+    /* Allocate blocks.  If a single extent cannot be allocated, allocate
+     * smaller chunks.
+     */
     rcount = bcount;
     do {
         block = lc_blockAlloc(fs, rcount, false, true);
@@ -673,8 +671,20 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
     } while ((block == LC_INVALID_BLOCK) && rcount);
     assert(block != LC_INVALID_BLOCK);
     if (bcount != rcount) {
-        lc_printf("File system fragmented. Inode %ld is fragmented\n", inode->i_ino);
         single = false;
+        lc_printf("File system fragmented. Inode %ld is fragmented\n", inode->i_ino);
+    } else {
+
+        /* File being written sequentially from the beginning can be placed
+         * contiguous on disk.
+         */
+        single = (start == 0) &&
+                 ((end == lpage) ||
+                  ((inode->i_dinode.di_blocks == 0) && ((end + 1) == bcount)));
+        if (!single) {
+            lc_printf("Fragmented file %ld, start %ld end %ld lpage %ld blocks %ld pages %ld\n",
+                      inode->i_ino, start, end, lpage, inode->i_dinode.di_blocks, bcount);
+        }
     }
 
     /* Check if file has a single extent */
@@ -692,7 +702,9 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
                 lc_validateExtent(gfs, extent);
                 lc_addSpaceExtent(gfs, fs, &extents, lc_getExtentBlock(extent),
                                   lc_getExtentCount(extent));
+                tmp = extent;
                 extent = extent->ex_next;
+                lc_free(fs, tmp, sizeof(struct extent), LC_MEMTYPE_EXTENT);
             }
             inode->i_emap = NULL;
         }
@@ -710,6 +722,8 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
     } else if (inode->i_extentLength) {
         lc_expandEmap(gfs, fs, inode);
     }
+
+    /* Invalidate pages if blocks are cached in kernel page cache */
     nocache = inode->i_private && !fs->fs_readOnly &&
               ((fs->fs_parent == NULL) || !fs->fs_parent->fs_readOnly);
 
@@ -719,6 +733,8 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
     for (i = start; i <= end; i++) {
         if ((count == rcount) && (bcount > tcount)) {
             assert(!single);
+            lc_inodeEmapUpdate(gfs, fs, inode, pstart, bstart,
+                               pcount, &extents);
             rcount = bcount - tcount;
             do {
                 block = lc_blockAlloc(fs, rcount, false, true);
@@ -728,15 +744,26 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
                 rcount /= 2;
             } while (rcount);
             assert(block != LC_INVALID_BLOCK);
+            pcount = 0;
             count = 0;
         }
         pdata = lc_removeDirtyPage(gfs, inode, i, false);
         if (pdata) {
             assert(count < rcount);
             if (!single) {
-
-                /* XXX Do this in one step for contiguous pages */
-                lc_inodeEmapUpdate(gfs, fs, inode, i, block + count, &extents);
+                if (pcount == 0) {
+                    pstart = i;
+                    bstart = block + count;
+                }
+                if ((pstart + pcount) != i) {
+                    lc_inodeEmapUpdate(gfs, fs, inode, pstart, bstart,
+                                       pcount, &extents);
+                    pstart = i;
+                    bstart = block + count;
+                    pcount = 1;
+                } else {
+                    pcount++;
+                }
             }
             page = lc_getPageNew(gfs, fs, block + count, pdata);
             page->p_nocache = nocache;
@@ -749,6 +776,10 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
             count++;
             tcount++;
         }
+    }
+    if (pcount) {
+        assert(!single);
+        lc_inodeEmapUpdate(gfs, fs, inode, pstart, bstart, pcount, &extents);
     }
     assert(bcount == tcount);
     assert(inode->i_dpcount == 0);
@@ -818,12 +849,13 @@ lc_truncatePage(struct fs *fs, struct inode *inode, struct dpage *dpage,
 /* Truncate pages beyond the new size of the file */
 void
 lc_truncPages(struct inode *inode, off_t size, bool remove) {
-    uint64_t pg = size / LC_BLOCK_SIZE, lpage, freed, i, pcount;
+    uint64_t pg = size / LC_BLOCK_SIZE, lpage, freed, pcount;
     struct dhpage *prev, *hpage;
     bool truncated = false;
     struct dpage *dpage;
     struct gfs *gfs;
     struct fs *fs;
+    int64_t i;
 
     /* If nothing to truncate, return */
     if ((inode->i_emap == NULL) && (inode->i_dpcount == 0) &&
@@ -868,6 +900,9 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
         return;
     }
     freed = 0;
+    if (size) {
+        lc_initInodePageMarkers(inode);
+    }
     if (inode->i_flags & LC_INODE_HASHED) {
         for (i = 0; i < LC_DHASH_MIN; i++) {
             prev = NULL;
@@ -878,6 +913,7 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
                         lc_truncatePage(fs, inode, &hpage->dh_page, pg,
                                         size % LC_BLOCK_SIZE);
                     }
+                    lc_updateInodePageMarkers(inode, pg);
                 } else if (pg <= hpage->dh_pg) {
                     if (prev == NULL) {
                         inode->i_hpage[i] = hpage->dh_next;
@@ -893,6 +929,8 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
                     freed++;
                     hpage = prev ? prev->dh_next : inode->i_hpage[i];
                     continue;
+                } else {
+                    lc_updateInodePageMarkers(inode, hpage->dh_pg);
                 }
                 prev = hpage;
                 hpage = hpage->dh_next;
@@ -920,12 +958,28 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
                     lc_truncatePage(fs, inode, dpage, pg,
                                     size % LC_BLOCK_SIZE);
                 }
+                lc_updateInodePageMarkers(inode, i);
             } else {
                 lc_removeDirtyPage(gfs, inode, i, true);
                 freed++;
             }
         }
-        if (size == 0) {
+        if (size) {
+            for (i = 0; i <= pg; i++) {
+                dpage = lc_findDirtyPage(inode, i);
+                if (dpage->dp_data != NULL) {
+                    lc_updateInodePageMarkers(inode, i);
+                    break;
+                }
+            }
+            for (i = pg; i >= 0; i--) {
+                dpage = lc_findDirtyPage(inode, i);
+                if (dpage->dp_data != NULL) {
+                    lc_updateInodePageMarkers(inode, i);
+                    break;
+                }
+            }
+        } else {
             lc_free(fs, inode->i_page, inode->i_pcount * sizeof(struct dpage),
                     LC_MEMTYPE_DPAGEHASH);
             inode->i_page = NULL;

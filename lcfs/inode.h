@@ -67,6 +67,12 @@ struct rdata {
     /* Extent map */
     struct extent *rd_emap;
 
+    /* First dirty page */
+    uint64_t rd_fpage;
+
+    /* Last dirty page */
+    uint64_t rd_lpage;
+
     /* Index of last flusher */
     uint64_t rd_flusher;
 
@@ -181,7 +187,9 @@ static_assert(sizeof(struct inode) == 234, "inode size != 234");
 #define i_emap          i_rdata->rd_emap
 #define i_pcount        i_rdata->rd_pcount
 #define i_dpcount       i_rdata->rd_dpcount
-#define i_flusher        i_rdata->rd_flusher
+#define i_flusher       i_rdata->rd_flusher
+#define i_fpage         i_rdata->rd_fpage
+#define i_lpage         i_rdata->rd_lpage
 
 #define i_xattr         i_xattrData->xd_xattr
 #define i_xsize         i_xattrData->xd_xsize

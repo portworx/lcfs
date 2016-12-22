@@ -10,3 +10,6 @@ Build px-graph/plugin/lcfs_plugin.go after installing the necessary go packages.
     ```
 
 Tested with docker commit ba76c92
+Doker build is broken because VOLUME command hangs.
+Not sure if graphdriver plugin needs to be on top of another graphdriver or
+file system for storing json files.
