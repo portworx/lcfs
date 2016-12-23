@@ -45,7 +45,12 @@ lc_dinodeInit(struct inode *inode, ino_t ino, mode_t mode,
     lc_updateInodeTimes(inode, true, true);
 }
 
-/* Allocate a new inode */
+/* Allocate a new inode. Size of the inode structure is different based on the
+ * type of the file.  For regular files, argument reg is set and a larger inode
+ * is allocated.  Argument len is non-zero for symbolic links and memory is
+ * allocated along with inode structure for holding the symbolic link target
+ * name, unless the target name is shared from the parent inode.
+ */
 static struct inode *
 lc_newInode(struct fs *fs, uint64_t block, uint64_t len, bool reg, bool new) {
     size_t size = sizeof(struct inode) + (reg ? sizeof(struct rdata) : 0);
@@ -809,7 +814,7 @@ lc_displayFtypeStats(struct fs *fs) {
 struct inode *
 lc_inodeInit(struct fs *fs, mode_t mode, uid_t uid, gid_t gid,
              dev_t rdev, ino_t parent, const char *target) {
-    int len = (target != NULL) ? len = strlen(target) : 0;
+    int len = (target != NULL) ? strlen(target) : 0;
     struct inode *inode;
 
     inode = lc_newInode(fs, LC_INVALID_BLOCK, len, S_ISREG(mode), true);

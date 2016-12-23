@@ -655,8 +655,8 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
     bcount = inode->i_dpcount;
     start = inode->i_fpage;
     end = inode->i_lpage;
-    assert(start <= lpage);
-    assert(end <= lpage);
+    assert(start < lpage);
+    assert(end < lpage);
     assert(start <= end);
     assert(bcount <= (end - start + 1));
 
@@ -680,12 +680,13 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
         /* File being written sequentially from the beginning can be placed
          * contiguous on disk.
          */
-        single = (start == 0) &&
-                 ((end == lpage) ||
-                  ((inode->i_dinode.di_blocks == 0) && ((end + 1) == bcount)));
+        single = (start == 0) && ((end + 1) == bcount) &&
+                 ((inode->i_dinode.di_blocks == 0) ||
+                  (((end + 1) == lpage) &&
+                   (inode->i_dinode.di_blocks <= bcount)));
         if (!single) {
-            lc_printf("Fragmented file %ld, start %ld end %ld lpage %ld blocks %ld pages %ld\n",
-                      inode->i_ino, start, end, lpage, inode->i_dinode.di_blocks, bcount);
+            lc_printf("Fragmented file %ld, size %ld start %ld end %ld lpage %ld blocks %d pages %ld\n",
+                      inode->i_ino, inode->i_size, start, end, lpage, inode->i_dinode.di_blocks, bcount);
         }
     }
 

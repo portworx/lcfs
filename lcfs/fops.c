@@ -1,5 +1,7 @@
 #include "includes.h"
 
+#define LC_TIMEOUT_SEC  1.0
+
 /* XXX Check return values from fuse_reply_*, for example on interrupt */
 /* XXX Do we need to track lookup counts and forget? */
 
@@ -10,8 +12,8 @@ lc_epInit(struct fuse_entry_param *ep) {
     assert(ep->ino > LC_ROOT_INODE);
     ep->attr.st_ino = ep->ino;
     ep->generation = 1;
-    ep->attr_timeout = 1.0;
-    ep->entry_timeout = 1.0;
+    ep->attr_timeout = LC_TIMEOUT_SEC;
+    ep->entry_timeout = LC_TIMEOUT_SEC;
 }
 
 /* Copy disk inode to stat structure */
@@ -223,7 +225,7 @@ lc_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
 
         /* Let kernel remember lookup failure as a negative entry */
         memset(&ep, 0, sizeof(struct fuse_entry_param));
-        ep.entry_timeout = 1.0;
+        ep.entry_timeout = LC_TIMEOUT_SEC;
         fuse_reply_entry(req, &ep);
         err = ENOENT;
         goto out;
@@ -285,7 +287,7 @@ lc_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     lc_inodeUnlock(inode);
     stbuf.st_ino = lc_setHandle(lc_getIndex(fs, parent,
                                               stbuf.st_ino), stbuf.st_ino);
-    fuse_reply_attr(req, &stbuf, 1.0);
+    fuse_reply_attr(req, &stbuf, LC_TIMEOUT_SEC);
 
 out:
     lc_statsAdd(fs, LC_GETATTR, err, &start);
@@ -355,7 +357,7 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
     lc_copyStat(&stbuf, inode);
     lc_inodeUnlock(inode);
     stbuf.st_ino = lc_setHandle(fs->fs_gindex, stbuf.st_ino);
-    fuse_reply_attr(req, &stbuf, 1.0);
+    fuse_reply_attr(req, &stbuf, LC_TIMEOUT_SEC);
 
 out:
     lc_statsAdd(fs, LC_SETATTR, err, &start);
@@ -932,7 +934,7 @@ lc_opendir(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     int err;
 
     lc_statsBegin(&start);
-    lc_displayEntry(__func__, 0, ino, NULL);
+    lc_displayEntry(__func__, ino, 0, NULL);
     fs = lc_getfs(ino, false);
     err = lc_openInode(fs, ino, fi);
     if (err) {

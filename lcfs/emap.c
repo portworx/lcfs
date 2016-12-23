@@ -273,7 +273,7 @@ lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
         assert(inode->i_extentBlock != 0);
         return;
     }
-    lc_printf("Inode %ld with fragmented extents, blocks %ld\n", inode->i_ino, inode->i_dinode.di_blocks);
+    lc_printf("Inode %ld with fragmented extents, blocks %d\n", inode->i_ino, inode->i_dinode.di_blocks);
     bcount = inode->i_dinode.di_blocks;
     inode->i_dinode.di_blocks = 0;
     block = inode->i_emapDirBlock;
