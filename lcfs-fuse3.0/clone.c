@@ -23,6 +23,18 @@ lc_getRootIno(struct fs *fs, const char *name, struct inode *pdir) {
     return root;
 }
 
+/* Link shared structures from parent */
+void
+lc_linkParent(struct fs *fs, struct fs *pfs) {
+    fs->fs_parent = pfs;
+    fs->fs_pcache = pfs->fs_pcache;
+    fs->fs_pcacheSize = pfs->fs_pcacheSize;
+    fs->fs_pcacheLocks = pfs->fs_pcacheLocks;
+    fs->fs_pcacheLockCount = pfs->fs_pcacheLockCount;
+    fs->fs_ilock = pfs->fs_ilock;
+    fs->fs_rfs = pfs->fs_rfs;
+}
+
 /* Create a new layer */
 void
 lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
@@ -71,7 +83,7 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     /* Allocate root inode and add to the directory */
     lc_dirAdd(pdir, root, S_IFDIR, name, strlen(name));
     pdir->i_nlink++;
-    lc_markInodeDirty(pdir, true, true, false, false);
+    lc_markInodeDirty(pdir, LC_INODE_DIRDIRTY);
     lc_updateInodeTimes(pdir, true, true);
     lc_inodeUnlock(pdir);
 
@@ -89,7 +101,7 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     }
     lc_rootInit(fs, fs->fs_root);
     if (base) {
-        lc_pcache_init(fs, LC_PCACHE_SIZE);
+        lc_pcache_init(fs, LC_PCACHE_SIZE, LC_PCLOCK_COUNT);
         fs->fs_ilock = lc_malloc(fs, sizeof(pthread_mutex_t),
                                  LC_MEMTYPE_ILOCK);
         pthread_mutex_init(fs->fs_ilock, NULL);
@@ -101,27 +113,17 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
         /* Copy the parent root directory */
         pfs = lc_getfs(pinum, false);
         assert(rw || pfs->fs_readOnly);
+
+        assert(pfs->fs_pcount == 0);
         pfs->fs_frozen = true;
         assert(pfs->fs_root == lc_getInodeHandle(pinum));
-        pdir = pfs->fs_rootInode;
-        dir->i_size = pdir->i_size;
-        dir->i_nlink = pdir->i_nlink;
-        dir->i_dirent = pdir->i_dirent;
-        if (pdir->i_flags & LC_INODE_DHASHED) {
-            dir->i_flags |= LC_INODE_DHASHED;
-        }
-        lc_dirCopy(dir);
-
-        /* Inode chain lock is shared with the parent */
+        lc_cloneRootDir(pfs->fs_rootInode, dir);
+        lc_linkParent(fs, pfs);
         fs->fs_parent = pfs;
-        fs->fs_pcache = pfs->fs_pcache;
-        fs->fs_pcacheSize = pfs->fs_pcacheSize;
-        fs->fs_ilock = pfs->fs_ilock;
-        fs->fs_rfs = pfs->fs_rfs;
     }
 
     /* Add this file system to global list of file systems */
-    lc_addfs(fs, pfs);
+    lc_addfs(gfs, fs, pfs);
     if (pfs) {
         lc_unlock(pfs);
     }
@@ -183,18 +185,17 @@ lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name) {
     fuse_reply_ioctl(req, 0, NULL, 0);
     root = fs->fs_root;
 
-    lc_printf("Removing fs with parent %ld root %ld index %d name %s\n",
-               fs->fs_parent ? fs->fs_parent->fs_root : - 1,
-               fs->fs_root, fs->fs_gindex, name);
+    lc_printf("Removing fs with parent %ld root %ld name %s\n",
+               fs->fs_parent ? fs->fs_parent->fs_root : - 1, root, name);
+
+    /* Notify VFS about removal of a directory */
+    fuse_lowlevel_notify_delete(gfs->gfs_se, ino, root,
+                                name, strlen(name));
     lc_invalidateDirtyPages(gfs, fs);
     lc_invalidateInodePages(gfs, fs);
     lc_invalidateInodeBlocks(gfs, fs);
     lc_blockFree(gfs, fs, fs->fs_sblock, 1, true);
     lc_freeLayerBlocks(gfs, fs, true, true);
-
-    /* Notify VFS about removal of a directory */
-    fuse_lowlevel_notify_delete(gfs->gfs_se, ino, root,
-                                name, strlen(name));
     lc_unlock(fs);
     lc_destroyFs(fs, true);
 
@@ -237,22 +238,37 @@ lc_snapIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
         break;
 
     case SNAP_STAT:
-    case SNAP_UMOUNT:
         if (err == 0) {
             fs = lc_getfs(root, false);
             fuse_reply_ioctl(req, 0, NULL, 0);
             lc_displayLayerStats(fs);
-            if ((cmd == SNAP_UMOUNT) && fs->fs_readOnly) {
-                lc_sync(gfs, fs);
-            }
             lc_unlock(fs);
-        } else if (cmd == SNAP_STAT) {
+        } else {
             lc_displayStatsAll(gfs);
             fuse_reply_ioctl(req, 0, NULL, 0);
             err = 0;
         }
-        lc_statsAdd(rfs, cmd == SNAP_UMOUNT ? LC_UMOUNT : LC_STAT,
-                     err, &start);
+        lc_statsAdd(rfs, LC_STAT, err, &start);
+        break;
+
+    case SNAP_UMOUNT:
+        if (err == 0) {
+            fs = lc_getfs(root, false);
+            if (!fs->fs_frozen &&
+                (fs->fs_readOnly ||
+                 (fs->fs_parent && fs->fs_parent->fs_readOnly))) {
+                lc_unlock(fs);
+                fs = lc_getfs(root, true);
+                assert(fs->fs_snap == NULL);
+                assert(!fs->fs_frozen);
+                fuse_reply_ioctl(req, 0, NULL, 0);
+                lc_sync(gfs, fs, false);
+            } else {
+                fuse_reply_ioctl(req, 0, NULL, 0);
+            }
+            lc_unlock(fs);
+        }
+        lc_statsAdd(rfs, LC_UMOUNT, err, &start);
         break;
 
     case CLEAR_STAT:

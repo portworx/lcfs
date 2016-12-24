@@ -245,7 +245,7 @@ lc_getfsForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
     assert(gfs->gfs_roots[gindex] == ino);
     gfs->gfs_fs[gindex] = NULL;
     gfs->gfs_roots[gindex] = 0;
-    if (gfs->gfs_scount == gindex) {
+    while (gfs->gfs_fs[gfs->gfs_scount] == NULL) {
         assert(gfs->gfs_scount > 0);
         gfs->gfs_scount--;
     }
@@ -280,16 +280,18 @@ lc_getfsForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
 
 /* Add a file system to global list of file systems */
 void
-lc_addfs(struct fs *fs, struct fs *pfs) {
-    struct gfs *gfs = fs->fs_gfs;
-    struct fs *snap;
+lc_addfs(struct gfs *gfs, struct fs *fs, struct fs *pfs) {
+    struct fs *snap, *rfs = fs->fs_rfs;
     int i;
 
     fs->fs_sblock = lc_blockAllocExact(fs, 1, true, false);
 
-    /* Find a free slot and insert the new file system */
+    /* Find a free slot and insert the new file system.
+     * Do not reuse an index in a tree as that would confuse the kernel which
+     * might have cached inodes and directory entries.
+     */
     pthread_mutex_lock(&gfs->gfs_lock);
-    for (i = 1; i < LC_LAYER_MAX; i++) {
+    for (i = rfs->fs_hgindex; i < LC_LAYER_MAX; i++) {
         if (gfs->gfs_fs[i] == NULL) {
             fs->fs_gindex = i;
             fs->fs_super->sb_index = i;
@@ -298,6 +300,7 @@ lc_addfs(struct fs *fs, struct fs *pfs) {
             if (i > gfs->gfs_scount) {
                 gfs->gfs_scount = i;
             }
+            rfs->fs_hgindex = i;
             break;
         }
     }
@@ -420,6 +423,9 @@ lc_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
         gfs->gfs_scount = i;
     }
     fs->fs_gindex = i;
+    if (i > fs->fs_rfs->fs_hgindex) {
+        fs->fs_rfs->fs_hgindex = i;
+    }
     lc_printf("Added fs with parent %ld root %ld index %d block %ld\n",
                fs->fs_parent ? fs->fs_parent->fs_root : - 1,
                fs->fs_root, fs->fs_gindex, block);

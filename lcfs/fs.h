@@ -101,6 +101,9 @@ struct fs {
     /* Index of this file system in the global table */
     int fs_gindex;
 
+    /* Highest index used in the tree */
+    int fs_hgindex;
+
     /* Root inode of the layer */
     ino_t fs_root;
 

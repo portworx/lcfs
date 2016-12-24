@@ -27,6 +27,8 @@ lc_reclaimSpace(struct gfs *gfs, uint64_t blocks) {
     pthread_mutex_lock(&gfs->gfs_lock);
     for (i = 0; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
+
+        /* Locking a layer would fail only when the layer is being deleted */
         if (fs && (fs->fs_extents || fs->fs_blockInodesCount ||
                    fs->fs_blockMetaCount) && !lc_tryLock(fs, false)) {
             pthread_mutex_unlock(&gfs->gfs_lock);
@@ -91,7 +93,9 @@ lc_findFreeBlock(struct gfs *gfs, struct fs *fs,
 
                 /* Update global usage */
                 gfs->gfs_super->sb_blocks += count;
+                assert(gfs->gfs_super->sb_tblocks > gfs->gfs_super->sb_blocks);
             } else {
+                assert(fs->fs_reservedBlocks >= count);
                 fs->fs_reservedBlocks -= count;
                 if (fs != lc_getGlobalFs(gfs)) {
 
@@ -270,6 +274,10 @@ lc_freeLayerExtent(struct fs *fs, uint64_t block, uint64_t count) {
             fs->fs_freed += freed;
             fs->fs_reservedBlocks += freed;
         } else {
+
+            /* Check next block if the previous block was not allocated in the
+             * layer.
+             */
             freed = 1;
         }
         block += freed;

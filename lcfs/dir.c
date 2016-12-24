@@ -471,7 +471,9 @@ lc_dirFree(struct inode *dir) {
     }
 }
 
-/* Remove a directory tree */
+/* Remove a directory tree.  This does not confuse kernel caches as inode
+ * numbers are not reused.
+ */
 void
 lc_removeTree(struct fs *fs, struct inode *dir) {
     bool hashed = (dir->i_flags & LC_INODE_DHASHED);
@@ -484,7 +486,6 @@ lc_removeTree(struct fs *fs, struct inode *dir) {
     for (i = 0; (i < max) && dir->i_size; i++) {
         dirent = hashed ? dir->i_hdirent[i] : dir->i_dirent;
         while (dirent != NULL) {
-            lc_printf("lc_removeTree: dir %ld nlink %d removing %s inode %ld dir %d\n", dir->i_ino, dir->i_nlink, dirent->di_name, dirent->di_ino, S_ISDIR(dirent->di_mode));
             rmdir = S_ISDIR(dirent->di_mode);
             lc_removeInode(fs, dir, dirent->di_ino, rmdir, NULL);
             if (rmdir) {

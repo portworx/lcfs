@@ -1,5 +1,7 @@
 #include "includes.h"
 
+#define LC_TIMEOUT_SEC  1.0
+
 /* XXX Check return values from fuse_reply_*, for example on interrupt */
 /* XXX Do we need to track lookup counts and forget? */
 
@@ -10,8 +12,8 @@ lc_epInit(struct fuse_entry_param *ep) {
     assert(ep->ino > LC_ROOT_INODE);
     ep->attr.st_ino = ep->ino;
     ep->generation = 1;
-    ep->attr_timeout = 0;
-    ep->entry_timeout = 1.0;
+    ep->attr_timeout = LC_TIMEOUT_SEC;
+    ep->entry_timeout = LC_TIMEOUT_SEC;
 }
 
 /* Copy disk inode to stat structure */
@@ -51,7 +53,7 @@ create(struct fs *fs, ino_t parent, const char *name, mode_t mode,
         lc_reportError(__func__, __LINE__, parent, EPERM);
         return EPERM;
     }
-    if (!lc_hasSpace(gfs, fs->fs_pcount + 1)) {
+    if (!lc_hasSpace(gfs, fs->fs_pcount)) {
         lc_reportError(__func__, __LINE__, parent, ENOSPC);
         return ENOSPC;
     }
@@ -82,8 +84,8 @@ create(struct fs *fs, ino_t parent, const char *name, mode_t mode,
         (dir->i_ino == gfs->gfs_tmp_root)) {
         inode->i_flags |= LC_INODE_TMP;
     }
-    lc_markInodeDirty(inode, true, false, false, false);
-    lc_markInodeDirty(dir, true, true, false, false);
+    lc_markInodeDirty(inode, 0);
+    lc_markInodeDirty(dir, LC_INODE_DIRDIRTY);
     lc_inodeUnlock(inode);
     lc_inodeUnlock(dir);
     ep->ino = lc_setHandle(fs->fs_gindex, ino);
@@ -156,8 +158,7 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
             removed = true;
         }
     }
-    lc_markInodeDirty(inode, true, rmdir, S_ISREG(inode->i_mode),
-                      false);
+    lc_markInodeDirty(inode, 0);
     if (unlock) {
         lc_inodeUnlock(inode);
     }
@@ -224,7 +225,7 @@ lc_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
 
         /* Let kernel remember lookup failure as a negative entry */
         memset(&ep, 0, sizeof(struct fuse_entry_param));
-        ep.entry_timeout = 1.0;
+        ep.entry_timeout = LC_TIMEOUT_SEC;
         fuse_reply_entry(req, &ep);
         err = ENOENT;
         goto out;
@@ -286,7 +287,7 @@ lc_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     lc_inodeUnlock(inode);
     stbuf.st_ino = lc_setHandle(lc_getIndex(fs, parent,
                                               stbuf.st_ino), stbuf.st_ino);
-    fuse_reply_attr(req, &stbuf, 1.0);
+    fuse_reply_attr(req, &stbuf, LC_TIMEOUT_SEC);
 
 out:
     lc_statsAdd(fs, LC_GETATTR, err, &start);
@@ -299,10 +300,10 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
             int to_set, struct fuse_file_info *fi) {
     bool ctime = false, mtime = false, flush = false;
     struct inode *inode, *handle;
+    int err = 0, flags = 0;
     struct timeval start;
     struct stat stbuf;
     struct fs *fs;
-    int err = 0;
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, ino, 0, NULL);
@@ -338,6 +339,7 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
         flush = (attr->st_size < inode->i_size) &&
                 inode->i_private && inode->i_dinode.di_blocks;
         lc_truncate(inode, attr->st_size);
+        flags = LC_INODE_EMAPDIRTY;
         mtime = true;
         ctime = true;
     }
@@ -355,11 +357,11 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
     if (ctime || mtime) {
         lc_updateInodeTimes(inode, mtime, ctime);
     }
-    lc_markInodeDirty(inode, true, false, to_set & FUSE_SET_ATTR_SIZE, false);
+    lc_markInodeDirty(inode, flags);
     lc_copyStat(&stbuf, inode);
     lc_inodeUnlock(inode);
     stbuf.st_ino = lc_setHandle(fs->fs_gindex, stbuf.st_ino);
-    fuse_reply_attr(req, &stbuf, 1.0);
+    fuse_reply_attr(req, &stbuf, LC_TIMEOUT_SEC);
 
 out:
     lc_statsAdd(fs, LC_SETATTR, err, &start);
@@ -579,6 +581,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
         err = ENOENT;
         goto out;
     }
+    assert(ino != newparent);
     if (sdir->i_flags & LC_INODE_SHARED) {
         lc_dirCopy(sdir);
     }
@@ -620,7 +623,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
         }
         inode->i_parent = lc_getInodeHandle(newparent);
         lc_updateInodeTimes(inode, false, true);
-        lc_markInodeDirty(inode, true, false, false, false);
+        lc_markInodeDirty(inode, 0);
         lc_inodeUnlock(inode);
     } else {
 
@@ -629,11 +632,11 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
     }
     fuse_reply_err(req, 0);
     lc_updateInodeTimes(sdir, true, true);
-    lc_markInodeDirty(sdir, true, true, false, false);
+    lc_markInodeDirty(sdir, LC_INODE_DIRDIRTY);
     lc_inodeUnlock(sdir);
     if (tdir) {
         lc_updateInodeTimes(tdir, true, true);
-        lc_markInodeDirty(tdir, true, true, false, false);
+        lc_markInodeDirty(tdir, LC_INODE_DIRDIRTY);
         lc_inodeUnlock(tdir);
     }
 
@@ -685,10 +688,10 @@ lc_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
     lc_dirAdd(dir, inode->i_ino, inode->i_mode, newname,
                strlen(newname));
     lc_updateInodeTimes(dir, true, true);
-    lc_markInodeDirty(dir, true, true, false, false);
+    lc_markInodeDirty(dir, LC_INODE_DIRDIRTY);
     inode->i_nlink++;
     lc_updateInodeTimes(inode, false, true);
-    lc_markInodeDirty(inode, true, false, false, false);
+    lc_markInodeDirty(inode, 0);
     lc_inodeUnlock(dir);
     lc_copyStat(&ep.attr, inode);
     lc_inodeUnlock(inode);
@@ -778,6 +781,9 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
         fuse_reply_buf(req, NULL, 0);
         return;
     }
+    if (!lc_checkMemoryAvailable(false)) {
+        lc_waitMemory(true);
+    }
     pcount = (size / LC_BLOCK_SIZE) + 2;
     fsize = sizeof(struct fuse_bufvec) + (sizeof(struct fuse_buf) * pcount);
     bufv = alloca(fsize);
@@ -809,9 +815,8 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 
 out:
     lc_statsAdd(fs, LC_READ, err, &start);
-    if (fs->fs_gfs->gfs_pcount > LC_PAGE_MAX) {
-        lc_purgePages(fs->fs_gfs);
-    }
+    lc_checkMemoryAvailable(true);
+    lc_waitMemory(false);
     lc_unlock(fs);
 }
 
@@ -830,16 +835,24 @@ static void
 lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
                  struct fuse_file_info *fi, bool *inval) {
     struct inode *inode;
+    bool reg;
 
     assert(fi);
+    fuse_reply_err(req, 0);
     inode = (struct inode *)fi->fh;
+    reg = S_ISREG(inode->i_mode);
 
     /* Nothing to do if inode is not part of this layer */
     if (inode->i_fs != fs) {
         if (inval) {
-            *inval = (inode->i_size > 0) && S_ISREG(inode->i_mode);
+
+            /* Invalidate pages in kernel page cache if multiple layers are
+             * reading shared data from parent layer.
+             */
+            *inval = reg && (inode->i_size > 0) &&
+                    (fs->fs_readOnly || fs->fs_next || fs->fs_prev ||
+                     fs->fs_parent->fs_readOnly);
         }
-        fuse_reply_err(req, 0);
         return;
     }
     lc_inodeLock(inode, true);
@@ -850,29 +863,36 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
 
     /* Invalidate pages of shared files in kernel page cache */
     if (inval) {
-        *inval = (inode->i_ocount == 0) && (inode->i_size > 0) &&
+        *inval = reg && (inode->i_ocount == 0) && (inode->i_size > 0) &&
                  (!inode->i_private || fs->fs_readOnly ||
-                  (fs->fs_snap != NULL));
+                  (fs->fs_parent && fs->fs_parent->fs_readOnly));
     }
-    fuse_reply_err(req, 0);
 
     /* Truncate a removed file on last close */
-    if ((inode->i_ocount == 0) && (inode->i_flags & LC_INODE_REMOVED) &&
-        S_ISREG(inode->i_mode)) {
+    if (reg && (inode->i_ocount == 0) && (inode->i_flags & LC_INODE_REMOVED)) {
         lc_truncate(inode, 0);
     }
 
     /* Flush dirty pages of a file on last close */
     if ((inode->i_ocount == 0) && (inode->i_flags & LC_INODE_EMAPDIRTY)) {
-        assert(S_ISREG(inode->i_mode));
-        if (fs->fs_readOnly) {
+        assert(reg);
+        if (fs->fs_readOnly || (fs->fs_parent && fs->fs_parent->fs_readOnly)) {
 
             /* Inode emap needs to be stable before an inode could be cloned */
-            lc_emapFlush(fs->fs_gfs, inode->i_fs, inode);
+            lc_flushPages(fs->fs_gfs, fs, inode, true, true);
+            return;
         } else if (!(inode->i_flags & (LC_INODE_REMOVED | LC_INODE_TMP)) &&
-                   inode->i_page && (inode->i_dnext == NULL) &&
-                   (fs->fs_dirtyInodesLast != inode)) {
-            lc_addDirtyInode(fs, inode);
+                   inode->i_dpcount) {
+            if (inode->i_dpcount && (inode->i_dnext == NULL) &&
+                (fs->fs_dirtyInodesLast != inode)) {
+                lc_addDirtyInode(fs, inode);
+            }
+            if ((lc_lowMemory() ||
+                 (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES)) &&
+                lc_flushInodeDirtyPages(inode, inode->i_size / LC_BLOCK_SIZE,
+                                        true)) {
+                return;
+            }
         }
     }
     lc_inodeUnlock(inode);
@@ -919,7 +939,7 @@ lc_opendir(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     int err;
 
     lc_statsBegin(&start);
-    lc_displayEntry(__func__, 0, ino, NULL);
+    lc_displayEntry(__func__, ino, 0, NULL);
     fs = lc_getfs(ino, false);
     err = lc_openInode(fs, ino, fi);
     if (err) {
@@ -1090,6 +1110,7 @@ lc_create(fuse_req_t req, fuse_ino_t parent, const char *name,
     lc_unlock(fs);
 }
 
+
 /* IOCTLs for certain operations.  Supported only on layer root directory */
 static void
 lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
@@ -1164,6 +1185,9 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, ino, 0, NULL);
+    if (!lc_checkMemoryAvailable(false)) {
+        lc_waitMemory(true);
+    }
     size = bufv->buf[bufv->idx].size;
     pcount = (size / LC_BLOCK_SIZE) + 2;
     wsize = sizeof(struct fuse_bufvec) + (sizeof(struct fuse_buf) * pcount);
@@ -1203,7 +1227,7 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
     /* Link the dirty pages to the inode and update times */
     pcount -= lc_addPages(inode, off, size, dpages, pcount);
     lc_updateInodeTimes(inode, true, true);
-    lc_markInodeDirty(inode, true, false, true, false);
+    lc_markInodeDirty(inode, LC_INODE_EMAPDIRTY);
     lc_inodeUnlock(inode);
 
 out:
@@ -1219,7 +1243,10 @@ out:
     }
     lc_statsAdd(fs, LC_WRITE_BUF, err, &start);
     if (!err && (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES)) {
-        lc_flushDirtyInodeList(fs);
+        lc_flushDirtyInodeList(fs, false);
+    }
+    if (!lc_checkMemoryAvailable(true)) {
+        lc_flushDirtyInodeList(fs, true);
     }
     lc_unlock(fs);
 }

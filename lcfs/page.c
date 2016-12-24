@@ -3,20 +3,20 @@
 static char lc_zPage[LC_BLOCK_SIZE];
 
 /* Calculate the hash index of dirty page */
-static int
+static inline int
 lc_dpageHash(uint64_t page) {
     return page % LC_DHASH_MIN;
 }
 
 /* Initialize page markers tracked with the inode */
-static void
+static inline void
 lc_initInodePageMarkers(struct inode *inode) {
     inode->i_fpage = ((inode->i_size + LC_BLOCK_SIZE - 1) / LC_BLOCK_SIZE) + 1;
     inode->i_lpage = 0;
 }
 
 /* Update page markers tracked with the inode */
-static void
+static inline void
 lc_updateInodePageMarkers(struct inode *inode, uint64_t pg) {
     if (inode->i_fpage > pg) {
         inode->i_fpage = pg;

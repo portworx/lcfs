@@ -66,6 +66,8 @@ main(int argc, char *argv[]) {
             printf("FUSE library version %s\n", fuse_pkgversion());
             fuse_lowlevel_version();
         } else {
+
+            /* XXX Block signals around lc_mount/lc_unmount calls */
             err = lc_mount("/dev/sdb", &gfs);
             if (err) {
                 printf("Mounting %s failed, err %d\n", argv[1], err);

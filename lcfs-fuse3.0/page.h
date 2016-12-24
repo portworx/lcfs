@@ -12,20 +12,21 @@
 #define LC_PAGE_MAX         1200000
 static_assert(LC_PAGE_MAX >= LC_PCACHE_SIZE, "LC_PAGE_MAX <= LC_PCACHE_SIZE");
 
+#define LC_PCLOCK_COUNT     1024
+
 #define LC_PAGECACHE_SIZE  32
 #define LC_CLUSTER_SIZE    256
 
+#define LC_PCACHE_MEMORY        (512 * 1024 * 1024)
 #define LC_MAX_FILE_DIRTYPAGES  131072
 #define LC_MAX_LAYER_DIRTYPAGES 524288
+
+#define LC_CACHE_PURGE_CHECK_MAX 10
 
 #define LC_DHASH_MIN            1024
 
 /* Page cache header */
 struct pcache {
-
-    /* Lock protecting the hash chain */
-    pthread_mutex_t pc_lock;
-
     /* Page hash chains */
     struct page *pc_head;
 
@@ -47,7 +48,13 @@ struct page {
     uint32_t p_refCount;
 
     /* Page cache hitcount */
-    uint32_t p_hitCount;
+    uint32_t p_hitCount:30;
+
+    /* Set if data is valid */
+    uint32_t p_nocache:1;
+
+    /* Set if data is valid */
+    uint32_t p_dvalid:1;
 
     /* Next page in block hash table */
     struct page *p_cnext;
@@ -58,10 +65,7 @@ struct page {
     /* Lock protecting data read */
     pthread_mutex_t p_dlock;
 
-    /* Set if data is valid */
-    uint8_t p_dvalid;
-
-} __attribute__((packed));
+};
 
 /* Page structure used for caching dirty pages of an inode
  * when the inode is using an array indexed by page number.

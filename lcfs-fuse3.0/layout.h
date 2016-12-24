@@ -131,13 +131,19 @@ struct dinode {
     mode_t di_mode;
 
     /* Number of links (hardlinks or subdirectories) */
-    nlink_t di_nlink;
+    uint32_t di_nlink;
 
     /* User id */
     uid_t di_uid;
 
     /* Group id */
     gid_t di_gid;
+
+    /* Parent inode number of singly linked inodes */
+    uint64_t di_parent:63;
+
+    /* Set if blocks are newly allocated and not inherited */
+    uint64_t di_private:1;
 
     /* Device id */
     dev_t di_rdev;
@@ -146,7 +152,10 @@ struct dinode {
     off_t di_size;
 
     /* Count of blocks */
-    blkcnt_t di_blocks;
+    uint32_t di_blocks;
+
+    /* Length of extent if directly pointed by di_emapdir */
+    uint32_t di_extentLength;
 
     /* modification time */
     struct timespec di_mtime;
@@ -157,19 +166,10 @@ struct dinode {
     /* Starting block for emap or directory */
     uint64_t di_emapdir;
 
-    /* Length of extent if directly pointed by di_emapdir */
-    uint64_t di_extentLength;
-
     /* Block tracking extended attributes */
     uint64_t di_xattr;
-
-    /* Parent inode number of singly linked inodes */
-    uint64_t di_parent;
-
-    /* Set if blocks are newly allocated and not inherited */
-    uint8_t di_private;
 } __attribute__((packed));
-static_assert(sizeof(struct dinode) == 117, "dinode size != 117");
+static_assert(sizeof(struct dinode) == 104, "dinode size != 104");
 
 #define LC_DINODE_SIZE      128
 static_assert(sizeof(struct dinode) <= LC_DINODE_SIZE,

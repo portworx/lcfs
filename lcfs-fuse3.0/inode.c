@@ -27,23 +27,30 @@ lc_icache_init(struct fs *fs, size_t size) {
 static void
 lc_dinodeInit(struct inode *inode, ino_t ino, mode_t mode,
               uid_t uid, gid_t gid, dev_t rdev, size_t size, ino_t parent) {
-    inode->i_ino = ino;
-    inode->i_mode = mode;
-    inode->i_nlink = S_ISDIR(mode) ? 2 : 1;
-    inode->i_dinode.di_uid = uid;
-    inode->i_dinode.di_gid = gid;
-    inode->i_dinode.di_rdev = rdev;
-    inode->i_size = size;
-    inode->i_dinode.di_blocks = 0;
-    inode->i_dinode.di_emapdir = LC_INVALID_BLOCK;
-    inode->i_dinode.di_extentLength = 0;
-    inode->i_dinode.di_xattr = LC_INVALID_BLOCK;
-    inode->i_parent = lc_getInodeHandle(parent);
-    inode->i_private = S_ISREG(mode);
+    struct dinode *dinode = &inode->i_dinode;
+
+    dinode->di_ino = ino;
+    dinode->di_mode = mode;
+    dinode->di_nlink = S_ISDIR(mode) ? 2 : 1;
+    dinode->di_uid = uid;
+    dinode->di_gid = gid;
+    dinode->di_rdev = rdev;
+    dinode->di_size = size;
+    dinode->di_blocks = 0;
+    dinode->di_emapdir = LC_INVALID_BLOCK;
+    dinode->di_extentLength = 0;
+    dinode->di_xattr = LC_INVALID_BLOCK;
+    dinode->di_parent = lc_getInodeHandle(parent);
+    dinode->di_private = S_ISREG(mode) ? 1 : 0;
     lc_updateInodeTimes(inode, true, true);
 }
 
-/* Allocate a new inode */
+/* Allocate a new inode. Size of the inode structure is different based on the
+ * type of the file.  For regular files, argument reg is set and a larger inode
+ * is allocated.  Argument len is non-zero for symbolic links and memory is
+ * allocated along with inode structure for holding the symbolic link target
+ * name, unless the target name is shared from the parent inode.
+ */
 static struct inode *
 lc_newInode(struct fs *fs, uint64_t block, uint64_t len, bool reg, bool new) {
     size_t size = sizeof(struct inode) + (reg ? sizeof(struct rdata) : 0);
@@ -57,7 +64,6 @@ lc_newInode(struct fs *fs, uint64_t block, uint64_t len, bool reg, bool new) {
     inode->i_fs = fs;
     pthread_rwlock_init(&inode->i_rwlock, NULL);
     inode->i_cnext = NULL;
-    inode->i_dnext = NULL;
     inode->i_emapDirExtents = NULL;
     inode->i_xattrData = NULL;
     inode->i_ocount = 0;
@@ -92,6 +98,11 @@ lc_inodeLock(struct inode *inode, bool exclusive) {
 /* Unlock the inode */
 void
 lc_inodeUnlock(struct inode *inode) {
+
+    /* fs_frozen cannot be set while an inode is locked.  That is made sure by
+     * syncing all dirty data as part of unmount of a layer after locking the
+     * layer exclusively, which could be used as a parent layer.
+     */
     if (inode->i_fs->fs_frozen) {
         return;
     }
@@ -163,12 +174,12 @@ lc_updateInodeTimes(struct inode *inode, bool mtime, bool ctime) {
 /* Initialize root inode of a file system */
 void
 lc_rootInit(struct fs *fs, ino_t root) {
-    struct inode *inode = lc_newInode(fs, LC_INVALID_BLOCK, 0, false, false);
+    struct inode *dir = lc_newInode(fs, LC_INVALID_BLOCK, 0, false, false);
 
-    lc_dinodeInit(inode, root, S_IFDIR | 0755, 0, 0, 0, 0, root);
-    lc_addInode(fs, inode);
-    fs->fs_rootInode = inode;
-    lc_markInodeDirty(inode, true, true, false, false);
+    lc_dinodeInit(dir, root, S_IFDIR | 0755, 0, 0, 0, 0, root);
+    lc_addInode(fs, dir);
+    fs->fs_rootInode = dir;
+    lc_markInodeDirty(dir, LC_INODE_DIRDIRTY);
 }
 
 /* Set up snapshot root inode */
@@ -611,12 +622,24 @@ lc_destroyInodes(struct fs *fs, bool remove) {
     }
 }
 
+/* Clone the root directory from parent */
+void
+lc_cloneRootDir(struct inode *pdir, struct inode *dir) {
+    dir->i_size = pdir->i_size;
+    dir->i_nlink = pdir->i_nlink;
+    dir->i_dirent = pdir->i_dirent;
+    if (pdir->i_flags & LC_INODE_DHASHED) {
+        dir->i_flags |= LC_INODE_DHASHED;
+    }
+    lc_dirCopy(dir);
+}
+
 /* Clone an inode from a parent layer */
 struct inode *
 lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
     bool reg = S_ISREG(parent->i_mode);
-    bool emap = false, dir = false, xattr;
     struct inode *inode;
+    int flags = 0;
 
     inode = lc_newInode(fs, LC_INVALID_BLOCK, 0, reg, false);
     memcpy(&inode->i_dinode, &parent->i_dinode, sizeof(struct dinode));
@@ -633,7 +656,7 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
             } else {
                 inode->i_emap = parent->i_emap;
                 inode->i_flags |= LC_INODE_SHARED;
-                emap = true;
+                flags |= LC_INODE_EMAPDIRTY;
             }
         } else {
             inode->i_private = true;
@@ -645,7 +668,7 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
             if (parent->i_flags & LC_INODE_DHASHED) {
                 inode->i_flags |= LC_INODE_DHASHED;
             }
-            dir = true;
+            flags |= LC_INODE_DIRDIRTY;
         }
     } else if (S_ISLNK(inode->i_mode)) {
         inode->i_target = parent->i_target;
@@ -653,9 +676,11 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
     }
     inode->i_parent = (parent->i_parent == parent->i_fs->fs_root) ?
                       fs->fs_root : parent->i_parent;
-    xattr = lc_xattrCopy(inode, parent);
+    if (lc_xattrCopy(inode, parent)) {
+        flags |= LC_INODE_XATTRDIRTY;
+    }
     lc_addInode(fs, inode);
-    lc_markInodeDirty(inode, true, dir, emap, xattr);
+    lc_markInodeDirty(inode, flags);
     __sync_add_and_fetch(&fs->fs_gfs->gfs_clones, 1);
     lc_updateFtypeStats(fs, inode->i_mode, true);
     return inode;
@@ -789,7 +814,7 @@ lc_displayFtypeStats(struct fs *fs) {
 struct inode *
 lc_inodeInit(struct fs *fs, mode_t mode, uid_t uid, gid_t gid,
              dev_t rdev, ino_t parent, const char *target) {
-    int len = (target != NULL) ? len = strlen(target) : 0;
+    int len = (target != NULL) ? strlen(target) : 0;
     struct inode *inode;
 
     inode = lc_newInode(fs, LC_INVALID_BLOCK, len, S_ISREG(mode), true);

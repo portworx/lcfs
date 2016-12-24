@@ -123,7 +123,7 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     }
 
     /* Add this file system to global list of file systems */
-    lc_addfs(fs, pfs);
+    lc_addfs(gfs, fs, pfs);
     if (pfs) {
         lc_unlock(pfs);
     }
@@ -185,18 +185,17 @@ lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name) {
     fuse_reply_ioctl(req, 0, NULL, 0);
     root = fs->fs_root;
 
-    lc_printf("Removing fs with parent %ld root %ld index %d name %s\n",
-               fs->fs_parent ? fs->fs_parent->fs_root : - 1,
-               fs->fs_root, fs->fs_gindex, name);
+    lc_printf("Removing fs with parent %ld root %ld name %s\n",
+               fs->fs_parent ? fs->fs_parent->fs_root : - 1, root, name);
+
+    /* Notify VFS about removal of a directory */
+    fuse_lowlevel_notify_delete(gfs->gfs_ch, ino, root,
+                                name, strlen(name));
     lc_invalidateDirtyPages(gfs, fs);
     lc_invalidateInodePages(gfs, fs);
     lc_invalidateInodeBlocks(gfs, fs);
     lc_blockFree(gfs, fs, fs->fs_sblock, 1, true);
     lc_freeLayerBlocks(gfs, fs, true, true);
-
-    /* Notify VFS about removal of a directory */
-    fuse_lowlevel_notify_delete(gfs->gfs_ch, ino, root,
-                                name, strlen(name));
     lc_unlock(fs);
     lc_destroyFs(fs, true);
 

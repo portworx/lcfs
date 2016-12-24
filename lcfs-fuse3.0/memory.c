@@ -2,6 +2,7 @@
 
 static bool memStatsEnabled = true;
 static uint64_t global_memory = 0, global_malloc = 0, global_free = 0;
+static uint64_t total_memory = 0;
 
 /* Type of malloc requests */
 static const char *mrequests[] = {
@@ -11,6 +12,7 @@ static const char *mrequests[] = {
     "ICACHE",
     "INODE",
     "PCACHE",
+    "PCLOCK",
     "ILOCK",
     "EXTENT",
     "BLOCK",
@@ -26,12 +28,70 @@ static const char *mrequests[] = {
     "STATS",
 };
 
+static bool lc_memoryThrottle = false;
+
+/* Check if system is running low on memory */
+bool
+lc_checkMemoryAvailable(bool recheck) {
+    struct sysinfo info;
+
+    if (!recheck && lc_memoryThrottle) {
+        return false;
+    }
+    sysinfo(&info);
+    if (((info.freeram * 100ull) / info.totalram) < LC_MEMORY_LWM) {
+        if (!lc_memoryThrottle) {
+            printf("Enabled Low memory mode\n");
+            lc_memoryThrottle = true;
+        }
+    } else if (lc_memoryThrottle) {
+        lc_memoryThrottle = false;
+        printf("Disabled low memory mode\n");
+    }
+    return !lc_memoryThrottle;
+}
+
+/* Check if running in low memory mode */
+bool
+lc_lowMemory(void) {
+    return lc_memoryThrottle;
+}
+
+/* Wait for memory to become available */
+void
+lc_waitMemory(bool force) {
+    struct sysinfo info;
+    struct gfs *gfs;
+
+    if (!lc_memoryThrottle) {
+        return;
+    }
+    gfs = getfs();
+    sysinfo(&info);
+    if (lc_memoryThrottle &&
+        (((info.freeram * 100ull) / info.totalram) < LC_MEMORY_HWM) &&
+        ((total_memory > LC_PCACHE_MEMORY) ||
+         (((total_memory * 100ull) / info.totalram) > LC_PAGE_MEMORY_HWM))) {
+        //printf("Invoking lc_purgePages, force %d total memory used %ld, available %lld\n", force, total_memory, (info.freeram * 100ull) / info.totalram);
+        lc_purgePages(gfs, force);
+    }
+}
+
 /* Update memory stats */
 static inline void
 lc_memStatsUpdate(struct fs *fs, size_t size, bool alloc,
                   enum lc_memTypes type) {
     uint64_t freed;
 
+    if ((type == LC_MEMTYPE_PAGE) || (type == LC_MEMTYPE_DATA) ||
+        (type == LC_MEMTYPE_BLOCK)) {
+        if (alloc) {
+            __sync_add_and_fetch(&total_memory, size);
+        } else {
+            freed = __sync_fetch_and_sub(&total_memory, size);
+            assert(freed >= size);
+        }
+    }
     if (!memStatsEnabled) {
         return;
     }
@@ -103,6 +163,7 @@ lc_mallocBlockAligned(struct fs *fs, void **memptr, enum lc_memTypes type) {
 /* Release previously allocated memory */
 void
 lc_free(struct fs *fs, void *ptr, size_t size, enum lc_memTypes type) {
+    assert(size || (type == LC_MEMTYPE_GFS));
     free(ptr);
     lc_memStatsUpdate(fs, size, false, type);
 }
@@ -113,9 +174,6 @@ lc_checkMemStats(struct fs *fs) {
     enum lc_memTypes i;
 
     if (!memStatsEnabled) {
-        return;
-    }
-    if (fs->fs_memory == 0) {
         return;
     }
     for (i = LC_MEMTYPE_GFS + 1; i < LC_MEMTYPE_MAX; i++) {
@@ -130,6 +188,9 @@ lc_displayGlobalMemStats() {
     if (global_memory) {
         printf("\tGlobal Allocated %ld Freed %ld Total in use %ld bytes\n",
                global_malloc, global_free, global_memory);
+    }
+    if (total_memory) {
+        printf("Total memory used for pages %ld\n", total_memory);
     }
 }
 

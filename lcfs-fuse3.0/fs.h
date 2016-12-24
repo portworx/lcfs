@@ -1,7 +1,8 @@
 #ifndef _LC_H_
 #define _LC_H_
 
-#define LC_MAX  4096ul
+/* Maximum number of layers */
+#define LC_LAYER_MAX  4096ul
 
 /* Global file system */
 struct gfs {
@@ -41,6 +42,9 @@ struct gfs {
 
     /* Lock protecting allocations */
     pthread_mutex_t gfs_alock;
+
+    /* condition on threads wait on low memory */
+    pthread_cond_t gfs_mcond;
 
     /* Count of pages in use */
     uint64_t gfs_pcount;
@@ -97,6 +101,9 @@ struct fs {
     /* Index of this file system in the global table */
     int fs_gindex;
 
+    /* Highest index used in the tree */
+    int fs_hgindex;
+
     /* Root inode of the layer */
     ino_t fs_root;
 
@@ -115,8 +122,14 @@ struct fs {
     /* Page block hash table */
     struct pcache *fs_pcache;
 
+    /* Locks for the page cache lists */
+    pthread_mutex_t *fs_pcacheLocks;
+
     /* Number of hash lists in pcache */
-    uint64_t fs_pcacheSize;
+    uint32_t fs_pcacheSize;
+
+    /* Number of page cache locks */
+    uint32_t fs_pcacheLockCount;
 
     /* Lock protecting layer inode chains */
     pthread_mutex_t *fs_ilock;
@@ -174,6 +187,9 @@ struct fs {
     /* Dirty pages pending write */
     /* XXX Use an array? */
     struct page *fs_dpages;
+
+    /* Flusher index */
+    uint64_t fs_flusher;
 
     /* Dirty page count */
     uint64_t fs_dpcount;
@@ -275,7 +291,7 @@ struct fs {
 /* Set up inode handle using inode number and file system id */
 static inline uint64_t
 lc_setHandle(uint64_t gindex, ino_t ino) {
-    assert(gindex < LC_MAX);
+    assert(gindex < LC_LAYER_MAX);
     return (gindex << LC_FH_LAYER) | ino;
 }
 
@@ -284,7 +300,7 @@ static inline uint64_t
 lc_getFsHandle(uint64_t handle) {
     int gindex = handle >> LC_FH_LAYER;
 
-    assert(gindex < LC_MAX);
+    assert(gindex < LC_LAYER_MAX);
     return gindex;
 }
 

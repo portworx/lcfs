@@ -12,6 +12,7 @@
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <sys/sysinfo.h>
 #include <sys/time.h>
 #include <sys/xattr.h>
 #include <pthread.h>
@@ -31,9 +32,11 @@
 struct gfs *getfs();
 
 void *lc_malloc(struct fs *fs, size_t size, enum lc_memTypes type);
-void lc_mallocBlockAligned(struct fs *fs, void **memptr,
-                           enum lc_memTypes type);
+void lc_mallocBlockAligned(struct fs *fs, void **memptr, enum lc_memTypes type);
 void lc_free(struct fs *fs, void *ptr, size_t size, enum lc_memTypes type);
+bool lc_checkMemoryAvailable(bool recheck);
+bool lc_lowMemory(void);
+void lc_waitMemory(bool force);
 void lc_memUpdateTotal(struct fs *fs, size_t size);
 void lc_memTransferCount(struct fs *fs, uint64_t count);
 void lc_checkMemStats(struct fs *fs);
@@ -82,7 +85,8 @@ void lc_superInit(struct super *super, size_t size, bool global);
 struct fs *lc_getfs(ino_t ino, bool exclusive);
 uint64_t lc_getfsForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp);
 int lc_getIndex(struct fs *nfs, ino_t parent, ino_t ino);
-void lc_addfs(struct fs *fs, struct fs *pfs);
+void lc_addfs(struct gfs *gfs, struct fs *fs, struct fs *pfs);
+void lc_removefs(struct gfs *gfs, struct fs *fs);
 void lc_lock(struct fs *fs, bool exclusive);
 int lc_tryLock(struct fs *fs, bool exclusive);
 void lc_unlock(struct fs *fs);
@@ -90,7 +94,7 @@ int lc_mount(char *device, struct gfs **gfsp);
 void lc_newInodeBlock(struct gfs *gfs, struct fs *fs);
 void lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs);
 void lc_invalidateInodeBlocks(struct gfs *gfs, struct fs *fs);
-void lc_sync(struct gfs *gfs, struct fs *fs);
+void lc_sync(struct gfs *gfs, struct fs *fs, bool super);
 void lc_unmount(struct gfs *gfs);
 void lc_syncAllLayers(struct gfs *gfs);
 struct fs *lc_newFs(struct gfs *gfs, size_t icsize, bool rw);
@@ -109,6 +113,7 @@ struct inode *lc_inodeInit(struct fs *fs, mode_t mode,
                             uid_t uid, gid_t gid, dev_t rdev, ino_t parent,
                             const char *target);
 void lc_rootInit(struct fs *fs, ino_t root);
+void lc_cloneRootDir(struct inode *pdir, struct inode *dir);
 void lc_setSnapshotRoot(struct gfs *gfs, ino_t ino);
 void lc_updateInodeTimes(struct inode *inode, bool mtime, bool ctime);
 void lc_syncInodes(struct gfs *gfs, struct fs *fs);
@@ -138,11 +143,11 @@ void lc_dirFreeHash(struct fs *fs, struct inode *dir);
 void lc_dirFree(struct inode *dir);
 
 uint64_t lc_inodeEmapLookup(struct gfs *gfs, struct inode *inode,
-                            uint64_t page);
+                            uint64_t page, struct extent **extents);
 void lc_copyEmap(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void lc_expandEmap(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
-                        uint64_t page, uint64_t block,
+                        uint64_t pstart, uint64_t bstart, uint64_t pcount,
                         struct extent **extents);
 void lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
@@ -152,7 +157,7 @@ void lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
 void lc_freeInodeDataBlocks(struct fs *fs, struct inode *inode,
                             struct extent **extents);
 
-void lc_pcache_init(struct fs *fs, uint64_t size);
+void lc_pcache_init(struct fs *fs, uint32_t count, uint32_t lcount);
 void lc_destroy_pages(struct gfs *gfs, struct fs *fs, struct pcache *pcache,
                       bool remove);
 struct page *lc_getPage(struct fs *fs, uint64_t block, bool read);
@@ -182,18 +187,21 @@ void lc_readPages(fuse_req_t req, struct inode *inode, off_t soffset,
                   off_t endoffset, struct page **pages,
                   struct fuse_bufvec *bufv);
 void lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
-                   bool release);
+                   bool release, bool unlock);
 void lc_truncatePage(struct fs *fs, struct inode *inode, struct dpage *dpage,
                      uint64_t pg, uint16_t poffset);
 void lc_truncPages(struct inode *inode, off_t size, bool remove);
 void lc_flushDirtyPages(struct gfs *gfs, struct fs *fs);
 void lc_addDirtyInode(struct fs *fs, struct inode *inode);
-void lc_flushDirtyInodeList(struct fs *fs);
+void lc_flushDirtyInodeList(struct fs *fs, bool force);
 void lc_invalidateDirtyPages(struct gfs *gfs, struct fs *fs);
-void lc_purgePages(struct gfs *gfs);
+void lc_purgePages(struct gfs *gfs, bool force);
+bool lc_flushInodeDirtyPages(struct inode *inode, uint64_t page, bool unlock);
 
 int lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
-               void **fsp);
+                   void **fsp);
+void lc_epInit(struct fuse_entry_param *ep);
+void lc_copyStat(struct stat *st, struct inode *inode);
 
 void lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
                   const char *value, size_t size, int flags);
@@ -206,14 +214,12 @@ void lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
                    void *buf);
 void lc_xattrFree(struct inode *inode);
 
+void lc_linkParent(struct fs *fs, struct fs *pfs);
 void lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
                   const char *parent, size_t size, bool rw);
 void lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name);
 void lc_snapIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
                   enum ioctl_cmd cmd);
-
-void lc_epInit(struct fuse_entry_param *ep);
-void lc_copyStat(struct stat *st, struct inode *inode);
 
 void lc_statsNew(struct fs *fs);
 void lc_statsBegin(struct timeval *start);
