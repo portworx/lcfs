@@ -175,7 +175,7 @@ struct page *lc_getPageNewData(struct fs *fs, uint64_t block);
 void lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
                          struct page *page, uint64_t block);
 void lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
-                         struct page *head, uint64_t count);
+                         struct page *head, uint64_t count, bool bfree);
 void lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head);
 void lc_addPageForWriteBack(struct gfs *gfs, struct fs *fs, struct page *head,
                             struct page *tail, uint64_t pcount);

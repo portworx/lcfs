@@ -376,7 +376,8 @@ lc_getPageNewData(struct fs *fs, uint64_t block) {
 /* Flush a cluster of pages */
 void
 lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
-                    struct page *head, uint64_t count) {
+                    struct page *head, uint64_t count, bool bfree) {
+    struct extent *extents = NULL;
     uint64_t i, j, bcount = 0;
     struct page *page = head;
     struct iovec *iovec;
@@ -415,6 +416,24 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
 
     /* Release the pages after writing */
     lc_releasePages(gfs, fs, head);
+
+    /* Check any of the freed blocks can be released to the free pool */
+    if (bfree) {
+        pthread_mutex_lock(&fs->fs_plock);
+        assert(fs->fs_wpcount >= count);
+        fs->fs_wpcount -= count;
+        if ((fs->fs_wpcount == 0) && (fs->fs_dpcount == 0) &&
+            fs->fs_fdextents) {
+            pthread_mutex_lock(&fs->fs_alock);
+            extents = fs->fs_fdextents;
+            fs->fs_fdextents = NULL;
+            pthread_mutex_unlock(&fs->fs_alock);
+        }
+        pthread_mutex_unlock(&fs->fs_plock);
+        if (extents) {
+            lc_blockFreeExtents(fs, extents, !fs->fs_removed, false, true);
+        }
+    }
 }
 
 /* Add a page to the file system dirty list for writeback */
@@ -435,42 +454,31 @@ lc_addPageForWriteBack(struct gfs *gfs, struct fs *fs, struct page *head,
         fs->fs_dpages = NULL;
         count = fs->fs_dpcount;
         fs->fs_dpcount = 0;
+        fs->fs_wpcount += count;
     }
     pthread_mutex_unlock(&fs->fs_plock);
     if (count) {
-        lc_flushPageCluster(gfs, fs, page, count);
+        lc_flushPageCluster(gfs, fs, page, count, true);
     }
 }
 
 /* Flush dirty pages of a file system before unmounting it */
 void
 lc_flushDirtyPages(struct gfs *gfs, struct fs *fs) {
-    struct extent *extents = NULL;
     struct page *page;
     uint64_t count;
 
-    /* XXX This may not work correctly if another thread is in the process of
-     * flushing pages.
-     */
-    if (0 && fs->fs_fdextents) {
-        pthread_mutex_lock(&fs->fs_alock);
-        extents = fs->fs_fdextents;
-        fs->fs_fdextents = NULL;
-        pthread_mutex_unlock(&fs->fs_alock);
-    }
     if (fs->fs_dpcount && !fs->fs_removed) {
         pthread_mutex_lock(&fs->fs_plock);
         page = fs->fs_dpages;
         fs->fs_dpages = NULL;
         count = fs->fs_dpcount;
         fs->fs_dpcount = 0;
+        fs->fs_wpcount += count;
         pthread_mutex_unlock(&fs->fs_plock);
         if (count) {
-            lc_flushPageCluster(gfs, fs, page, count);
+            lc_flushPageCluster(gfs, fs, page, count, true);
         }
-    }
-    if (extents) {
-        lc_blockFreeExtents(fs, extents, !fs->fs_removed, false, true);
     }
 }
 

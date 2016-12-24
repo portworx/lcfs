@@ -344,7 +344,7 @@ lc_dirFlushBlocks(struct gfs *gfs, struct fs *fs,
         page = page->p_dnext;
     }
     assert(count == 0);
-    lc_flushPageCluster(gfs, fs, fpage, pcount);
+    lc_flushPageCluster(gfs, fs, fpage, pcount, false);
     return block;
 }
 

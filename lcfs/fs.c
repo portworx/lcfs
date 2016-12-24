@@ -69,7 +69,7 @@ lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs) {
         page = page->p_dnext;
     }
     assert(count == 0);
-    lc_flushPageCluster(gfs, fs, fpage, pcount);
+    lc_flushPageCluster(gfs, fs, fpage, pcount, false);
     fs->fs_inodeBlockCount = 0;
     fs->fs_inodeBlockPages = NULL;
     fs->fs_super->sb_inodeBlock = block;
@@ -105,6 +105,7 @@ lc_freeLayer(struct fs *fs, bool remove) {
     assert(fs->fs_blockInodesCount == 0);
     assert(fs->fs_blockMetaCount == 0);
     assert(fs->fs_dpcount == 0);
+    assert(fs->fs_wpcount == 0);
     assert(fs->fs_dpages == NULL);
     assert(fs->fs_inodePagesCount == 0);
     assert(fs->fs_inodePages == NULL);

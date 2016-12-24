@@ -74,6 +74,7 @@ main(int argc, char *argv[]) {
             } else if ((se = fuse_session_new(&args, &lc_ll_oper,
                                        sizeof(lc_ll_oper), gfs))) {
                 printf("%s mounted at %s\n", argv[1], opts.mountpoint);
+                gfs->gfs_se = se;
                 err = lc_loop(se, opts.mountpoint, opts.foreground);
                 fuse_session_unmount(se);
                 fuse_session_destroy(se);

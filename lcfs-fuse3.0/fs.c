@@ -286,7 +286,10 @@ lc_addfs(struct gfs *gfs, struct fs *fs, struct fs *pfs) {
 
     fs->fs_sblock = lc_blockAllocExact(fs, 1, true, false);
 
-    /* Find a free slot and insert the new file system */
+    /* Find a free slot and insert the new file system.
+     * Do not reuse an index in a tree as that would confuse the kernel which
+     * might have cached inodes and directory entries.
+     */
     pthread_mutex_lock(&gfs->gfs_lock);
     for (i = rfs->fs_hgindex; i < LC_LAYER_MAX; i++) {
         if (gfs->gfs_fs[i] == NULL) {

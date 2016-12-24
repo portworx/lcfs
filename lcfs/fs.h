@@ -194,6 +194,9 @@ struct fs {
     /* Dirty page count */
     uint64_t fs_dpcount;
 
+    /* Count of dirty pages being written */
+    uint64_t fs_wpcount;
+
     /* pcache purged last */
     uint64_t fs_purgeIndex;
 

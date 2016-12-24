@@ -157,7 +157,7 @@ lc_flushExtentPages(struct gfs *gfs, struct fs *fs, struct page *fpage,
         page = page->p_dnext;
     }
     assert(count == 0);
-    lc_flushPageCluster(gfs, fs, fpage, pcount);
+    lc_flushPageCluster(gfs, fs, fpage, pcount, false);
 }
 
 /* Free an extent list, and optionally updating the list on disk */

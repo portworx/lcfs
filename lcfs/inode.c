@@ -389,8 +389,8 @@ lc_invalidateInodePages(struct gfs *gfs, struct fs *fs) {
 /* Flush dirty inodes */
 static void
 lc_flushInodePages(struct gfs *gfs, struct fs *fs) {
-    //lc_printf("lc_flushInodePages: flushing %ld inode pages\n", fs->fs_inodePagesCount);
-    lc_flushPageCluster(gfs, fs, fs->fs_inodePages, fs->fs_inodePagesCount);
+    lc_flushPageCluster(gfs, fs, fs->fs_inodePages,
+                        fs->fs_inodePagesCount, false);
     fs->fs_inodePages = NULL;
     fs->fs_inodePagesCount = 0;
 }
