@@ -124,6 +124,7 @@ lc_freeLayer(struct fs *fs, bool remove) {
     if (fs->fs_pcache && (fs->fs_parent == NULL)) {
         lc_destroy_pages(gfs, fs, fs->fs_pcache, remove);
     }
+    assert(fs->fs_tpcount == 0);
     if (fs->fs_ilock && (fs->fs_parent == NULL)) {
         pthread_mutex_destroy(fs->fs_ilock);
         lc_free(fs, fs->fs_ilock, sizeof(pthread_mutex_t), LC_MEMTYPE_ILOCK);

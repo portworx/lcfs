@@ -2,7 +2,7 @@
 
 static bool memStatsEnabled = true;
 static uint64_t global_memory = 0, global_malloc = 0, global_free = 0;
-static uint64_t total_memory = 0;
+static uint64_t total_memory = 0, max_memory = 0;
 
 /* Type of malloc requests */
 static const char *mrequests[] = {
@@ -28,52 +28,31 @@ static const char *mrequests[] = {
     "STATS",
 };
 
-static bool lc_memoryThrottle = false;
-
-/* Check if system is running low on memory */
-bool
-lc_checkMemoryAvailable(bool recheck) {
-    struct sysinfo info;
-
-    if (!recheck && lc_memoryThrottle) {
-        return false;
-    }
-    sysinfo(&info);
-    if (((info.freeram * 100ull) / info.totalram) < LC_MEMORY_LWM) {
-        if (!lc_memoryThrottle) {
-            printf("Enabled Low memory mode\n");
-            lc_memoryThrottle = true;
-        }
-    } else if (lc_memoryThrottle) {
-        lc_memoryThrottle = false;
-        printf("Disabled low memory mode\n");
-    }
-    return !lc_memoryThrottle;
-}
-
-/* Check if running in low memory mode */
-bool
-lc_lowMemory(void) {
-    return lc_memoryThrottle;
-}
-
-/* Wait for memory to become available */
+/* Initialize limit based on available memory */
 void
-lc_waitMemory(bool force) {
+lc_memoryInit(void) {
     struct sysinfo info;
-    struct gfs *gfs;
 
-    if (!lc_memoryThrottle) {
-        return;
-    }
-    gfs = getfs();
+    max_memory = LC_PCACHE_MEMORY;
     sysinfo(&info);
-    if (lc_memoryThrottle &&
-        (((info.freeram * 100ull) / info.totalram) < LC_MEMORY_HWM) &&
-        ((total_memory > LC_PCACHE_MEMORY) ||
-         (((total_memory * 100ull) / info.totalram) > LC_PAGE_MEMORY_HWM))) {
-        //printf("Invoking lc_purgePages, force %d total memory used %ld, available %lld\n", force, total_memory, (info.freeram * 100ull) / info.totalram);
-        lc_purgePages(gfs, force);
+    if (info.totalram < max_memory) {
+        max_memory = (info.totalram * LC_PCACHE_MEMORY_MIN) / 100;
+    }
+}
+
+/* Check memory usage under limit */
+bool
+lc_checkMemoryAvailable() {
+    return total_memory < max_memory;
+}
+
+/* Flush dirty pages and purge cache entries when running low on memory */
+void
+lc_waitMemory(void) {
+    struct gfs *gfs = getfs();
+
+    if (!lc_checkMemoryAvailable()) {
+        lc_purgePages(gfs, true);
     }
 }
 

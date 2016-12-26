@@ -65,14 +65,14 @@ lc_findDirtyPage(struct inode *inode, uint64_t pg) {
 
 /* Flush dirty pages if the inode accumulated too many */
 bool
-lc_flushInodeDirtyPages(struct inode *inode, uint64_t page, bool unlock) {
+lc_flushInodeDirtyPages(struct inode *inode, uint64_t page, bool unlock,
+                        bool force) {
     struct dpage *dpage;
 
     /* Do not trigger flush if the last page is not fully filled up for a
      * sequentially written file.
      */
-    if ((inode->i_extentLength || (inode->i_emap == NULL)) &&
-        !lc_lowMemory()) {
+    if (!force && (inode->i_extentLength || (inode->i_emap == NULL))) {
         dpage = lc_findDirtyPage(inode, page);
         if ((dpage == NULL) ||
             (dpage->dp_data &&
@@ -80,7 +80,6 @@ lc_flushInodeDirtyPages(struct inode *inode, uint64_t page, bool unlock) {
             return false;
         }
     }
-    lc_printf("Flushing pages of inode %ld\n", inode->i_ino);
     lc_flushPages(inode->i_fs->fs_gfs, inode->i_fs, inode, false, unlock);
     return true;
 }
@@ -135,10 +134,8 @@ lc_flushDirtyInodeList(struct fs *fs, bool force) {
     }
     if (force) {
         pthread_mutex_lock(&fs->fs_dilock);
-    } else {
-        if (pthread_mutex_trylock(&fs->fs_dilock)) {
-            return;
-        }
+    } else if (pthread_mutex_trylock(&fs->fs_dilock)) {
+        return;
     }
     id = ++fs->fs_flusher;
     inode = fs->fs_dirtyInodes;
@@ -156,7 +153,8 @@ lc_flushDirtyInodeList(struct fs *fs, bool force) {
                 ((inode->i_ocount == 0) || force)) {
                 pthread_mutex_unlock(&fs->fs_dilock);
                 flushed = lc_flushInodeDirtyPages(inode,
-                                         inode->i_size / LC_BLOCK_SIZE, true);
+                                         inode->i_size / LC_BLOCK_SIZE, true,
+                                         force);
                 if (!flushed) {
                     if (inode->i_dpcount && (inode->i_ocount == 0)) {
                         lc_addDirtyInode(fs, inode);
@@ -168,18 +166,16 @@ lc_flushDirtyInodeList(struct fs *fs, bool force) {
                 inode = next;
                 continue;
             }
+            if (fs->fs_pcount < (LC_MAX_LAYER_DIRTYPAGES / 2)) {
+                return;
+            }
             if (force) {
-                if (lc_checkMemoryAvailable(true)) {
+                if (lc_checkMemoryAvailable()) {
                     pthread_cond_broadcast(&gfs->gfs_mcond);
                 }
                 pthread_mutex_lock(&fs->fs_dilock);
-            } else {
-                if (fs->fs_pcount < (LC_MAX_LAYER_DIRTYPAGES / 2)) {
-                    return;
-                }
-                if (pthread_mutex_trylock(&fs->fs_dilock)) {
-                    return;
-                }
+            } else if (pthread_mutex_trylock(&fs->fs_dilock)) {
+                return;
             }
             prev = NULL;
             inode = fs->fs_dirtyInodes;
@@ -562,7 +558,7 @@ lc_addPages(struct inode *inode, off_t off, size_t size,
         /* Flush dirty pages if the inode accumulated too many */
         if ((inode->i_dpcount >= LC_MAX_FILE_DIRTYPAGES) &&
             !(inode->i_flags & LC_INODE_TMP)) {
-            lc_flushInodeDirtyPages(inode, page, false);
+            lc_flushInodeDirtyPages(inode, page, false, false);
         }
         page++;
         count++;

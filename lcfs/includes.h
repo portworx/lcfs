@@ -33,12 +33,12 @@
 
 struct gfs *getfs();
 
+void lc_memoryInit(void);
 void *lc_malloc(struct fs *fs, size_t size, enum lc_memTypes type);
 void lc_mallocBlockAligned(struct fs *fs, void **memptr, enum lc_memTypes type);
 void lc_free(struct fs *fs, void *ptr, size_t size, enum lc_memTypes type);
-bool lc_checkMemoryAvailable(bool recheck);
-bool lc_lowMemory(void);
-void lc_waitMemory(bool force);
+bool lc_checkMemoryAvailable(void);
+void lc_waitMemory(void);
 void lc_memUpdateTotal(struct fs *fs, size_t size);
 void lc_memTransferCount(struct fs *fs, uint64_t count);
 void lc_checkMemStats(struct fs *fs);
@@ -179,6 +179,7 @@ void lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
 void lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head);
 void lc_addPageForWriteBack(struct gfs *gfs, struct fs *fs, struct page *head,
                             struct page *tail, uint64_t pcount);
+void *lc_flusher(void *data);
 
 uint64_t lc_copyPages(struct fs *fs, off_t off, size_t size,
                       struct dpage *dpages, struct fuse_bufvec *bufv,
@@ -198,7 +199,8 @@ void lc_addDirtyInode(struct fs *fs, struct inode *inode);
 void lc_flushDirtyInodeList(struct fs *fs, bool force);
 void lc_invalidateDirtyPages(struct gfs *gfs, struct fs *fs);
 void lc_purgePages(struct gfs *gfs, bool force);
-bool lc_flushInodeDirtyPages(struct inode *inode, uint64_t page, bool unlock);
+bool lc_flushInodeDirtyPages(struct inode *inode, uint64_t page, bool unlock,
+                             bool force);
 
 int lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
                    void **fsp);
@@ -211,7 +213,7 @@ void lc_xattrRemove(fuse_req_t req, ino_t ino, const char *name);
 bool lc_xattrCopy(struct inode *inode, struct inode *parent);
 void lc_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
-                   void *buf);
+                  void *buf);
 void lc_xattrFree(struct inode *inode);
 
 void lc_linkParent(struct fs *fs, struct fs *pfs);

@@ -15,14 +15,20 @@ getfs() {
 /* Process fuse requests */
 static int
 lc_loop(struct fuse_session *se, int foreground) {
+    pthread_t flusher;
     int err = -1;
 
     if (fuse_set_signal_handlers(se) != -1) {
         fuse_session_add_chan(se, gfs->gfs_ch);
         fuse_daemonize(foreground);
-        err = fuse_session_loop_mt(se);
-        fuse_remove_signal_handlers(se);
-        fuse_session_remove_chan(gfs->gfs_ch);
+        err = pthread_create(&flusher, NULL, lc_flusher, NULL);
+        if (!err) {
+            err = fuse_session_loop_mt(se);
+            fuse_remove_signal_handlers(se);
+            pthread_cancel(flusher);
+            pthread_join(flusher, NULL);
+            fuse_session_remove_chan(gfs->gfs_ch);
+        }
     }
     return err;
 }
@@ -64,6 +70,7 @@ main(int argc, char *argv[]) {
     for (i = 3; i < argc; i++) {
         arg[i + 1] = argv[i];
     }
+    lc_memoryInit();
 
     struct fuse_args args = FUSE_ARGS_INIT(argc + 1, arg);
     if ((fuse_parse_cmdline(&args, &mountpoint, NULL, &foreground) != -1) &&

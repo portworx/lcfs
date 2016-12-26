@@ -776,9 +776,6 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
         fuse_reply_buf(req, NULL, 0);
         return;
     }
-    if (!lc_checkMemoryAvailable(false)) {
-        lc_waitMemory(true);
-    }
     pcount = (size / LC_BLOCK_SIZE) + 2;
     fsize = sizeof(struct fuse_bufvec) + (sizeof(struct fuse_buf) * pcount);
     bufv = alloca(fsize);
@@ -810,8 +807,7 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 
 out:
     lc_statsAdd(fs, LC_READ, err, &start);
-    lc_checkMemoryAvailable(true);
-    lc_waitMemory(false);
+    lc_waitMemory();
     lc_unlock(fs);
 }
 
@@ -882,10 +878,9 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
                 (fs->fs_dirtyInodesLast != inode)) {
                 lc_addDirtyInode(fs, inode);
             }
-            if ((lc_lowMemory() ||
-                 (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES)) &&
+            if ((fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES) &&
                 lc_flushInodeDirtyPages(inode, inode->i_size / LC_BLOCK_SIZE,
-                                        true)) {
+                                        true, true)) {
                 return;
             }
         }
@@ -1180,9 +1175,7 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, ino, 0, NULL);
-    if (!lc_checkMemoryAvailable(false)) {
-        lc_waitMemory(true);
-    }
+    lc_waitMemory();
     size = bufv->buf[bufv->idx].size;
     pcount = (size / LC_BLOCK_SIZE) + 2;
     wsize = sizeof(struct fuse_bufvec) + (sizeof(struct fuse_buf) * pcount);
@@ -1239,9 +1232,6 @@ out:
     lc_statsAdd(fs, LC_WRITE_BUF, err, &start);
     if (!err && (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES)) {
         lc_flushDirtyInodeList(fs, false);
-    }
-    if (!lc_checkMemoryAvailable(true)) {
-        lc_flushDirtyInodeList(fs, true);
     }
     lc_unlock(fs);
 }

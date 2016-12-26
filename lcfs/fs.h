@@ -245,6 +245,9 @@ struct fs {
     /* Count of inodes */
     uint64_t fs_icount;
 
+    /* Count of clean pages page cache for the tree */
+    uint64_t fs_tpcount;
+
     /* Count of dirty pages */
     uint64_t fs_pcount;
 

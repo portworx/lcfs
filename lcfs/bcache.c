@@ -22,6 +22,7 @@ lc_newPage(struct gfs *gfs, struct fs *fs) {
     page->p_dnext = NULL;
     page->p_dvalid = 0;
     pthread_mutex_init(&page->p_dlock, NULL);
+    __sync_add_and_fetch(&fs->fs_rfs->fs_tpcount, 1);
     __sync_add_and_fetch(&gfs->gfs_pcount, 1);
     return page;
 }
@@ -39,6 +40,7 @@ lc_freePage(struct gfs *gfs, struct fs *fs, struct page *page) {
     }
     pthread_mutex_destroy(&page->p_dlock);
     lc_free(fs->fs_rfs, page, sizeof(struct page), LC_MEMTYPE_PAGE);
+    __sync_sub_and_fetch(&fs->fs_rfs->fs_tpcount, 1);
     __sync_sub_and_fetch(&gfs->gfs_pcount, 1);
 }
 
@@ -149,9 +151,8 @@ lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page, bool read) {
     }
 
     /* Free a page if page cache is above limit */
-    if ((fpage == NULL) && (lc_lowMemory() ||
-                            (pcache[hash].pc_pcount >
-                             (LC_PAGE_MAX / fs->fs_pcacheSize)))) {
+    if ((fpage == NULL) &&
+        (pcache[hash].pc_pcount > (LC_PAGE_MAX / fs->fs_pcacheSize))) {
         cpage = pcache[hash].pc_head;
         hit = page->p_hitCount;
 
@@ -209,7 +210,6 @@ lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head) {
         }
         page = next;
     }
-    lc_waitMemory(false);
 }
 
 /* Release pages */
@@ -499,12 +499,16 @@ lc_invalidateDirtyPages(struct gfs *gfs, struct fs *fs) {
 
 /* Purge some pages of a tree of layers */
 static uint64_t
-lc_purgeTreePages(struct gfs *gfs, struct fs *fs) {
+lc_purgeTreePages(struct gfs *gfs, struct fs *fs, bool force) {
     struct pcache *pcache = fs->fs_pcache;
     struct page *page, *prev, *next;;
     uint64_t i, j, count = 0;
 
+    assert(fs->fs_parent == NULL);
     for (j = 0; j < fs->fs_pcacheSize; j++) {
+        if (fs->fs_tpcount == 0) {
+            break;
+        }
         i = fs->fs_purgeIndex++;
         if (fs->fs_purgeIndex >= fs->fs_pcacheSize) {
              fs->fs_purgeIndex = 0;
@@ -539,7 +543,7 @@ lc_purgeTreePages(struct gfs *gfs, struct fs *fs) {
             page = page->p_cnext;
         }
         lc_pcUnLockHash(fs, i);
-        if ((gfs->gfs_pcount < LC_PAGE_MAX) && !lc_lowMemory()) {
+        if (!force && (gfs->gfs_pcount < (LC_PAGE_MAX / 2))) {
             break;
         }
     }
@@ -553,6 +557,9 @@ lc_purgePages(struct gfs *gfs, bool force) {
     struct fs *fs;
     int i;
 
+    if (lc_checkMemoryAvailable()) {
+        return;
+    }
     if (force) {
         pthread_mutex_lock(&gfs->gfs_lock);
         if (gfs->gfs_tpurging) {
@@ -572,6 +579,10 @@ lc_purgePages(struct gfs *gfs, bool force) {
             return;
         }
     }
+    if (gfs->gfs_pcount < (LC_PAGE_MAX / 2)) {
+        pthread_mutex_unlock(&gfs->gfs_lock);
+        return;
+    }
     gfs->gfs_tpurging = true;
     for (i = 0; i <= gfs->gfs_scount; i++) {
         if (gfs->gfs_tpIndex > gfs->gfs_scount) {
@@ -583,17 +594,16 @@ lc_purgePages(struct gfs *gfs, bool force) {
             if (fs->fs_pcount) {
                 lc_flushDirtyInodeList(fs, true);
             }
-            if (fs->fs_parent == NULL) {
-                count += lc_purgeTreePages(gfs, fs);
+            if ((fs->fs_parent == NULL) && fs->fs_tpcount) {
+                count += lc_purgeTreePages(gfs, fs, false);
             }
             lc_unlock(fs);
-            lc_checkMemoryAvailable(true);
-            if (!lc_lowMemory()) {
+            if (lc_checkMemoryAvailable()) {
                 pthread_cond_broadcast(&gfs->gfs_mcond);
             }
             pthread_mutex_lock(&gfs->gfs_lock);
         }
-        if ((gfs->gfs_pcount < LC_PAGE_MAX) && !lc_lowMemory()) {
+        if (gfs->gfs_pcount < (LC_PAGE_MAX / 2)) {
             break;
         }
     }
@@ -603,5 +613,52 @@ lc_purgePages(struct gfs *gfs, bool force) {
         gfs->gfs_purged += count;
     }
     pthread_mutex_unlock(&gfs->gfs_lock);
-    lc_checkMemoryAvailable(true);
+    lc_checkMemoryAvailable();
+    lc_printf("Purged %ld pages\n", count);
+}
+
+/* Purge pages of inactive layers */
+void *
+lc_flusher(void *data) {
+    const struct timespec interval = {10, 0};
+    struct gfs *gfs = getfs();
+    struct timeval now;
+    uint64_t i, count;
+    struct fs *fs;
+    time_t sec;
+
+    while (true) {
+        nanosleep(&interval, NULL);
+        if ((gfs->gfs_scount <= 1) || (gfs->gfs_pcount == 0)) {
+            continue;
+        }
+        gettimeofday(&now, NULL);
+        sec = now.tv_sec - 60;
+        count = 0;
+
+        pthread_mutex_lock(&gfs->gfs_lock);
+        for (i = 1; i <= gfs->gfs_scount; i++) {
+            fs = gfs->gfs_fs[i];
+            if ((fs == NULL) || !fs->fs_readOnly || fs->fs_snap ||
+                (fs->fs_rfs->fs_tpcount == 0) || (fs->fs_atime >= sec)) {
+                continue;
+            }
+            if (!lc_tryLock(fs, false)) {
+                pthread_mutex_unlock(&gfs->gfs_lock);
+                if ((fs->fs_snap == NULL) && (fs->fs_atime < sec)) {
+                    count += lc_purgeTreePages(gfs, fs->fs_rfs, true);
+                }
+                lc_unlock(fs);
+                pthread_mutex_lock(&gfs->gfs_lock);
+            }
+        }
+        if (count) {
+            gfs->gfs_purged += count;
+            pthread_mutex_unlock(&gfs->gfs_lock);
+            lc_printf("purged %ld pages from idle layers\n", count);
+        } else {
+            pthread_mutex_unlock(&gfs->gfs_lock);
+        }
+    }
+    return NULL;
 }
