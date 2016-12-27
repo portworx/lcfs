@@ -712,7 +712,7 @@ lc_openInode(struct fs *fs, fuse_ino_t ino, struct fuse_file_info *fi) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
         return EROFS;
     }
-    inode = lc_getInode(fs, ino, NULL, modify, true);
+    inode = lc_getInode(fs, ino, NULL, modify, false);
     if (inode == NULL) {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
         return ENOENT;
@@ -729,7 +729,7 @@ lc_openInode(struct fs *fs, fuse_ino_t ino, struct fuse_file_info *fi) {
      */
     if (inode->i_fs == fs) {
         fi->keep_cache = inode->i_private;
-        inode->i_ocount++;
+        __sync_add_and_fetch(&inode->i_ocount, 1);
     }
     fi->fh = (uint64_t)inode;
     lc_inodeUnlock(inode);

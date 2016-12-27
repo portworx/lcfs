@@ -24,11 +24,28 @@ lc_mergeExtents(struct gfs *gfs, struct fs *fs,
     }
 }
 
+/* Add a new extent */
+static void
+lc_newExtent(struct fs *fs, uint64_t start, uint64_t block, uint64_t count,
+             struct extent *extent, struct extent *prev,
+             struct extent **extents) {
+    struct extent *new;
+
+    new = lc_malloc(fs, sizeof(struct extent), LC_MEMTYPE_EXTENT);
+    lc_initExtent(NULL, new, block ? LC_EXTENT_EMAP : LC_EXTENT_SPACE,
+                  start, block, count, extent);
+    if (prev == NULL) {
+        *extents = new;
+    } else {
+        prev->ex_next = new;
+    }
+}
+
 /* Add an extent to an extent list */
 void
 lc_addExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
-             uint64_t start, uint64_t block, uint64_t count) {
-    struct extent *extent = *extents, *prev = NULL, *new;
+             uint64_t start, uint64_t block, uint64_t count, bool sort) {
+    struct extent *extent = *extents, *prev = NULL;
     uint64_t estart, eblock, ecount;
 
     /* Look if the new extent could be merged to an existing extent */
@@ -49,9 +66,14 @@ lc_addExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
             lc_mergeExtents(gfs, fs, extent, NULL, prev);
             return;
         }
+        if (!sort) {
+            assert(block == 0);
+            break;
+        }
         if ((start < estart) || (block && ((start + count) == estart))) {
             break;
-        } else if (block && ((estart + ecount) == start)) {
+        }
+        if (block && ((estart + ecount) == start)) {
             prev = extent;
             extent = extent->ex_next;
             break;
@@ -62,14 +84,7 @@ lc_addExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
     }
 
     /* Need to add a new extent */
-    new = lc_malloc(fs, sizeof(struct extent), LC_MEMTYPE_EXTENT);
-    lc_initExtent(NULL, new, block ? LC_EXTENT_EMAP : LC_EXTENT_SPACE,
-                  start, block, count, extent);
-    if (prev == NULL) {
-        *extents = new;
-    } else {
-        prev->ex_next = new;
-    }
+    lc_newExtent(fs, start, block, count, extent, prev, extents);
 }
 
 /* Remove an extent from the list and free it */

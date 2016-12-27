@@ -700,7 +700,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
                 assert(extent->ex_type == LC_EXTENT_EMAP);
                 lc_validateExtent(gfs, extent);
                 lc_addSpaceExtent(gfs, fs, &extents, lc_getExtentBlock(extent),
-                                  lc_getExtentCount(extent));
+                                  lc_getExtentCount(extent), false);
                 tmp = extent;
                 extent = extent->ex_next;
                 lc_free(fs, tmp, sizeof(struct extent), LC_MEMTYPE_EXTENT);

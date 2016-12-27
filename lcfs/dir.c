@@ -301,7 +301,7 @@ lc_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf) {
     }
     dir->i_size = 0;
     while (block != LC_INVALID_BLOCK) {
-        lc_addSpaceExtent(gfs, fs, &dir->i_emapDirExtents, block, 1);
+        lc_addSpaceExtent(gfs, fs, &dir->i_emapDirExtents, block, 1, false);
         lc_readBlock(gfs, fs, block, dblock);
         dbuf = (char *)&dblock->db_dirent[0];
         remain = LC_BLOCK_SIZE - sizeof(struct dblock);

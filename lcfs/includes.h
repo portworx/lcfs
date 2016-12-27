@@ -35,7 +35,8 @@ struct gfs *getfs();
 
 void lc_memoryInit(void);
 void *lc_malloc(struct fs *fs, size_t size, enum lc_memTypes type);
-void lc_mallocBlockAligned(struct fs *fs, void **memptr, enum lc_memTypes type);
+void lc_mallocBlockAligned(struct fs *fs, void **memptr,
+                           enum lc_memTypes type);
 void lc_free(struct fs *fs, void *ptr, size_t size, enum lc_memTypes type);
 bool lc_checkMemoryAvailable(void);
 void lc_waitMemory(void);
@@ -51,7 +52,7 @@ int lc_writeBlocks(struct gfs *gfs, struct fs *fs,
                     struct iovec *iov, int iovcnt, off_t block);
 
 void lc_addExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
-                  uint64_t start, uint64_t block, uint64_t count);
+                  uint64_t start, uint64_t block, uint64_t count, bool sort);
 uint64_t lc_removeExtent(struct fs *fs, struct extent **extents,
                          uint64_t start, uint64_t count);
 void lc_freeExtent(struct gfs *gfs, struct fs *fs, struct extent *extent,
@@ -61,7 +62,7 @@ void lc_blockAllocatorInit(struct gfs *gfs, struct fs *fs);
 void lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs);
 bool lc_hasSpace(struct gfs *gfs, uint64_t blocks);
 void lc_addSpaceExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
-                       uint64_t start, uint64_t count);
+                       uint64_t start, uint64_t count, bool sort);
 uint64_t lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount,
                             bool remove);
 uint64_t lc_blockAlloc(struct fs *fs, uint64_t count, bool meta, bool reserve);

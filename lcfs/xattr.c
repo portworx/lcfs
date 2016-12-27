@@ -455,7 +455,7 @@ lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
         lc_xattrInit(fs, inode);
     }
     while (block != LC_INVALID_BLOCK) {
-        lc_addSpaceExtent(gfs, fs, &inode->i_xattrExtents, block, 1);
+        lc_addSpaceExtent(gfs, fs, &inode->i_xattrExtents, block, 1, false);
         lc_readBlock(gfs, fs, block, xblock);
         xbuf = (char *)&xblock->xb_attr[0];
         remain = LC_BLOCK_SIZE - sizeof(struct xblock);

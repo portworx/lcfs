@@ -11,7 +11,7 @@ lc_addEmapExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
         if (ecount > LC_EXTENT_EMAP_MAX) {
             ecount = LC_EXTENT_EMAP_MAX;
         }
-        lc_addExtent(gfs, fs, extents, page, block, ecount);
+        lc_addExtent(gfs, fs, extents, page, block, ecount, true);
         page += ecount;
         block += ecount;
         count -= ecount;
@@ -91,7 +91,7 @@ lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
             if ((blk + bcount) != block) {
                 ecount = lc_removeExtent(fs, &inode->i_emap, pg, bcount);
                 assert(ecount == bcount);
-                lc_addSpaceExtent(gfs, fs, extents, blk, bcount);
+                lc_addSpaceExtent(gfs, fs, extents, blk, bcount, false);
                 extent = inode->i_emap;
                 pg = page;
                 blk = block;
@@ -127,7 +127,7 @@ lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
     if (bcount) {
         ecount = lc_removeExtent(fs, &inode->i_emap, pg, bcount);
         assert(ecount == bcount);
-        lc_addSpaceExtent(gfs, fs, extents, blk, bcount);
+        lc_addSpaceExtent(gfs, fs, extents, blk, bcount, false);
     }
     lc_addEmapExtent(gfs, fs, &inode->i_emap, pstart, bstart, pcount);
 }
@@ -279,7 +279,7 @@ lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
     block = inode->i_emapDirBlock;
     while (block != LC_INVALID_BLOCK) {
         //lc_printf("Reading emap block %ld\n", block);
-        lc_addSpaceExtent(gfs, fs, &inode->i_emapDirExtents, block, 1);
+        lc_addSpaceExtent(gfs, fs, &inode->i_emapDirExtents, block, 1, false);
         lc_readBlock(gfs, fs, block, bblock);
         for (i = 0; i < LC_EMAP_BLOCK; i++) {
             emap = &bblock->eb_emap[i];
@@ -330,7 +330,7 @@ lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
             if (inode->i_extentLength > pg) {
                 bcount = inode->i_extentLength - pg;
                 lc_addSpaceExtent(gfs, fs, &extents,
-                                  inode->i_extentBlock + pg, bcount);
+                                  inode->i_extentBlock + pg, bcount, false);
                 inode->i_extentLength = pg;
             }
             if (inode->i_extentLength == 0) {
@@ -357,7 +357,7 @@ lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
             next = extent->ex_next;
             if (pg < estart) {
                 bcount += ecount;
-                lc_addSpaceExtent(gfs, fs, &extents, eblock, ecount);
+                lc_addSpaceExtent(gfs, fs, &extents, eblock, ecount, false);
                 lc_freeExtent(gfs, fs, extent, prev, &inode->i_emap, true);
             } else if (pg < (estart + ecount)) {
                 freed = (estart + ecount) - pg;
@@ -371,7 +371,7 @@ lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
                 if (freed) {
                     bcount += freed;
                     lc_addSpaceExtent(gfs, fs, &extents,
-                                      eblock + ecount - freed, freed);
+                                      eblock + ecount - freed, freed, false);
                     if (freed == ecount) {
                         lc_freeExtent(gfs, fs, extent, prev, &inode->i_emap,
                                       true);
