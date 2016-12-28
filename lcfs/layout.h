@@ -24,6 +24,7 @@
 #define LC_SUPER_DIRTY     0x00000001  // Layer is dirty
 #define LC_SUPER_RDWR      0x00000002  // Layer is readwrite
 #define LC_SUPER_MOUNTED   0x00000004  // Layer is mounted
+#define LC_SUPER_INIT      0x00000008  // Init layer
 
 /* File types */
 enum lc_ftypes {

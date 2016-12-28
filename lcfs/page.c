@@ -724,7 +724,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
 
     /* Invalidate pages if blocks are cached in kernel page cache */
     nocache = inode->i_private && !fs->fs_readOnly &&
-              ((fs->fs_parent == NULL) || !fs->fs_parent->fs_readOnly);
+              !(fs->fs_super->sb_flags & LC_SUPER_INIT);
 
     /* Queue the dirty pages for flushing after associating with newly
      * allocated blocks

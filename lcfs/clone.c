@@ -44,21 +44,23 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     ino_t root, pinum = 0;
     struct timeval start;
     char pname[size + 1];
+    bool base, init;
     size_t icsize;
     void *super;
     int err = 0;
-    bool base;
 
     lc_statsBegin(&start);
+    init = strstr(name, "-init") != NULL;
 
     /* Check if parent is specified */
     if (size) {
         memcpy(pname, parent, size);
         pname[size] = 0;
         base = false;
-        icsize = strstr(name, "init") ? LC_ICACHE_SIZE_MIN : LC_ICACHE_SIZE;
+        icsize = init ? LC_ICACHE_SIZE_MIN : LC_ICACHE_SIZE;
     } else {
         base = true;
+        assert(!init);
         icsize = LC_ICACHE_SIZE_MAX;
     }
 
@@ -99,6 +101,9 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     if (rw) {
         fs->fs_super->sb_flags |= LC_SUPER_RDWR;
     }
+    if (init) {
+        fs->fs_super->sb_flags |= LC_SUPER_INIT;
+    }
     lc_rootInit(fs, fs->fs_root);
     if (base) {
         lc_pcache_init(fs, LC_PCACHE_SIZE, LC_PCLOCK_COUNT);
@@ -112,8 +117,6 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
 
         /* Copy the parent root directory */
         pfs = lc_getfs(pinum, false);
-        assert(rw || pfs->fs_readOnly);
-
         assert(pfs->fs_pcount == 0);
         pfs->fs_frozen = true;
         assert(pfs->fs_root == lc_getInodeHandle(pinum));
@@ -256,7 +259,7 @@ lc_snapIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
             fs = lc_getfs(root, false);
             if (!fs->fs_frozen &&
                 (fs->fs_readOnly ||
-                 (fs->fs_parent && fs->fs_parent->fs_readOnly))) {
+                 (fs->fs_super->sb_flags & LC_SUPER_INIT))) {
                 lc_unlock(fs);
                 fs = lc_getfs(root, true);
                 assert(fs->fs_snap == NULL);

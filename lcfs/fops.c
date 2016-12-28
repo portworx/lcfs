@@ -842,7 +842,7 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
              */
             *inval = reg && (inode->i_size > 0) &&
                     (fs->fs_readOnly || fs->fs_next || fs->fs_prev ||
-                     fs->fs_parent->fs_readOnly);
+                     (fs->fs_super->sb_flags & LC_SUPER_INIT));
         }
         return;
     }
@@ -856,7 +856,7 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
     if (inval) {
         *inval = reg && (inode->i_ocount == 0) && (inode->i_size > 0) &&
                  (!inode->i_private || fs->fs_readOnly ||
-                  (fs->fs_parent && fs->fs_parent->fs_readOnly));
+                  (fs->fs_super->sb_flags & LC_SUPER_INIT));
     }
 
     /* Truncate a removed file on last close */
@@ -867,7 +867,7 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
     /* Flush dirty pages of a file on last close */
     if ((inode->i_ocount == 0) && (inode->i_flags & LC_INODE_EMAPDIRTY)) {
         assert(reg);
-        if (fs->fs_readOnly || (fs->fs_parent && fs->fs_parent->fs_readOnly)) {
+        if (fs->fs_readOnly || (fs->fs_super->sb_flags & LC_SUPER_INIT)) {
 
             /* Inode emap needs to be stable before an inode could be cloned */
             lc_flushPages(fs->fs_gfs, fs, inode, true, true);

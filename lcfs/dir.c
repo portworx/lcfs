@@ -180,7 +180,7 @@ lc_freeDirent(struct fs *fs, struct dirent *dirent) {
 void
 lc_dirRemove(struct inode *dir, const char *name) {
     bool hashed = (dir->i_flags & LC_INODE_DHASHED);
-    struct dirent *dirent, *pdirent = NULL;
+    struct dirent *dirent, *pdirent = NULL, **prev;
     int len = strlen(name);
     uint32_t hash;
 
@@ -196,15 +196,9 @@ lc_dirRemove(struct inode *dir, const char *name) {
     while (dirent != NULL) {
         if ((len == dirent->di_size) &&
             (strcmp(name, dirent->di_name) == 0)) {
-            if (pdirent == NULL) {
-                if (hashed) {
-                    dir->i_hdirent[hash] = dirent->di_next;
-                } else {
-                    dir->i_dirent = dirent->di_next;
-                }
-            } else {
-                pdirent->di_next = dirent->di_next;
-            }
+            prev = pdirent ? &pdirent->di_next :
+                   (hashed ? &dir->i_hdirent[hash] : &dir->i_dirent);
+            *prev = dirent->di_next;
             dir->i_size--;
             lc_freeDirent(dir->i_fs, dirent);
             return;
@@ -219,8 +213,8 @@ lc_dirRemove(struct inode *dir, const char *name) {
 void
 lc_dirRename(struct inode *dir, ino_t ino,
               const char *name, const char *newname) {
+    struct dirent *dirent, *pdirent = NULL, *new, **prev;
     bool hashed = (dir->i_flags & LC_INODE_DHASHED);
-    struct dirent *dirent, *pdirent = NULL, *new;
     int len = strlen(name), hash, newhash = 0;
     struct fs *fs;
 
@@ -241,11 +235,8 @@ lc_dirRename(struct inode *dir, ino_t ino,
             if (hashed) {
                 newhash = lc_dirhash(newname, len);
                 if (hash != newhash) {
-                    if (pdirent == NULL) {
-                        dir->i_hdirent[hash] = dirent->di_next;
-                    } else {
-                        pdirent->di_next = dirent->di_next;
-                    }
+                    prev = pdirent ? &pdirent->di_next : &dir->i_hdirent[hash];
+                    *prev = dirent->di_next;
                     dirent->di_next = dir->i_hdirent[newhash];
                     dir->i_hdirent[newhash] = dirent;
                     dirent->di_index = dirent->di_next ?
@@ -261,15 +252,9 @@ lc_dirRename(struct inode *dir, ino_t ino,
                 memcpy(new, dirent, sizeof(struct dirent));
                 lc_freeDirent(fs, dirent);
                 dirent = new;
-                if (pdirent == NULL) {
-                    if (hashed) {
-                        dir->i_hdirent[newhash] = dirent;
-                    } else {
-                        dir->i_dirent = dirent;
-                    }
-                } else {
-                    pdirent->di_next = dirent;
-                }
+                prev = pdirent ? &pdirent->di_next :
+                       (hashed ? &dir->i_hdirent[newhash] : &dir->i_dirent);
+                *prev = dirent;
                 dirent->di_name = ((char *)dirent) + sizeof(struct dirent);
             } else if (dirent->di_size > len) {
                 lc_memUpdateTotal(fs, dirent->di_size - len);
@@ -513,7 +498,7 @@ lc_dirRemoveName(struct fs *fs, struct inode *dir,
                  int dremove(struct fs *, struct inode *, ino_t,
                              bool, void **)) {
     bool hashed = (dir->i_flags & LC_INODE_DHASHED);
-    struct dirent *dirent, *pdirent = NULL;
+    struct dirent *dirent, *pdirent = NULL, **prev;
     int len = strlen(name), err, hash;
     ino_t ino, parent = dir->i_ino;
     struct gfs *gfs = fs->fs_gfs;
@@ -553,15 +538,9 @@ lc_dirRemoveName(struct fs *fs, struct inode *dir,
                     err = 0;
                 }
                 lc_markInodeDirty(dir, LC_INODE_DIRDIRTY);
-                if (pdirent == NULL) {
-                    if (hashed) {
-                        dir->i_hdirent[hash] = dirent->di_next;
-                    } else {
-                        dir->i_dirent = dirent->di_next;
-                    }
-                } else {
-                    pdirent->di_next = dirent->di_next;
-                }
+                prev = pdirent ? &pdirent->di_next :
+                       (hashed ? &dir->i_hdirent[hash] : &dir->i_dirent);
+                *prev = dirent->di_next;
                 dir->i_size--;
                 lc_freeDirent(fs, dirent);
             }
