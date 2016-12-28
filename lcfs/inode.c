@@ -654,6 +654,7 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
                 inode->i_extentBlock = parent->i_extentBlock;
                 inode->i_extentLength = parent->i_extentLength;
             } else {
+                assert(parent->i_emap);
                 inode->i_emap = parent->i_emap;
                 inode->i_flags |= LC_INODE_SHARED;
                 flags |= LC_INODE_EMAPDIRTY;

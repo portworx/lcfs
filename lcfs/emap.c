@@ -64,6 +64,22 @@ lc_inodeEmapLookup(struct gfs *gfs, struct inode *inode, uint64_t page,
     return lc_inodeEmapExtentLookup(gfs, inode, page, extents);
 }
 
+static void
+lc_removeInodeExtents(struct gfs *gfs, struct fs *fs, struct inode *inode,
+                      uint64_t page, uint64_t block, uint64_t pcount,
+                      struct extent **extents) {
+    uint64_t count = pcount, blk = block, pg = page, ecount;
+
+    while (count) {
+        ecount = lc_removeExtent(fs, &inode->i_emap, pg, count);
+        assert(ecount <= count);
+        lc_addSpaceExtent(gfs, fs, extents, blk, ecount, false);
+        pg += ecount;
+        blk += ecount;
+        count -= ecount;
+    }
+}
+
 /* Add newly allocated blocks to the emap of the inode */
 void
 lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
@@ -89,9 +105,8 @@ lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
                 blk = block;
             }
             if ((blk + bcount) != block) {
-                ecount = lc_removeExtent(fs, &inode->i_emap, pg, bcount);
-                assert(ecount == bcount);
-                lc_addSpaceExtent(gfs, fs, extents, blk, bcount, false);
+                lc_removeInodeExtents(gfs, fs, inode, pg, blk, bcount,
+                                      extents);
                 extent = inode->i_emap;
                 pg = page;
                 blk = block;
@@ -125,9 +140,7 @@ lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
         count--;
     }
     if (bcount) {
-        ecount = lc_removeExtent(fs, &inode->i_emap, pg, bcount);
-        assert(ecount == bcount);
-        lc_addSpaceExtent(gfs, fs, extents, blk, bcount, false);
+        lc_removeInodeExtents(gfs, fs, inode, pg, blk, bcount, extents);
     }
     lc_addEmapExtent(gfs, fs, &inode->i_emap, pstart, bstart, pcount);
 }
@@ -189,9 +202,9 @@ void
 lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     uint64_t bcount = 0, pcount = 0, block = LC_INVALID_BLOCK;
     struct emapBlock *bblock = NULL;
-    struct extent *extent, *tmp;
     int count = LC_EMAP_BLOCK;
     struct page *page = NULL;
+    struct extent *extent;
     struct emap *emap;
 
     assert(S_ISREG(inode->i_mode));
@@ -206,7 +219,6 @@ lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     }
     lc_flushPages(gfs, fs, inode, true, false);
     extent = inode->i_emap;
-    inode->i_emap = NULL;
     if (extent) {
         lc_printf("File %ld fragmented\n", inode->i_ino);
     } else {
@@ -231,9 +243,7 @@ lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         emap->e_count = lc_getExtentCount(extent);
         bcount += emap->e_count;
         //lc_printf("page %ld at block %ld count %d\n", emap->e_off, emap->e_block, emap->e_count);
-        tmp = extent;
         extent = extent->ex_next;
-        lc_free(fs, tmp, sizeof(struct extent), LC_MEMTYPE_EXTENT);
     }
     assert(inode->i_dinode.di_blocks == bcount);
     if (bblock) {

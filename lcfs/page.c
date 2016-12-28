@@ -646,6 +646,9 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
     if (inode->i_flags & LC_INODE_SHARED) {
         lc_copyEmap(gfs, fs, inode);
     }
+    assert((inode->i_dinode.di_blocks == 0) ||
+           (inode->i_extentLength == inode->i_dinode.di_blocks) ||
+           inode->i_emap);
     lpage = (inode->i_size + LC_BLOCK_SIZE - 1) / LC_BLOCK_SIZE;
     assert((inode->i_flags & LC_INODE_HASHED) || (lpage < inode->i_pcount));
     bcount = inode->i_dpcount;
