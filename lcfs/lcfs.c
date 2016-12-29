@@ -64,7 +64,7 @@ main(int argc, char *argv[]) {
     arg[3] = lc_malloc(NULL, LC_SIZEOF_MOUNTARGS, LC_MEMTYPE_GFS);
     sprintf(arg[3],
             "nonempty,allow_other,auto_unmount,atomic_o_trunc,"
-            "subtype=lcfs,fsname=%s,big_writes,noatime,"
+            "subtype=lcfs,fsname=%s,big_writes,noatime,default_permissions,"
             "splice_move,splice_read,splice_write",
             argv[1]);
     for (i = 3; i < argc; i++) {
