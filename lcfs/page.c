@@ -31,15 +31,22 @@ static void
 lc_addDirtyPage(struct fs *fs, struct dhpage **dhpage, uint64_t page,
                 char *data, uint16_t poffset, uint16_t psize) {
     int hash = lc_dpageHash(page);
-    struct dhpage *hpage = lc_malloc(fs, sizeof(struct dhpage),
-                                     LC_MEMTYPE_HPAGE);
+    struct dhpage *hpage, *next = dhpage[hash], **prev = &dhpage[hash];
 
+    hpage = lc_malloc(fs, sizeof(struct dhpage), LC_MEMTYPE_HPAGE);
     hpage->dh_pg = page;
-    hpage->dh_next = dhpage[hash];
     hpage->dh_page.dp_data = data;
     hpage->dh_page.dp_poffset = poffset;
     hpage->dh_page.dp_psize = psize;
-    dhpage[hash] = hpage;
+    while (next) {
+        if (page > next->dh_pg) {
+            break;
+        }
+        prev = &next->dh_next;
+        next = next->dh_next;
+    }
+    hpage->dh_next = next;
+    *prev = hpage;
 }
 
 /* Return the requested page if allocated already */
@@ -58,6 +65,9 @@ lc_findDirtyPage(struct inode *inode, uint64_t pg) {
         while (dhpage) {
             if (dhpage->dh_pg == pg) {
                 return &dhpage->dh_page;
+            }
+            if (pg > dhpage->dh_pg) {
+                break;
             }
             dhpage = dhpage->dh_next;
         }
@@ -276,6 +286,9 @@ lc_removeDirtyPage(struct gfs *gfs, struct inode *inode, uint64_t pg,
                     prev->dh_next = dhpage->dh_next;
                 }
                 page = &dhpage->dh_page;
+                break;
+            }
+            if (pg > dhpage->dh_pg) {
                 break;
             }
             prev = dhpage;
@@ -940,6 +953,7 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
                     continue;
                 } else {
                     lc_updateInodePageMarkers(inode, hpage->dh_pg);
+                    break;
                 }
                 prev = hpage;
                 hpage = hpage->dh_next;
