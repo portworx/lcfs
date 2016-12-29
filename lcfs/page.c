@@ -50,6 +50,9 @@ lc_findDirtyPage(struct inode *inode, uint64_t pg) {
 
     if (inode->i_flags & LC_INODE_HASHED) {
         assert(inode->i_pcount == 0);
+        if ((pg < inode->i_fpage) || (pg > inode->i_lpage)) {
+            return NULL;
+        }
         hash = lc_dpageHash(pg);
         dhpage = inode->i_hpage[hash];
         while (dhpage) {
@@ -403,7 +406,7 @@ lc_getDirtyPage(struct gfs *gfs, struct inode *inode, uint64_t pg,
 }
 
 /* Add or update existing page of the inode with new data provided */
-static uint64_t
+static bool
 lc_mergePage(struct gfs *gfs, struct inode *inode, uint64_t pg, char *data,
              uint16_t poffset, uint16_t psize, struct extent **extents) {
     struct fs *fs = inode->i_fs;
@@ -425,7 +428,7 @@ lc_mergePage(struct gfs *gfs, struct inode *inode, uint64_t pg, char *data,
         lc_addDirtyPage(fs, inode->i_hpage, pg, data, poffset, psize);
         inode->i_dpcount++;
         lc_updateInodePageMarkers(inode, pg);
-        return 1;
+        return false;
     }
 
     /* If no dirty page exists, add the new page and return */
@@ -436,7 +439,7 @@ lc_mergePage(struct gfs *gfs, struct inode *inode, uint64_t pg, char *data,
         dpage->dp_psize = psize;
         inode->i_dpcount++;
         lc_updateInodePageMarkers(inode, pg);
-        return 1;
+        return false;
     }
     assert(inode->i_fpage <= pg);
     assert(inode->i_lpage >= pg);
@@ -477,8 +480,7 @@ lc_mergePage(struct gfs *gfs, struct inode *inode, uint64_t pg, char *data,
         }
     }
     memcpy(&dpage->dp_data[poffset], &data[poffset], psize);
-    lc_free(fs, data, LC_BLOCK_SIZE, LC_MEMTYPE_DATA);
-    return 0;
+    return true;
 }
 
 /* Copy in provided pages */
@@ -529,6 +531,7 @@ lc_addPages(struct inode *inode, off_t off, size_t size,
     off_t endoffset = off + size;
     struct dpage *dpage;
     uint64_t added = 0;
+    bool copied;
 
     assert(S_ISREG(inode->i_mode));
 
@@ -552,8 +555,12 @@ lc_addPages(struct inode *inode, off_t off, size_t size,
     /* Link the dirty pages to the inode, merging with any existing ones */
     while (count < pcount) {
         dpage = &dpages[count];
-        added += lc_mergePage(gfs, inode, page, dpage->dp_data,
+        copied = lc_mergePage(gfs, inode, page, dpage->dp_data,
                               dpage->dp_poffset, dpage->dp_psize, &extent);
+        if (!copied) {
+            dpage->dp_data = NULL;
+            added++;
+        }
 
         /* Flush dirty pages if the inode accumulated too many */
         if ((inode->i_dpcount >= LC_MAX_FILE_DIRTYPAGES) &&

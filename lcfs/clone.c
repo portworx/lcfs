@@ -82,7 +82,7 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
         }
     }
 
-    /* Allocate root inode and add to the directory */
+    /* Add the root inode to directory */
     lc_dirAdd(pdir, root, S_IFDIR, name, strlen(name));
     pdir->i_nlink++;
     lc_markInodeDirty(pdir, LC_INODE_DIRDIRTY);
@@ -126,12 +126,26 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     }
 
     /* Add this file system to global list of file systems */
-    lc_addfs(gfs, fs, pfs);
+    err = lc_addfs(gfs, fs, pfs);
     if (pfs) {
         lc_unlock(pfs);
     }
+    if (err) {
+        lc_inodeLock(pdir, true);
+        lc_dirRemove(pdir, name);
+        pdir->i_nlink--;
+        lc_inodeUnlock(pdir);
+        lc_blockFree(gfs, fs, fs->fs_sblock, 1, true);
+        lc_freeLayerBlocks(gfs, fs, true, true);
+        goto out;
+    }
     lc_printf("Created fs with parent %ld root %ld index %d block %ld name %s\n",
                pfs ? pfs->fs_root : -1, root, fs->fs_gindex, fs->fs_sblock, name);
+#if 0
+    if (fs->fs_gindex == 17) {
+        ProfilerStart("/tmp/lcfs");
+    }
+#endif
 
 out:
     if (err) {
@@ -142,10 +156,12 @@ out:
     lc_statsAdd(rfs, LC_CLONE_CREATE, err, &start);
     lc_unlock(rfs);
     if (fs) {
-        lc_unlock(fs);
         if (err) {
             fs->fs_removed = true;
+            lc_unlock(fs);
             lc_destroyFs(fs, true);
+        } else {
+            lc_unlock(fs);
         }
     }
 }
@@ -221,6 +237,7 @@ lc_snapIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
 
     /* Unmount all layers */
     if (cmd == UMOUNT_ALL) {
+        //ProfilerStop();
         fuse_reply_ioctl(req, 0, NULL, 0);
         lc_syncAllLayers(gfs);
         lc_statsAdd(rfs, LC_CLEANUP, 0, &start);

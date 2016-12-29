@@ -2,7 +2,7 @@
 #define _LC_H_
 
 /* Maximum number of layers */
-#define LC_LAYER_MAX  4096ul
+#define LC_LAYER_MAX  65535ull
 
 /* Global file system */
 struct gfs {

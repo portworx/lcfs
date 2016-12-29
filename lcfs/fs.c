@@ -281,7 +281,7 @@ lc_getfsForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
 }
 
 /* Add a file system to global list of file systems */
-void
+int
 lc_addfs(struct gfs *gfs, struct fs *fs, struct fs *pfs) {
     struct fs *snap, *rfs = fs->fs_rfs;
     int i;
@@ -306,7 +306,11 @@ lc_addfs(struct gfs *gfs, struct fs *fs, struct fs *pfs) {
             break;
         }
     }
-    assert(i < LC_LAYER_MAX);
+    if (i >= LC_LAYER_MAX) {
+        pthread_mutex_unlock(&gfs->gfs_lock);
+        printf("Too many layers.  Retry after remount or deleting some.\n");
+        return EOVERFLOW;
+    }
     snap = pfs ? pfs->fs_snap : lc_getGlobalFs(gfs);
 
     /* Add this file system to the snapshot list or root file systems list */
@@ -326,6 +330,7 @@ lc_addfs(struct gfs *gfs, struct fs *fs, struct fs *pfs) {
         pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
     }
     pthread_mutex_unlock(&gfs->gfs_lock);
+    return 0;
 }
 
 /* Format a file system by initializing its super block */

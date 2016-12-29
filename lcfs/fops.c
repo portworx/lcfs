@@ -1168,7 +1168,7 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
 static void
 lc_write_buf(fuse_req_t req, fuse_ino_t ino,
               struct fuse_bufvec *bufv, off_t off, struct fuse_file_info *fi) {
-    uint64_t pcount, reserved = 0;
+    uint64_t pcount, reserved = 0, count = 0;
     struct fuse_bufvec *dst;
     struct timeval start;
     struct inode *inode;
@@ -1217,20 +1217,24 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
     assert(S_ISREG(inode->i_mode));
 
     /* Link the dirty pages to the inode and update times */
-    pcount -= lc_addPages(inode, off, size, dpages, pcount);
+    count = lc_addPages(inode, off, size, dpages, pcount);
+    assert(count <= pcount);
     lc_updateInodeTimes(inode, true, true);
     lc_markInodeDirty(inode, LC_INODE_EMAPDIRTY);
     lc_inodeUnlock(inode);
 
 out:
-    if (pcount && reserved) {
-        __sync_sub_and_fetch(&fs->fs_pcount, pcount);
-    }
-    if (err) {
-        while (pcount) {
-            pcount--;
-            lc_free(fs, dpages[pcount].dp_data, LC_BLOCK_SIZE,
-                    LC_MEMTYPE_DATA);
+    if (pcount != count) {
+        if (reserved) {
+            __sync_sub_and_fetch(&fs->fs_pcount, pcount - count);
+        }
+        count = 0;
+        while (count < pcount) {
+            if (dpages[count].dp_data) {
+                lc_free(fs, dpages[count].dp_data, LC_BLOCK_SIZE,
+                        LC_MEMTYPE_DATA);
+            }
+            count++;
         }
     }
     lc_statsAdd(fs, LC_WRITE_BUF, err, &start);
@@ -1244,6 +1248,7 @@ out:
 static void
 lc_init(void *userdata, struct fuse_conn_info *conn) {
     conn->want |= FUSE_CAP_IOCTL_DIR;
+    //ProfilerStart("/tmp/lcfs");
 }
 
 /* Destroy a file system */
@@ -1251,6 +1256,7 @@ static void
 lc_destroy(void *fsp) {
     struct gfs *gfs = (struct gfs *)fsp;
 
+    //ProfilerStop();
     lc_unmount(gfs);
 }
 

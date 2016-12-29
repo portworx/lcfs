@@ -21,6 +21,8 @@
 #include <assert.h>
 #include <linux/ioctl.h>
 
+//#include <gperftools/profiler.h>
+
 #include "lcfs.h"
 #include "layout.h"
 #include "memory.h"
@@ -88,7 +90,7 @@ void lc_superInit(struct super *super, size_t size, bool global);
 struct fs *lc_getfs(ino_t ino, bool exclusive);
 uint64_t lc_getfsForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp);
 int lc_getIndex(struct fs *nfs, ino_t parent, ino_t ino);
-void lc_addfs(struct gfs *gfs, struct fs *fs, struct fs *pfs);
+int lc_addfs(struct gfs *gfs, struct fs *fs, struct fs *pfs);
 void lc_removefs(struct gfs *gfs, struct fs *fs);
 void lc_lock(struct fs *fs, bool exclusive);
 int lc_tryLock(struct fs *fs, bool exclusive);
