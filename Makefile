@@ -29,23 +29,26 @@ submodules:
 	git submodule update
 
 DOCKER_VERS=12
+DOCKER_DIR=docker
 # pull docker and build it with px-graph components in it
-docker:
-	if [ -d docker$(DOCKER_VERS) ]; then rm -rf docker$(DOCKER_VERS); fi
-	git clone -b 1.$(DOCKER_VERS).x git@github.com:docker/docker docker$(DOCKER_VERS)
-	mkdir docker$(DOCKER_VERS)/daemon/graphdriver/lcfs
-	cp -v docker.1.$(DOCKER_VERS)/daemon/graphdriver/lcfs/* docker$(DOCKER_VERS)/daemon/graphdriver/lcfs
-	cp -v docker.1.$(DOCKER_VERS)/daemon/graphdriver/register/register_lcfs.go docker$(DOCKER_VERS)/daemon/graphdriver/register
+gr-docker:
+	if [ -d $(DOCKER_DIR)$(DOCKER_VERS) ]; then rm -rf $(DOCKER_DIR)$(DOCKER_VERS); fi
+	git clone -b 1.$(DOCKER_VERS).x git@github.com:docker/docker $(DOCKER_DIR)$(DOCKER_VERS)
+	mkdir $(DOCKER_DIR)$(DOCKER_VERS)/daemon/graphdriver/lcfs
+	cp -v docker.1.$(DOCKER_VERS)/daemon/graphdriver/lcfs/* $(DOCKER_DIR)$(DOCKER_VERS)/daemon/graphdriver/lcfs
+	cp -v docker.1.$(DOCKER_VERS)/daemon/graphdriver/register/register_lcfs.go $(DOCKER_DIR)$(DOCKER_VERS)/daemon/graphdriver/register
 	#git add --all
 	# uses docker container to build docker with their toolset; won't run on MacOS
-	cd docker$(DOCKER_VERS) && make build && make binary
+	cd $(DOCKER_DIR)$(DOCKER_VERS) && make build && make binary
+
+gr-install: gr-docker
 	# sudo service docker stop
-	# sudo cp bundles/latest/binary-client/docker /usr/bin
-	# sudo cp bundles/latest/binary-daemon/dockerd /usr/bin/dockerd
-	# sudo cp bundles/latest/binary-daemon/docker-runc /usr/bin
-	# sudo cp bundles/latest/binary-daemon/docker-containerd /usr/bin
-	# sudo cp bundles/latest/binary-daemon/docker-containerd-ctr /usr/bin
-	# sudo cp bundles/latest/binary-daemon/docker-containerd-shim /usr/bin
+	# sudo cp $(DOCKER_DIR)$(DOCKER_VERS)/bundles/latest/binary-client/docker /usr/bin
+	# sudo cp $(DOCKER_DIR)$(DOCKER_VERS)/bundles/latest/binary-daemon/dockerd /usr/bin/dockerd
+	# sudo cp $(DOCKER_DIR)$(DOCKER_VERS)/bundles/latest/binary-daemon/docker-runc /usr/bin
+	# sudo cp $(DOCKER_DIR)$(DOCKER_VERS)/bundles/latest/binary-daemon/docker-containerd /usr/bin
+	# sudo cp $(DOCKER_DIR)$(DOCKER_VERS)/bundles/latest/binary-daemon/docker-containerd-ctr /usr/bin
+	# sudo cp $(DOCKER_DIR)$(DOCKER_VERS)/bundles/latest/binary-daemon/docker-containerd-shim /usr/bin
 	# add "-s lcfs" as option in /usr/lib/systemd/system/docker.service to dockerd line
 	# sudo service docker start
 
