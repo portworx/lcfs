@@ -704,7 +704,7 @@ out:
 static int
 lc_openInode(struct fs *fs, fuse_ino_t ino, struct fuse_file_info *fi) {
     struct inode *inode;
-    bool modify;
+    bool modify, trunc;
 
     fi->fh = 0;
     modify = (fi->flags & (O_WRONLY | O_RDWR));
@@ -712,7 +712,8 @@ lc_openInode(struct fs *fs, fuse_ino_t ino, struct fuse_file_info *fi) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
         return EROFS;
     }
-    inode = lc_getInode(fs, ino, NULL, modify, false);
+    trunc = modify && (fi->flags & O_TRUNC);
+    inode = lc_getInode(fs, ino, NULL, modify, trunc);
     if (inode == NULL) {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
         return ENOENT;
@@ -728,6 +729,9 @@ lc_openInode(struct fs *fs, fuse_ino_t ino, struct fuse_file_info *fi) {
     /* Increment open count if inode is private to this layer.
      */
     if (inode->i_fs == fs) {
+        if (trunc && S_ISREG(inode->i_mode)) {
+            lc_truncate(inode, 0);
+        }
         fi->keep_cache = inode->i_private;
         __sync_add_and_fetch(&inode->i_ocount, 1);
     }
