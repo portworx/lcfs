@@ -1,0 +1,19 @@
+{
+  "description": "LCFS Graphdriver Plugin",
+  "documentation": "LCFS",
+  "entrypoint": ["./lcfs_plugin"],
+  "interface": {
+    "types": ["docker.graphdriver/1.0"],
+    "socket": "lcfs.sock"
+  },
+  "network": {
+    "type": "host"
+  },
+  "env": [
+    {
+      "name": "DEBUG",
+      "description": "If set, prints debug messages",
+      "value": "1"
+    }
+  ]
+}
