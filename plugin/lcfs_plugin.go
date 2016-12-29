@@ -15,6 +15,10 @@ import (
     graphPlugin "github.com/docker/go-plugins-helpers/graphdriver"
 )
 
+const (
+	socketAddress = "/run/docker/plugins/lcfs.sock"
+)
+
 type pDriver struct {
     home string
 }
@@ -288,10 +292,10 @@ func main() {
         logrus.Errorf("reexec.Init failed")
         return;
     }
-    logrus.Infof("Starting to serve TCP requests")
     handler := graphPlugin.NewHandler(&Driver{driver: nil, init: Init,
                                       home: "", options: nil})
-    if err := handler.ServeTCP("lcfs", ":32456", nil); err != nil {
+    logrus.Infof("Starting to serve requests on %s", socketAddress)
+    if err := handler.ServeUnix("", socketAddress); err != nil {
         log.Fatalf("Error %v", err)
     }
     for {
