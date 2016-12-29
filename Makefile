@@ -16,7 +16,7 @@ TARGETS := gr-docker
 
 all: $(TARGETS)
 
-build: gr-docker
+build: docker
 
 clean: gr-clean
 
@@ -37,6 +37,7 @@ docker:
 	cp -v docker.1.$(DOCKER_VERS)/daemon/graphdriver/lcfs/* docker$(DOCKER_VERS)/daemon/graphdriver/lcfs
 	cp -v docker.1.$(DOCKER_VERS)/daemon/graphdriver/register/register_lcfs.go docker$(DOCKER_VERS)/daemon/graphdriver/register
 	#git add --all
+	# uses docker container to build docker with their toolset; won't run on MacOS
 	cd docker$(DOCKER_VERS) && make build && make binary
 	# sudo service docker stop
 	# sudo cp bundles/latest/binary-client/docker /usr/bin
