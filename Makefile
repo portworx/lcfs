@@ -31,6 +31,7 @@ submodules:
 DOCKER_VERS=12
 # pull docker and build it with px-graph components in it
 docker:
+	if [ -d docker$(DOCKER_VERS) ]; then rm -rf docker$(DOCKER_VERS); fi
 	git clone -b 1.$(DOCKER_VERS).x git@github.com:docker/docker docker$(DOCKER_VERS)
 	mkdir docker$(DOCKER_VERS)/daemon/graphdriver/lcfs
 	cp -v docker.1.$(DOCKER_VERS)/daemon/graphdriver/lcfs/* docker$(DOCKER_VERS)/daemon/graphdriver/lcfs
