@@ -1,5 +1,5 @@
 # Makefile for px-graph
-# Maintainer Michael Vilain <michael@portworx.com> [201612.28]
+# Maintainer Michael Vilain <michael@portworx.com> [201612.29]
 
 # these can be overridden at the command line with -e DOCKER_HUB_USER=wilkins
 ifeq ($(origin DOCKER_HUB_REPO), undefined)
@@ -49,7 +49,12 @@ gr-install: gr-docker
 	# sudo cp $(DOCKER_DIR)$(DOCKER_VERS)/bundles/latest/binary-daemon/docker-containerd /usr/bin
 	# sudo cp $(DOCKER_DIR)$(DOCKER_VERS)/bundles/latest/binary-daemon/docker-containerd-ctr /usr/bin
 	# sudo cp $(DOCKER_DIR)$(DOCKER_VERS)/bundles/latest/binary-daemon/docker-containerd-shim /usr/bin
+	#
 	# add "-s lcfs" as option in /usr/lib/systemd/system/docker.service to dockerd line
+	#if [ "`grep "^ExecStart=/usr/bin/dockerd$" /lib/systemd/system/docker.service`" == "" ]; then \
+	#	sed -i -e "s@^ExecStart=/usr/bin/dockerd$@ExecStart=/usr/bin/dockerd -s lcfs@" \
+	#		/lib/systemd/system/docker.service; \
+	#fi
 	# sudo service docker start
 
 # build px-graph components in a container (201612.28 not currently working)
