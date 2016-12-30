@@ -18,6 +18,9 @@
   "network": {
     "type": "host"
   },
+  "Linux": {
+    "capabilities": ["CAP_SYS_ADMIN"]
+  },
   "env": [
     {
       "name": "DEBUG",
