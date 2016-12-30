@@ -6,6 +6,15 @@
     "types": ["docker.graphdriver/1.0"],
     "socket": "lcfs.sock"
   },
+  "mounts": [
+  {
+      "destination": "/lcfs",
+      "source": "/lcfs",
+      "type": "bind",
+      "options": ["rbind", "rw"]
+  }
+  ],
+  "PropagatedMount": "/lcfs",
   "network": {
     "type": "host"
   },

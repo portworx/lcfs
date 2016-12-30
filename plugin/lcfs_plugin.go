@@ -292,6 +292,7 @@ func main() {
         logrus.Errorf("reexec.Init failed")
         return;
     }
+    logrus.SetLevel(logrus.DebugLevel)
     handler := graphPlugin.NewHandler(&Driver{driver: nil, init: Init,
                                       home: "", options: nil})
     logrus.Infof("Starting to serve requests on %s", socketAddress)

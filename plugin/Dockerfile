@@ -1,7 +1,6 @@
 FROM centos:centos7.2.1511
 
-RUN mkdir -p /run/docker/plugins
-RUN mkdir -p /etc/docker/plugins
+RUN mkdir -p /run/docker/plugins /etc/docker/plugins /lcfs
 
 WORKDIR /
 COPY lcfs_plugin /

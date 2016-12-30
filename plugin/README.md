@@ -24,54 +24,27 @@
   We will create the rootfs directory by building a Docker images
   which has the compiled lcfs_plugin binary. Make sure that dockerd is running.
 
+  Make sure lcfs is mounted at /lcfs
+
     ```
-    # cd $GOPATH/github.com/portworx/px-graph/plugin
-    # docker build -t rootfsimage .
-    # id=$(docker create rootfsimage)
-    # mkdir rootfs
-    # docker export "$id" | tar -x -C rootfs/
+    # ./setup
     ```
 
   Now you rootfs/ subdirectory will be populated with the necessary
-  files and the lcfs plugin.
-
-  Create and Enable the lcfs plugin using the docker plugin commands
+  files and the lcfs plugin.  Restart docker.
 
     ```
-    # ls
-      config.json  Dockerfile  lcfs_plugin  lcfs_plugin.go README.md  rootfs
-
-    # docker plugin create lcfs .
-      lcfs
-
-    # docker plugin ls
-    ID                  NAME                TAG                DESCRIPTION              ENABLED
-    c23191e1e161        lcfs                latest             LCFSGraphdriver Plugin   false
-
-    # docker plugin enable lcfs
-    lcfs
-
-    # docker plugin ls
-    ID                  NAME                TAG                DESCRIPTION              ENABLED
-    c23191e1e161        lcfs                latest             LCFSGraphdriver Plugin   true
-
     # pkill dockerd
 
     # /usr/bin/dockerd --experimental -s lcfs
 
-    # rm -rf rootfs/
     ```
-
-  Docker expects the graphdriver's base dir to be
-  /var/lib/docker/<plugin_name>. So mount the lcfs device on to /var/lib/docker/lcfs
-
 
 # Issues
 
-1. Using docker v2 plugins GraphDriver.Create fails. Not sure if
-   /var/lib/docker/lcfs is the right base directory for lcfs
+1. Using docker v2 plugins GraphDriver.ApplyDiff fails.  Docker is using
+   /var/lib/docker on host to download images and the plugin is not able to
+   find those.
 
 2. Tested with docker commit ba76c92
    Docker build is broken because VOLUME command hangs.
-   Not sure if graphdriver plugin needs to be on top of another graphdriver or
-   file system for storing json files.
