@@ -293,7 +293,7 @@ lc_addfs(struct gfs *gfs, struct fs *fs, struct fs *pfs) {
      * might have cached inodes and directory entries.
      */
     pthread_mutex_lock(&gfs->gfs_lock);
-    for (i = rfs->fs_hgindex; i < LC_LAYER_MAX; i++) {
+    for (i = rfs->fs_hgindex + 1; i < LC_LAYER_MAX; i++) {
         if (gfs->gfs_fs[i] == NULL) {
             fs->fs_gindex = i;
             fs->fs_super->sb_index = i;
@@ -302,7 +302,9 @@ lc_addfs(struct gfs *gfs, struct fs *fs, struct fs *pfs) {
             if (i > gfs->gfs_scount) {
                 gfs->gfs_scount = i;
             }
-            rfs->fs_hgindex = i;
+            if (fs != rfs) {
+                rfs->fs_hgindex = i;
+            }
             break;
         }
     }

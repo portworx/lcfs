@@ -123,8 +123,7 @@ lc_addInode(struct fs *fs, struct inode *inode) {
 
 /* Lookup an inode in the hash list */
 static struct inode *
-lc_lookupInodeCache(struct fs *fs, ino_t ino) {
-    int hash = lc_inodeHash(fs, ino);
+lc_lookupInodeCache(struct fs *fs, ino_t ino, int hash) {
     struct inode *inode;
 
     if (fs->fs_icache[hash].ic_head == NULL) {
@@ -154,7 +153,7 @@ lc_lookupInode(struct fs *fs, ino_t ino) {
     if (ino == gfs->gfs_snap_root) {
         return gfs->gfs_snap_rootInode;
     }
-    return lc_lookupInodeCache(fs, ino);
+    return lc_lookupInodeCache(fs, ino, lc_inodeHash(fs, ino));
 }
 
 /* Update inode times */
@@ -589,6 +588,7 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs) {
 void
 lc_destroyInodes(struct fs *fs, bool remove) {
     uint64_t icount = 0, rcount = 0;
+    struct gfs *gfs = fs->fs_gfs;
     struct inode *inode;
     int i;
 
@@ -603,6 +603,11 @@ lc_destroyInodes(struct fs *fs, bool remove) {
             if (!(inode->i_flags & LC_INODE_REMOVED)) {
                 rcount++;
             }
+            if (remove && !fs->fs_readOnly && inode->i_private &&
+                inode->i_size) {
+                fuse_lowlevel_notify_inval_inode(gfs->gfs_ch, inode->i_ino,
+                                                 0, -1);
+            }
             lc_freeInode(inode);
             icount++;
         }
@@ -615,7 +620,7 @@ lc_destroyInodes(struct fs *fs, bool remove) {
     lc_free(fs, fs->fs_icache, sizeof(struct icache) * fs->fs_icacheSize,
             LC_MEMTYPE_ICACHE);
     if (remove && icount) {
-        __sync_sub_and_fetch(&fs->fs_gfs->gfs_super->sb_inodes, rcount);
+        __sync_sub_and_fetch(&gfs->gfs_super->sb_inodes, rcount);
     }
     if (icount) {
         __sync_sub_and_fetch(&fs->fs_icount, icount);
@@ -689,37 +694,44 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
 
 /* Lookup the requested inode in the chain */
 static struct inode *
-lc_getInodeParent(struct fs *fs, ino_t inum, bool copy) {
-    struct inode *inode, *parent;
+lc_getInodeParent(struct fs *fs, ino_t inum, bool copy, bool exclusive) {
+    struct inode *inode = NULL, *parent;
+    uint64_t csize = 0;
     struct fs *pfs;
+    int hash = -1;
 
-    /* XXX Reduce the time this lock is held */
-    pthread_mutex_lock(fs->fs_ilock);
-    inode = lc_lookupInodeCache(fs, inum);
-    if (inode == NULL) {
-        pfs = fs->fs_parent;
-        while (pfs) {
-            parent = lc_lookupInodeCache(pfs, inum);
-            if (parent != NULL) {
-
-                /* Do not clone if the inode is removed in a parent layer */
-                if (!(parent->i_flags & LC_INODE_REMOVED)) {
-
-                    /* Clone the inode only when modified */
-                    if (copy) {
-                        assert(fs->fs_snap == NULL);
-                        inode = lc_cloneInode(fs, parent, inum);
-                    } else {
-                        /* XXX Remember this for future lookup */
-                        inode = parent;
-                    }
-                }
-                break;
-            }
-            pfs = pfs->fs_parent;
+    pfs = fs->fs_parent;
+    while (pfs) {
+        if (pfs->fs_icacheSize != csize) {
+            hash = lc_inodeHash(pfs, inum);
+            csize = pfs->fs_icacheSize;
         }
+        parent = lc_lookupInodeCache(pfs, inum, hash);
+        if (parent != NULL) {
+            assert(!(parent->i_flags & LC_INODE_REMOVED));
+            if (copy) {
+                if (fs->fs_icacheSize != csize) {
+                    hash = lc_inodeHash(fs, inum);
+                }
+
+                /* Clone the inode only when modified */
+                /* XXX Reduce the time this lock is held */
+                pthread_mutex_lock(fs->fs_ilock);
+                inode = lc_lookupInodeCache(fs, inum, hash);
+                if (inode == NULL) {
+                    assert(fs->fs_snap == NULL);
+                    inode = lc_cloneInode(fs, parent, inum);
+                }
+                pthread_mutex_unlock(fs->fs_ilock);
+                lc_inodeLock(inode, exclusive);
+            } else {
+                /* XXX Remember this for future lookup */
+                inode = parent;
+            }
+            break;
+        }
+        pfs = pfs->fs_parent;
     }
-    pthread_mutex_unlock(fs->fs_ilock);
     return inode;
 }
 
@@ -733,13 +745,11 @@ lc_getInode(struct fs *fs, ino_t ino, struct inode *handle,
     assert(!fs->fs_removed);
 
     /* Check if the file handle points to the inode */
-    if (handle) {
+    if (handle && (handle->i_fs == fs)) {
         inode = handle;
-        if (!copy || (inode->i_fs == fs)) {
-            assert(inode->i_ino == inum);
-            lc_inodeLock(inode, exclusive);
-            return inode;
-        }
+        assert(inode->i_ino == inum);
+        lc_inodeLock(inode, exclusive);
+        return inode;
     }
 
     /* Check if the file system has the inode or not */
@@ -747,17 +757,18 @@ lc_getInode(struct fs *fs, ino_t ino, struct inode *handle,
     if (inode) {
         lc_inodeLock(inode, exclusive);
         return inode;
+    } else if (handle && !copy) {
+        inode = handle;
+        assert(inode->i_ino == inum);
+        lc_inodeLock(inode, exclusive);
+        return inode;
     }
 
     /* Lookup inode in the parent chain */
     if (fs->fs_parent) {
-        inode = lc_getInodeParent(fs, inum, copy);
+        inode = lc_getInodeParent(fs, inum, copy, exclusive);
     }
-
-    /* Now lock the inode */
-    if (inode) {
-        lc_inodeLock(inode, exclusive);
-    } else {
+    if (inode == NULL) {
         lc_printf("Inode is NULL, fs gindex %d root %ld ino %ld\n",
                    fs->fs_gindex, fs->fs_root, ino);
     }

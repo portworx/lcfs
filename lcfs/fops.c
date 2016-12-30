@@ -729,14 +729,18 @@ lc_openInode(struct fs *fs, fuse_ino_t ino, struct fuse_file_info *fi) {
     /* Increment open count if inode is private to this layer.
      */
     if (inode->i_fs == fs) {
-        if (trunc && S_ISREG(inode->i_mode)) {
-            lc_truncate(inode, 0);
+        if (trunc) {
+            if (S_ISREG(inode->i_mode)) {
+                lc_truncate(inode, 0);
+            }
+            inode->i_ocount++;
+        } else {
+            __sync_add_and_fetch(&inode->i_ocount, 1);
         }
-        fi->keep_cache = inode->i_private;
-        __sync_add_and_fetch(&inode->i_ocount, 1);
     }
-    fi->fh = (uint64_t)inode;
     lc_inodeUnlock(inode);
+    fi->fh = (uint64_t)inode;
+    fi->keep_cache = true;
     return 0;
 }
 
