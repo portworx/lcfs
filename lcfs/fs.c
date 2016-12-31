@@ -12,6 +12,7 @@ lc_newFs(struct gfs *gfs, size_t icsize, bool rw) {
     fs->fs_readOnly = !rw;
     fs->fs_ctime = t;
     fs->fs_atime = t;
+    pthread_mutex_init(&fs->fs_ilock, NULL);
     pthread_mutex_init(&fs->fs_plock, NULL);
     pthread_mutex_init(&fs->fs_dilock, NULL);
     pthread_mutex_init(&fs->fs_alock, NULL);
@@ -125,11 +126,8 @@ lc_freeLayer(struct fs *fs, bool remove) {
         lc_destroy_pages(gfs, fs, fs->fs_pcache, remove);
     }
     assert(fs->fs_tpcount == 0);
-    if (fs->fs_ilock && (fs->fs_parent == NULL)) {
-        pthread_mutex_destroy(fs->fs_ilock);
-        lc_free(fs, fs->fs_ilock, sizeof(pthread_mutex_t), LC_MEMTYPE_ILOCK);
-    }
     lc_statsDeinit(fs);
+    pthread_mutex_destroy(&fs->fs_ilock);
     pthread_mutex_destroy(&fs->fs_dilock);
     pthread_mutex_destroy(&fs->fs_plock);
     pthread_mutex_destroy(&fs->fs_alock);
@@ -408,9 +406,6 @@ lc_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
         fs->fs_prev = pfs;
         pfs->fs_next = fs;
         lc_pcache_init(fs, LC_PCACHE_SIZE, LC_PCLOCK_COUNT);
-        fs->fs_ilock = lc_malloc(fs, sizeof(pthread_mutex_t),
-                                 LC_MEMTYPE_ILOCK);
-        pthread_mutex_init(fs->fs_ilock, NULL);
         fs->fs_rfs = fs;
     } else {
 
@@ -587,7 +582,7 @@ lc_sync(struct gfs *gfs, struct fs *fs, bool super) {
             lc_flushDirtyPages(gfs, fs);
             //lc_displayAllocStats(fs);
             lc_processFreedBlocks(fs, true);
-            lc_freeLayerBlocks(gfs, fs, false, false);
+            lc_freeLayerBlocks(gfs, fs, false, false, false);
         }
 
         /* Flush everything to disk before marking file system clean */
@@ -614,7 +609,7 @@ lc_umountSync(struct gfs *gfs) {
     lc_sync(gfs, fs, false);
 
     /* Release freed and unused blocks */
-    lc_freeLayerBlocks(gfs, fs, true, false);
+    lc_freeLayerBlocks(gfs, fs, true, false, false);
 
     /* Destroy all inodes.  This also releases metadata blocks of removed
      * inodes.
@@ -680,7 +675,7 @@ lc_unmount(struct gfs *gfs) {
         if (fs && !lc_tryLock(fs, false)) {
             gfs->gfs_fs[i] = NULL;
             pthread_mutex_unlock(&gfs->gfs_lock);
-            lc_freeLayerBlocks(gfs, fs, true, false);
+            lc_freeLayerBlocks(gfs, fs, true, false, false);
             lc_superWrite(gfs, fs);
             lc_unlock(fs);
             lc_destroyFs(fs, false);

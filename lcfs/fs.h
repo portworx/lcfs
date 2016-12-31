@@ -131,8 +131,8 @@ struct fs {
     /* Number of page cache locks */
     uint32_t fs_pcacheLockCount;
 
-    /* Lock protecting layer inode chains */
-    pthread_mutex_t *fs_ilock;
+    /* Lock serializing inode cloning */
+    pthread_mutex_t fs_ilock;
 
     /* Parent file system of this layer */
     struct fs *fs_parent;

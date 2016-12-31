@@ -109,21 +109,21 @@ rm -fr file file1 passwd
 ls -ltRi
 cd -
 
-service docker stop
-../plugin/lcfs_plugin &
-dockerd -s lcfs -g $MNT 2>/dev/null &
-sleep 10
-docker run hello-world
+mkdir $MNT/lcfs
+#service docker stop
+#dockerd -s lcfs -g $MNT 2>/dev/null &
+#sleep 10
+#docker run hello-world
 
 cd $MNT/lcfs
 $CSTAT .
 cd -
 
-docker ps --all --format {{.ID}} | xargs docker rm
-docker rmi hello-world
-cat /var/run/docker.pid | xargs kill
-sleep 10
-service docker start
+#docker ps --all --format {{.ID}} | xargs docker rm
+#docker rmi hello-world
+#cat /var/run/docker.pid | xargs kill
+#sleep 10
+#service docker start
 
 rmdir $MNT/lcfs
 mkdir $MNT/lcfs/dir

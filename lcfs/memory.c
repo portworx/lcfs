@@ -13,7 +13,6 @@ static const char *mrequests[] = {
     "INODE",
     "PCACHE",
     "PCLOCK",
-    "ILOCK",
     "EXTENT",
     "BLOCK",
     "PAGE",

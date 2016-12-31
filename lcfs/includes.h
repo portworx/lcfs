@@ -66,7 +66,7 @@ bool lc_hasSpace(struct gfs *gfs, uint64_t blocks);
 void lc_addSpaceExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
                        uint64_t start, uint64_t count, bool sort);
 uint64_t lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount,
-                            bool remove);
+                            bool remove, bool inval);
 uint64_t lc_blockAlloc(struct fs *fs, uint64_t count, bool meta, bool reserve);
 uint64_t lc_blockAllocExact(struct fs *fs, uint64_t count,
                             bool meta, bool reserve);
@@ -77,7 +77,7 @@ void lc_freeLayerDataBlocks(struct fs *fs, uint64_t block, uint64_t count,
                             bool allocated);
 void lc_processFreedBlocks(struct fs *fs, bool remove);
 uint64_t lc_blockFreeExtents(struct fs *fs, struct extent *extents,
-                             bool efree, bool flush, bool layer);
+                             uint8_t flags);
 void lc_replaceMetaBlocks(struct fs *fs, struct extent **extents,
                           uint64_t block, uint64_t count);
 void lc_readExtents(struct gfs *gfs, struct fs *fs);
@@ -174,6 +174,7 @@ void lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page,
                     bool read);
 void lc_releaseReadPages(struct gfs *gfs, struct fs *fs,
                          struct page **pages, uint64_t pcount);
+int lc_invalPage(struct gfs *gfs, struct fs *fs, uint64_t block);
 struct page *lc_getPageNewData(struct fs *fs, uint64_t block);
 void lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
                          struct page *page, uint64_t block);

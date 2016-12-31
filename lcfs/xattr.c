@@ -484,7 +484,7 @@ lc_xattrFree(struct inode *inode) {
     if (inode->i_xattrData == NULL) {
         return;
     }
-    lc_blockFreeExtents(fs, inode->i_xattrExtents, false, false, true);
+    lc_blockFreeExtents(fs, inode->i_xattrExtents, 0);
     xattr = inode->i_xattr;
     while (xattr) {
         tmp = xattr;

@@ -368,7 +368,7 @@ lc_freeInode(struct inode *inode) {
     lc_xattrFree(inode);
     assert(inode->i_xattrData == NULL);
     pthread_rwlock_destroy(&inode->i_rwlock);
-    lc_blockFreeExtents(fs, inode->i_emapDirExtents, false, false, true);
+    lc_blockFreeExtents(fs, inode->i_emapDirExtents, 0);
     lc_free(fs, inode, size, LC_MEMTYPE_INODE);
 }
 
@@ -470,12 +470,12 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
 
             /* Free metadata blocks allocated to the inode */
             lc_blockFreeExtents(fs, inode->i_emapDirExtents,
-                                true, false, true);
+                                LC_EXTENT_EFREE | LC_EXTENT_LAYER);
             inode->i_emapDirExtents = NULL;
             inode->i_emapDirBlock = LC_INVALID_BLOCK;
             if (inode->i_xattrData && inode->i_xattrExtents) {
                 lc_blockFreeExtents(fs, inode->i_xattrExtents,
-                                    true, false, true);
+                                    LC_EXTENT_EFREE | LC_EXTENT_LAYER);
                 inode->i_xattrExtents = NULL;
             }
             inode->i_xattrBlock = LC_INVALID_BLOCK;
@@ -716,13 +716,13 @@ lc_getInodeParent(struct fs *fs, ino_t inum, bool copy, bool exclusive) {
 
                 /* Clone the inode only when modified */
                 /* XXX Reduce the time this lock is held */
-                pthread_mutex_lock(fs->fs_ilock);
+                pthread_mutex_lock(&fs->fs_ilock);
                 inode = lc_lookupInodeCache(fs, inum, hash);
                 if (inode == NULL) {
                     assert(fs->fs_snap == NULL);
                     inode = lc_cloneInode(fs, parent, inum);
                 }
-                pthread_mutex_unlock(fs->fs_ilock);
+                pthread_mutex_unlock(&fs->fs_ilock);
                 lc_inodeLock(inode, exclusive);
             } else {
                 /* XXX Remember this for future lookup */
@@ -760,6 +760,7 @@ lc_getInode(struct fs *fs, ino_t ino, struct inode *handle,
     } else if (handle && !copy) {
         inode = handle;
         assert(inode->i_ino == inum);
+        assert(inode->i_fs->fs_rfs == fs->fs_rfs);
         lc_inodeLock(inode, exclusive);
         return inode;
     }

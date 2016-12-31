@@ -31,7 +31,6 @@ lc_linkParent(struct fs *fs, struct fs *pfs) {
     fs->fs_pcacheSize = pfs->fs_pcacheSize;
     fs->fs_pcacheLocks = pfs->fs_pcacheLocks;
     fs->fs_pcacheLockCount = pfs->fs_pcacheLockCount;
-    fs->fs_ilock = pfs->fs_ilock;
     fs->fs_rfs = pfs->fs_rfs;
 }
 
@@ -107,9 +106,6 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     lc_rootInit(fs, fs->fs_root);
     if (base) {
         lc_pcache_init(fs, LC_PCACHE_SIZE, LC_PCLOCK_COUNT);
-        fs->fs_ilock = lc_malloc(fs, sizeof(pthread_mutex_t),
-                                 LC_MEMTYPE_ILOCK);
-        pthread_mutex_init(fs->fs_ilock, NULL);
         fs->fs_rfs = fs;
     } else {
         dir = fs->fs_rootInode;
@@ -136,7 +132,7 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
         pdir->i_nlink--;
         lc_inodeUnlock(pdir);
         lc_blockFree(gfs, fs, fs->fs_sblock, 1, true);
-        lc_freeLayerBlocks(gfs, fs, true, true);
+        lc_freeLayerBlocks(gfs, fs, true, true, false);
         goto out;
     }
     lc_printf("Created fs with parent %ld root %ld index %d block %ld name %s\n",
@@ -210,11 +206,15 @@ lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name) {
     /* Notify VFS about removal of a directory */
     fuse_lowlevel_notify_delete(gfs->gfs_ch, ino, root,
                                 name, strlen(name));
+
+    /* XXX Dereferencing fs_pcache and other structures from parent layer may
+     * run into trouble if parent layer gets deleted in between.
+     */
     lc_invalidateDirtyPages(gfs, fs);
     lc_invalidateInodePages(gfs, fs);
     lc_invalidateInodeBlocks(gfs, fs);
     lc_blockFree(gfs, fs, fs->fs_sblock, 1, true);
-    lc_freeLayerBlocks(gfs, fs, true, true);
+    lc_freeLayerBlocks(gfs, fs, true, true, fs->fs_parent);
     lc_unlock(fs);
     lc_destroyFs(fs, true);
 

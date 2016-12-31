@@ -223,6 +223,39 @@ lc_releaseReadPages(struct gfs *gfs, struct fs *fs,
     }
 }
 
+/* Invalidate a page if present in cache */
+int
+lc_invalPage(struct gfs *gfs, struct fs *fs, uint64_t block) {
+    struct pcache *pcache = fs->fs_pcache;
+    int hash = lc_pageBlockHash(fs, block);
+    struct page *page = NULL, **prev = &pcache[hash].pc_head;
+
+    if (pcache[hash].pc_head == NULL) {
+        return 0;
+    }
+    lc_pcLockHash(fs, hash);
+    page = pcache[hash].pc_head;
+    while (page) {
+        if (page->p_block == block) {
+            assert(page->p_refCount == 0);
+            *prev = page->p_cnext;
+            page->p_cnext = NULL;
+            page->p_block = LC_INVALID_BLOCK;
+            assert(pcache[hash].pc_pcount > 0);
+            pcache[hash].pc_pcount--;
+            break;
+        }
+        prev = &page->p_cnext;
+        page = page->p_cnext;
+    }
+    lc_pcUnLockHash(fs, hash);
+    if (page) {
+        lc_freePage(gfs, fs, page);
+        return 1;
+    }
+    return 0;
+}
+
 /* Add a page to page block hash list */
 void
 lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
@@ -431,7 +464,9 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
         }
         pthread_mutex_unlock(&fs->fs_plock);
         if (extents) {
-            lc_blockFreeExtents(fs, extents, !fs->fs_removed, false, true);
+            lc_blockFreeExtents(fs, extents,
+                                fs->fs_removed ? 0 :
+                                (LC_EXTENT_EFREE | LC_EXTENT_LAYER));
         }
     }
 }
