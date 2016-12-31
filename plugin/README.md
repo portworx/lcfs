@@ -12,7 +12,6 @@
   in config.json with correct mount point.
 
     ```
-    # cd $GOPATH/github.com/portworx/px-graph/plugin
     # ./setup
     ```
 
@@ -22,10 +21,9 @@
     # /usr/bin/dockerd --experimental -s lcfs
 
     ```
-# Build lcfs plugin code
+# Build lcfs plugin code (V1 plugins - not needed if above method is chosen)
 
     ```
-    # cd $GOPATH/github.com/portworx/px-graph/plugin
     # go build -o lcfs_plugin lcfs_plugin.go
     ```
 

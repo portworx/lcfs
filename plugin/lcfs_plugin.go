@@ -54,13 +54,18 @@ func (p *pDriver) Remove(id string) error {
 func (p *pDriver) Get(id, mountLabel string) (dir string, err error) {
     logrus.Debugf("Graphdriver Get - id %s mountLabel %s", id, mountLabel)
     dir = path.Join(p.home, id)
+    err = ioctl(SnapMount, "", id, p.home)
+    if err != nil {
+        logrus.Errorf("err %v\n", err)
+        return "", err
+    }
     return dir, nil
 }
 
 // Put is kind of unmounting the file system.
 func (p *pDriver) Put(id string) error {
     logrus.Debugf("Graphdriver Put id %s", id)
-    return nil
+    return ioctl(SnapUmount, "", id, p.home)
 }
 
 // Exists checks if the id exists in the filesystem.
@@ -129,13 +134,17 @@ func (d *Driver) Init(home string, options []string, uidMaps, gidMaps []idtools.
 
 // Issue ioctl for various operations
 func (d *Driver) ioctl(cmd int, parent, id string) error {
+    return ioctl(cmd, parent, id, d.home);
+}
+
+func ioctl(cmd int, parent, id, home string) error {
     var op, arg uintptr
     var name string
     var plen int
 
     logrus.Debugf("lcfs ioctl cmd %d parent %s id %s", cmd, parent, id)
     // Open snapshot root directory
-    fd, err := syscall.Open(d.home, syscall.O_DIRECTORY, 0)
+    fd, err := syscall.Open(home, syscall.O_DIRECTORY, 0)
     if err != nil {
         logrus.Errorf("err %v\n", err)
         return err
@@ -292,7 +301,7 @@ func main() {
         logrus.Errorf("reexec.Init failed")
         return;
     }
-    logrus.SetLevel(logrus.DebugLevel)
+    //logrus.SetLevel(logrus.DebugLevel)
     handler := graphPlugin.NewHandler(&Driver{driver: nil, init: Init,
                                       home: "", options: nil})
     logrus.Infof("Starting to serve requests on %s", socketAddress)

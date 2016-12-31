@@ -54,28 +54,13 @@ This file system driver is implemented using fuse low level API.
 
     For debugging, options -f or -d could be specified.
 
-7. Build px-graph/plugin/lcfs_plugin.go after installing the necessary go packages.
-
-    Set up GOPATH and run the following commands.
-
-    ```
-    go get github.com/Sirupsen/logrus github.com/docker/docker/daemon/graphdriver github.com/docker/docker/pkg/archive github.com/docker/docker/pkg/reexec github.com/docker/go-plugins-helpers/graphdriver
-
-    cd ../px-graph/plugin
-    go build -o lcfs_plugin lcfs_plugin.go
-    sudo ./lcfs_plugin
-    ```
-
-8. Stop docker and start docker with arguments "-s lcfs -g 'mnt'".
-
-    `-g` argument is needed only if 'mnt' is not /var/lib/docker.
-
-    These options could be configured in file /etc/default/docker or specified as arguments like "sudo dockerd -g 'mnt' -s lcfs".
-
-9. Run experiments, stop docker, umount - "sudo fusermount -u 'mnt'"
+9. Run experiments, and finally unmount - "sudo fusermount -u 'mnt'"
 
 10. For displaying stats, run "cstat 'id' [-c]" from 'mnt'/lcfs directory.
 
    Make sure fuse mount is running in forground mode (-d/-f option).
 
-   Normally, stats are displayed whenever a layer is unmounted.
+   Normally, stats are displayed whenever a layer is deleted/unmounted.
+
+11. For recreating the file system, unmount it and zero out the first block
+    (4KB) of the device and remount.
