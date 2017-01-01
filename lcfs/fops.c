@@ -1232,15 +1232,8 @@ out:
         if (reserved) {
             __sync_sub_and_fetch(&fs->fs_pcount, pcount - count);
         }
-        count = 0;
-        while (count < pcount) {
-            if (dpages[count].dp_data) {
-                lc_free(fs, dpages[count].dp_data, LC_BLOCK_SIZE,
-                        LC_MEMTYPE_DATA);
-            }
-            count++;
-        }
     }
+    lc_freePages(fs, dpages, pcount);
     lc_statsAdd(fs, LC_WRITE_BUF, err, &start);
     if (!err && (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES)) {
         lc_flushDirtyInodeList(fs, false);

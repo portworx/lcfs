@@ -100,6 +100,11 @@ Access and creation times are not tracked.
 ### Writes
 
 Writes are returned immediately after copying new data to inode page table.
+Zero blocks written to files are detected.  If all data written to a file is
+zeros, then nothing is written to disk and such files do not consume any disk
+space.
+
+Sparse files are supported and files do not consume space on disk for sparse regions.
 
 Writes which are not page aligned do not trigger reading at the time of write, but deferred until application reads the page again or when the page is written to disk. If the page is filled up with subsequent writes, reading of the page from disk can be completely avoided as a whole page could be written down.
 
@@ -135,18 +140,21 @@ Each layer maintains a hash table for its inodes using a hash generated using th
 
 When lookup happens on a file which is not present in a layer’s inode cache, the inode for that file is looked up traversing the parent layer chain until inode found or the base layer is reached in which case the operation is failed with ENOENT.  If the operation does not require a private copy of the inode in the layer (for example, operations which simply reading data like getattr(), read(), readdir() etc),  then the inode from the parent layer is used without instantiating another copy of the inode in the cache.  If the operation involves modifying something, then the inode is copied up and a new instance of the inode is instantiated in inode cache of the layer.
 
-Each regular file inode maintains an array for dirty pages of size 4KB indexed by the page number, for recently written/modified pages, if the file was recently modified.  If the file is bigger than a certain size and not a temporary file, then a hash table is used instead of the array.  These pages are written out when the file is closed in read-only layers, when a file accumulate too many dirty pages, when a layer accumulate too many files with dirty pages or when the file system unmounted/persisted.  Also each regular file inode maintains a list of extents to track emap of the file, if the file is fragmented on disk.
+Each regular file inode maintains an array for dirty pages of size 4KB indexed by the page number, for recently written/modified pages, if the file was recently modified.  If the file is bigger than a certain size and not a temporary file, then a hash table is used instead of the array.  These pages are written out when the file is closed in read-only layers, when a file accumulate too many dirty pages, when a layer accumulate too many files with dirty pages or when the file system unmounted/persisted.  Also each regular file inode maintains a list of extents to track emap of the file, if the file is fragmented on disk.  When blocks of zeroes are written to a file, those do not create separate copies of the zeros in cache.
 
-Blocks can be cached in chunks of size 4KB, called pages in block cache.  Pages are cached until layer is unmounted or layer is deleted.  This block cache has an upper limit for entries and pages are recycled when the cache hits that limit.  The block cache is shared all the layers in a layer chain as data could be shared between layers in the chain.  The block cache maintains a hash table using a hash generated on the block number.
+Blocks can be cached in chunks of size 4KB, called pages in block cache.  Pages are cached until layer is unmounted or layer is deleted.  This block cache has an upper limit for entries and pages are recycled when the cache hits that limit.  The block cache is shared all the layers in a layer tree as data could be shared between layers in the tree.  The block cache maintains a hash table using a hash generated on the block number.
+Pages from the cache are purged under memory pressure and/or when layers are idle for a certain time period.
 
 As the user data is shared, multiple layers sharing the same data will use the same page in block cache, all looking up the data using the same block number.
-Thus there will not be multiple copies of same data in page cache.
+Thus there will not be multiple copies of same data in page cache.  Pages cached in this private block cache is mostly shared data between layers.
+Data which is not shared between layers is still cached in kernel page cache.
 
 ## Data placement
 
 Space for files is not allocated when data is written to the file, but later when dirty data is flushed to disk.  This has a huge advantage that the size of the file is known at the time of space allocation and all the blocks needed for the file can be allocated as single extent if the file system is not fragmented.  With the read-only layers created while populating images, files are written once and never modified and this scheme of deferred allocation helps keeping the files contiguous on disk.  Also temporary files may never get written to disk (large temporary files are created for image tar files).
 
 This also helps when applications are writing to a file randomly and/or if writes are not page aligned.
+Also if writes received on a file are zeroes always, those are not written to disk, thus files full of zeros do not consume any space on disk.
 
 Such a scheme also helps writing out small files after coalescing many of those together.  Similarly, metadata is also placed contigously and written out
 together.
@@ -161,7 +169,10 @@ When space for a file is allocated contiguously as part of flush, the dirty page
 
 If the graphdriver is not shutdown normally, the docker database and layers in the graphdriver need to be consistent.  Also each layer needs to be consistent as well.  As the graphdriver manages both docker database and images/containers, those are kept in consistent state by using checkpointing technologies.  Thus this file system does not have the complexity of journaling schemes typically used in file systems to provide crash consistency.
 
-## Layer Diff (for docker build)
+There are changes to this model with Docker V2 plugins with which docker
+database is no longer managed by lcfs graphdriver.
+
+## Layer Diff (for docker build/commit)
 
 Finding differences between any two layers is simply finding inodes present in layers between the old layer and new layer (inclusive).  As of now, this work is pending and the graphdriver is using the default NaiveDiffDriver.
 

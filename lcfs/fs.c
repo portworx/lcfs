@@ -350,7 +350,10 @@ lc_gfsAlloc(int fd) {
     gfs->gfs_fs = lc_malloc(NULL, sizeof(struct fs *) * LC_LAYER_MAX,
                             LC_MEMTYPE_GFS);
     memset(gfs->gfs_fs, 0, sizeof(struct fs *) * LC_LAYER_MAX);
-    gfs->gfs_roots = lc_malloc(NULL, sizeof(ino_t) * LC_LAYER_MAX, LC_MEMTYPE_GFS);
+    gfs->gfs_roots = lc_malloc(NULL, sizeof(ino_t) * LC_LAYER_MAX,
+                               LC_MEMTYPE_GFS);
+    lc_mallocBlockAligned(NULL, (void **)&gfs->gfs_zPage, LC_MEMTYPE_GFS);
+    memset(gfs->gfs_zPage, 0, LC_BLOCK_SIZE);
     memset(gfs->gfs_roots, 0, sizeof(ino_t) * LC_LAYER_MAX);
     pthread_cond_init(&gfs->gfs_mcond, NULL);
     pthread_mutex_init(&gfs->gfs_lock, NULL);
@@ -368,8 +371,11 @@ lc_gfsDeinit(struct gfs *gfs) {
         close(gfs->gfs_fd);
     }
     assert(gfs->gfs_count == 0);
-    lc_free(NULL, gfs->gfs_fs, sizeof(struct fs *) * LC_LAYER_MAX, LC_MEMTYPE_GFS);
-    lc_free(NULL, gfs->gfs_roots, sizeof(ino_t) * LC_LAYER_MAX, LC_MEMTYPE_GFS);
+    lc_free(NULL, gfs->gfs_zPage, LC_BLOCK_SIZE, LC_MEMTYPE_GFS);
+    lc_free(NULL, gfs->gfs_fs, sizeof(struct fs *) * LC_LAYER_MAX,
+            LC_MEMTYPE_GFS);
+    lc_free(NULL, gfs->gfs_roots, sizeof(ino_t) * LC_LAYER_MAX,
+            LC_MEMTYPE_GFS);
     pthread_cond_destroy(&gfs->gfs_mcond);
     pthread_mutex_destroy(&gfs->gfs_lock);
     pthread_mutex_destroy(&gfs->gfs_alock);

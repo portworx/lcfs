@@ -31,6 +31,9 @@ struct gfs {
     /* Lock protecting global list of file system chain */
     pthread_mutex_t gfs_lock;
 
+    /* Zero page */
+    char *gfs_zPage;
+
     /* fuse channel */
     struct fuse_chan *gfs_ch;
 

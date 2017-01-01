@@ -205,6 +205,8 @@ void lc_invalidateDirtyPages(struct gfs *gfs, struct fs *fs);
 void lc_purgePages(struct gfs *gfs, bool force);
 bool lc_flushInodeDirtyPages(struct inode *inode, uint64_t page, bool unlock,
                              bool force);
+void lc_freePageData(struct gfs *gfs, struct fs *fs, char *data);
+void lc_freePages(struct fs *fs, struct dpage *dpages, uint64_t pcount);
 
 int lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
                    void **fsp);

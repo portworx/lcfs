@@ -36,7 +36,7 @@ lc_freePage(struct gfs *gfs, struct fs *fs, struct page *page) {
     assert(page->p_dnext == NULL);
 
     if (page->p_data) {
-        lc_free(fs->fs_rfs, page->p_data, LC_BLOCK_SIZE, LC_MEMTYPE_DATA);
+        lc_freePageData(gfs, fs->fs_rfs, page->p_data);
     }
     pthread_mutex_destroy(&page->p_dlock);
     lc_free(fs->fs_rfs, page, sizeof(struct page), LC_MEMTYPE_PAGE);
@@ -366,7 +366,7 @@ lc_getPageNew(struct gfs *gfs, struct fs *fs, uint64_t block, char *data) {
 
     assert(page->p_refCount == 1);
     if (page->p_data) {
-        lc_free(fs->fs_rfs, page->p_data, LC_BLOCK_SIZE, LC_MEMTYPE_DATA);
+        lc_freePageData(gfs, fs->fs_rfs, page->p_data);
     }
     page->p_data = data;
     page->p_dvalid = 1;
