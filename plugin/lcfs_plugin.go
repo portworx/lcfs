@@ -303,7 +303,7 @@ func main() {
     handler := graphPlugin.NewHandler(&Driver{driver: nil, init: Init,
                                       home: "", options: nil})
     logrus.Infof("Starting to serve requests on %s", socketAddress)
-    if err := handler.ServeUnix("", socketAddress); err != nil {
+    if err := handler.ServeUnix(socketAddress, 0); err != nil {
         log.Fatalf("Error %v", err)
     }
     for {
