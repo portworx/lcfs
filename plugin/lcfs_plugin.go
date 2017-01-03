@@ -78,10 +78,12 @@ func (p *pDriver) Status() [][2]string {
     logrus.Debugf("Graphdriver Status")
     return nil
 }
+
 func (p *pDriver) GetMetadata(id string) (map[string]string, error) {
     logrus.Debugf("Graphdriver GetMetadata id %s", id)
     return nil, nil
 }
+
 func (p *pDriver) Cleanup() error {
     logrus.Debugf("Graphdriver Cleanup")
     return nil
@@ -133,10 +135,6 @@ func (d *Driver) Init(home string, options []string, uidMaps, gidMaps []idtools.
 }
 
 // Issue ioctl for various operations
-func (d *Driver) ioctl(cmd int, parent, id string) error {
-    return ioctl(cmd, parent, id, d.home);
-}
-
 func ioctl(cmd int, parent, id, home string) error {
     var op, arg uintptr
     var name string
@@ -175,27 +173,27 @@ func ioctl(cmd int, parent, id, home string) error {
 // Create the filesystem with given id.
 func (d *Driver) Create(id string, parent string, mountLabel string, storageOpt map[string]string) error {
     logrus.Debugf("Create - id %s parent %s", id, parent)
-    return d.ioctl(SnapCreate, parent, id)
+    return ioctl(SnapCreate, parent, id, d.home)
 }
 
 // CreateReadWrite creates a layer that is writable for use as a container
 // file system.
 func (d *Driver) CreateReadWrite(id string, parent string, mountLabel string, storageOpt map[string]string) error {
     logrus.Debugf("CreateReadWrite - id %s parent %s", id, parent)
-    return d.ioctl(CloneCreate, parent, id)
+    return ioctl(CloneCreate, parent, id, d.home)
 }
 
 // Remove the layer with given id.
 func (d *Driver) Remove(id string) error {
     logrus.Debugf("Remove - id %s", id)
-    return d.ioctl(SnapRemove, "", id)
+    return ioctl(SnapRemove, "", id, d.home)
 }
 
 // Get the requested layer id.
 func (d *Driver) Get(id, mountLabel string) (string, error) {
     logrus.Debugf("Get - id %s mountLabel %s", id, mountLabel)
     dir := path.Join(d.home, id)
-    err := d.ioctl(SnapMount, "", id)
+    err := ioctl(SnapMount, "", id, d.home)
     if err != nil {
         logrus.Errorf("err %v\n", err)
         return "", err
@@ -206,14 +204,14 @@ func (d *Driver) Get(id, mountLabel string) (string, error) {
 // Put is kind of unmounting the layer
 func (d *Driver) Put(id string) error {
     logrus.Debugf("Put - id %s ", id)
-    return d.ioctl(SnapUmount, "", id)
+    return ioctl(SnapUmount, "", id, d.home)
 }
 
 // Exists returns whether a filesystem layer with the specifie
 // ID exists on this driver.
 func (d *Driver) Exists(id string) bool {
     logrus.Debugf("Exists - id %s", id)
-    err := d.ioctl(SnapStat, "", id)
+    err := ioctl(SnapStat, "", id, d.home)
     return err == nil
 }
 
@@ -235,7 +233,7 @@ func (d *Driver) GetMetadata(id string) (map[string]string, error) {
 // Cleanup unmounts the home directory.
 func (d *Driver) Cleanup() error {
     logrus.Debugf("Cleanup")
-    return d.ioctl(UmountAll, "", "")
+    return ioctl(UmountAll, "", "", d.home)
 }
 
 // Diff produces an archive of the changes between the specified
