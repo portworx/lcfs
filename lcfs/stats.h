@@ -30,13 +30,14 @@ enum lc_stats {
     LC_REMOVEXATTR = 24,
     LC_CREATE = 25,
     LC_WRITE_BUF = 26,
-    LC_CLONE_CREATE = 27,
-    LC_CLONE_REMOVE = 28,
-    LC_MOUNT = 29,
-    LC_STAT = 30,
-    LC_UMOUNT = 31,
-    LC_CLEANUP = 32,
-    LC_REQUEST_MAX = 33,
+    LC_READDIRPLUS = 27,
+    LC_CLONE_CREATE = 28,
+    LC_CLONE_REMOVE = 29,
+    LC_MOUNT = 30,
+    LC_STAT = 31,
+    LC_UMOUNT = 32,
+    LC_CLEANUP = 33,
+    LC_REQUEST_MAX = 34,
 };
 
 /* Structure tracking stats */

@@ -7,7 +7,7 @@
 
 /* Initialize default values in fuse_entry_param structure.
  */
-static void
+void
 lc_epInit(struct fuse_entry_param *ep) {
     assert(ep->ino > LC_ROOT_INODE);
     ep->attr.st_ino = ep->ino;
@@ -17,7 +17,7 @@ lc_epInit(struct fuse_entry_param *ep) {
 }
 
 /* Copy disk inode to stat structure */
-static void
+void
 lc_copyStat(struct stat *st, struct inode *inode) {
     struct dinode *dinode = &inode->i_dinode;
 
@@ -350,6 +350,12 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
         mtime = true;
         ctime = true;
     }
+#ifdef FUSE3
+    if (to_set & FUSE_SET_ATTR_CTIME) {
+        inode->i_dinode.di_ctime = attr->st_ctim;
+        ctime = false;
+    }
+#endif
     if (ctime || mtime) {
         lc_updateInodeTimes(inode, mtime, ctime);
     }
@@ -527,7 +533,11 @@ lc_symlink(fuse_req_t req, const char *link, fuse_ino_t parent,
 /* Rename a file to another (mv) */
 static void
 lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
-           fuse_ino_t newparent, const char *newname) {
+           fuse_ino_t newparent, const char *newname
+#ifdef FUSE3
+           , unsigned int flags
+#endif
+           ) {
     struct inode *inode, *sdir, *tdir = NULL;
     struct timeval start;
     struct fs *fs;
@@ -758,6 +768,7 @@ lc_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     if (err) {
         fuse_reply_err(req, err);
     } else {
+        /* XXX FUSE3 explore returning ENOSYS with FUSE_CAP_NO_OPEN_SUPPORT */
         fuse_reply_open(req, fi);
     }
     lc_statsAdd(fs, LC_OPEN, err, &start);
@@ -909,7 +920,13 @@ lc_release(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     fs = lc_getfs(ino, false);
     lc_releaseInode(req, fs, ino, fi, &inval);
     if (inval) {
-        fuse_lowlevel_notify_inval_inode(gfs->gfs_ch, ino, 0, -1);
+        fuse_lowlevel_notify_inval_inode(
+#ifdef FUSE3
+                                         gfs->gfs_se,
+#else
+                                         gfs->gfs_ch,
+#endif
+                                         ino, 0, -1);
     }
     lc_statsAdd(fs, LC_RELEASE, false, &start);
     lc_unlock(fs);
@@ -965,7 +982,7 @@ lc_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     fs = lc_getfs(ino, false);
     dir = lc_getInode(fs, ino, (struct inode *)fi->fh, false, false);
     if (dir) {
-        lc_dirReaddir(req, fs, dir, ino, size, off, &st);
+        err = lc_dirReaddir(req, fs, dir, ino, size, off, &st);
         lc_inodeUnlock(dir);
     } else {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
@@ -1241,10 +1258,42 @@ out:
     lc_unlock(fs);
 }
 
+#ifdef FUSE3
+/* Readdir with file attributes */
+static void
+lc_readdirplus(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
+               struct fuse_file_info *fi) {
+    struct timeval start;
+    struct inode *dir;
+    struct fs *fs;
+    int err = 0;
+
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, ino, 0, NULL);
+    fs = lc_getfs(ino, false);
+    dir = lc_getInode(fs, ino, (struct inode *)fi->fh, false, false);
+    if (dir) {
+        err = lc_dirReaddir(req, fs, dir, ino, size, off, NULL);
+        lc_inodeUnlock(dir);
+    } else {
+        lc_reportError(__func__, __LINE__, ino, ENOENT);
+        fuse_reply_err(req, ENOENT);
+        err = ENOENT;
+    }
+    lc_statsAdd(fs, LC_READDIRPLUS, err, &start);
+    lc_unlock(fs);
+}
+#endif
+
 /* Initialize a new file system */
 static void
 lc_init(void *userdata, struct fuse_conn_info *conn) {
+#ifdef FUSE3
+    conn->want |= FUSE_CAP_SPLICE_WRITE | FUSE_CAP_SPLICE_MOVE;
+    conn->want &= ~FUSE_CAP_HANDLE_KILLPRIV;
+#else
     conn->want |= FUSE_CAP_IOCTL_DIR;
+#endif
     //ProfilerStart("/tmp/lcfs");
 }
 
@@ -1304,5 +1353,8 @@ struct fuse_lowlevel_ops lc_ll_oper = {
     .forget_multi = lc_forget_multi,
     .flock      = lc_flock,
     .fallocate  = lc_fallocate,
+#endif
+#ifdef FUSE3
+    .readdirplus = lc_readdirplus,
 #endif
 };

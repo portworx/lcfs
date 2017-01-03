@@ -34,8 +34,13 @@ struct gfs {
     /* Zero page */
     char *gfs_zPage;
 
+#ifdef FUSE3
+    /* fuse session */
+    struct fuse_session *gfs_se;
+#else
     /* fuse channel */
     struct fuse_chan *gfs_ch;
+#endif
 
     /* Number of blocks reserved */
     uint64_t gfs_blocksReserved;

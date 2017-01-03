@@ -605,8 +605,13 @@ lc_destroyInodes(struct fs *fs, bool remove) {
             }
             if (remove && !fs->fs_readOnly && inode->i_private &&
                 inode->i_size) {
-                fuse_lowlevel_notify_inval_inode(gfs->gfs_ch, inode->i_ino,
-                                                 0, -1);
+                fuse_lowlevel_notify_inval_inode(
+#ifdef FUSE3
+                                                 gfs->gfs_se,
+#else
+                                                 gfs->gfs_ch,
+#endif
+                                                 inode->i_ino, 0, -1);
             }
             lc_freeInode(inode);
             icount++;

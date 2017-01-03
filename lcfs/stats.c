@@ -31,6 +31,7 @@ static const char *requests[] = {
     "REMOVEXATTR",
     "CREATE",
     "WRITE_BUF",
+    "READDIR_PLUS",
     "CLONE_CREATE",
     "CLONE_REMOVE",
     "MOUNT",

@@ -1,7 +1,12 @@
 #ifndef _INCLUDE_H
 #define _INCLUDE_H
 
+//#define FUSE3
+#ifdef FUSE3
+#define FUSE_USE_VERSION 30
+#else
 #define FUSE_USE_VERSION 29
+#endif
 
 #define _GNU_SOURCE
 
@@ -21,7 +26,7 @@
 #include <assert.h>
 #include <linux/ioctl.h>
 
-//#include <gperftools/profiler.h>
+#include <gperftools/profiler.h>
 
 #include "lcfs.h"
 #include "layout.h"
@@ -130,8 +135,8 @@ void lc_invalidateInodePages(struct gfs *gfs, struct fs *fs);
 ino_t lc_dirLookup(struct fs *fs, struct inode *dir, const char *name);
 void lc_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,
                int nsize);
-void lc_dirReaddir(fuse_req_t req, struct fs *fs, struct inode *dir,
-                   fuse_ino_t ino, size_t size, off_t off, struct stat *st);
+int lc_dirReaddir(fuse_req_t req, struct fs *fs, struct inode *dir,
+                  ino_t parent, size_t size, off_t off, struct stat *st);
 void lc_dirRemove(struct inode *dir, const char *name);
 void lc_dirRename(struct inode *dir, ino_t ino,
                    const char *name, const char *newname);
@@ -210,6 +215,8 @@ void lc_freePages(struct fs *fs, struct dpage *dpages, uint64_t pcount);
 
 int lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
                    void **fsp);
+void lc_epInit(struct fuse_entry_param *ep);
+void lc_copyStat(struct stat *st, struct inode *inode);
 
 void lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
                   const char *value, size_t size, int flags);

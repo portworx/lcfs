@@ -14,6 +14,11 @@ This file system driver is implemented using fuse low level API.
 
    * https://github.com/libfuse/libfuse/releases/download/fuse-2.9.7/fuse-2.9.7.tar.gz
 
+   NOTE: If testing with fuse 3.0 library, download fuse library from the
+   following link:
+
+   * https://github.com/libfuse/libfuse/releases/download/fuse-3.0.0/fuse-3.0.0.tar.gz
+
    b.  Install tools to build fuse:
 
    * **Centos:** 

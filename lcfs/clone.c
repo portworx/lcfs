@@ -209,8 +209,13 @@ lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name) {
                fs->fs_parent ? fs->fs_parent->fs_root : - 1, root, name);
 
     /* Notify VFS about removal of a directory */
-    fuse_lowlevel_notify_delete(gfs->gfs_ch, ino, root,
-                                name, strlen(name));
+    fuse_lowlevel_notify_delete(
+#ifdef FUSE3
+                                gfs->gfs_se,
+#else
+                                gfs->gfs_ch,
+#endif
+                                ino, root, name, strlen(name));
     lc_invalidateDirtyPages(gfs, fs);
     lc_invalidateInodePages(gfs, fs);
     lc_invalidateInodeBlocks(gfs, fs);

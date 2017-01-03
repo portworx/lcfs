@@ -553,15 +553,19 @@ lc_dirRemoveName(struct fs *fs, struct inode *dir,
 }
 
 /* Return directory entries */
-void
+int
 lc_dirReaddir(fuse_req_t req, struct fs *fs, struct inode *dir,
-              fuse_ino_t ino, size_t size, off_t off, struct stat *st) {
+              uint64_t parent, size_t size, off_t off, struct stat *st) {
     bool hashed = (dir->i_flags & LC_INODE_DHASHED);
     struct dirent *dirent = NULL;
+    struct fuse_entry_param ep;
     size_t csize = 0, esize;
-    int max, start;
+    int max, start, gindex;
+    struct fs *nfs = NULL;
+    struct inode *inode;
     char buf[size];
     off_t i, hoff;
+    ino_t ino;
 
     /* FUSE/Kernel takes care of ./.. entries in a directory.
      * See FUSE_CAP_EXPORT_SUPPORT
@@ -594,13 +598,46 @@ lc_dirReaddir(fuse_req_t req, struct fs *fs, struct inode *dir,
         off = 0;
         hoff = (hashed ? i : LC_DIRCACHE_SIZE) << LC_DIRHASH_SHIFT;
         while (dirent != NULL) {
-            assert(dirent->di_ino > LC_ROOT_INODE);
-            st->st_ino = lc_setHandle(lc_getIndex(fs, ino, dirent->di_ino),
-                                      dirent->di_ino);
-            st->st_mode = dirent->di_mode;
-            esize = fuse_add_direntry(req, &buf[csize], size - csize,
-                                      dirent->di_name, st,
-                                      hoff | dirent->di_index);
+            ino = dirent->di_ino;
+            assert(ino > LC_ROOT_INODE);
+            if (st) {
+                st->st_ino = lc_setHandle(lc_getIndex(fs, parent, ino), ino);
+                st->st_mode = dirent->di_mode;
+                esize = fuse_add_direntry(req, &buf[csize], size - csize,
+                                          dirent->di_name, st,
+                                          hoff | dirent->di_index);
+            } else {
+                if (parent == fs->fs_gfs->gfs_snap_root) {
+                    gindex = lc_getIndex(fs, parent, ino);
+                    if (fs->fs_gindex != gindex) {
+                        nfs = lc_getfs(lc_setHandle(gindex, ino), false);
+                    }
+                } else {
+                    gindex = fs->fs_gindex;
+                }
+                inode = lc_getInode(nfs ? nfs : fs, ino, NULL, false, false);
+                if (inode == NULL) {
+                    lc_reportError(__func__, __LINE__, ino, ENOENT);
+                    fuse_reply_err(req, ENOENT);
+                    if (nfs) {
+                        lc_unlock(nfs);
+                    }
+                    return ENOENT;
+                }
+                lc_copyStat(&ep.attr, inode);
+                lc_inodeUnlock(inode);
+                if (nfs) {
+                    lc_unlock(nfs);
+                }
+                nfs = NULL;
+                ep.ino = lc_setHandle(gindex, ino);
+                lc_epInit(&ep);
+#ifdef FUSE3
+                esize = fuse_add_direntry_plus(req, &buf[csize], size - csize,
+                                               dirent->di_name, &ep,
+                                               hoff | dirent->di_index);
+#endif
+            }
             csize += esize;
             if (csize >= size) {
                 csize -= esize;
@@ -618,4 +655,5 @@ out:
         assert(dirent == NULL);
         fuse_reply_buf(req, NULL, 0);
     }
+    return 0;
 }
