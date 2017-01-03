@@ -166,12 +166,12 @@ lc_flushExtentPages(struct gfs *gfs, struct fs *fs, struct page *fpage,
 uint64_t
 lc_blockFreeExtents(struct fs *fs, struct extent *extents, uint8_t flags) {
     bool flush = flags & LC_EXTENT_FLUSH, efree = flags & LC_EXTENT_EFREE;
-    bool layer = flags & LC_EXTENT_LAYER, inval = flags & LC_EXTENT_INVAL;
     uint64_t count = LC_EXTENT_BLOCK, pcount = 0, block, freed = 0;
     struct gfs *gfs = getfs();
     struct fs *rfs = flush ? lc_getGlobalFs(gfs) : NULL;
-    uint64_t estart, ecount, bcount = 0, i;
     struct extent *extent = extents, *tmp;
+    bool layer = flags & LC_EXTENT_LAYER;
+    uint64_t estart, ecount, bcount = 0;
     struct dextentBlock *eblock = NULL;
     struct page *page = NULL;
     struct dextent *dextent;
@@ -200,14 +200,6 @@ lc_blockFreeExtents(struct fs *fs, struct extent *extents, uint8_t flags) {
             estart = lc_getExtentStart(extent);
             ecount = lc_getExtentCount(extent);
             freed += ecount;
-
-            /* XXX This can work only if done from the context of root layer */
-            if (0 && inval && fs->fs_pcache) {
-                assert(!layer);
-                for (i = 0, block = estart; i < ecount; i++, block++) {
-                    bcount += lc_invalPage(gfs, fs, block);
-                }
-            }
             lc_blockFree(gfs, fs, estart, ecount, layer);
         }
         extent = extent->ex_next;
@@ -452,9 +444,7 @@ lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount, bool remove,
         fs->fs_aextents = NULL;
         assert(fs != lc_getGlobalFs(gfs));
         fs->fs_freed += lc_blockFreeExtents(fs, extent,
-                                            remove ?
-                                            (LC_EXTENT_EFREE |
-                                             (inval ? LC_EXTENT_INVAL : 0)) :
+                                            remove ? LC_EXTENT_EFREE :
                                             (LC_EXTENT_FLUSH |
                                              LC_EXTENT_LAYER));
 
@@ -467,9 +457,7 @@ lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount, bool remove,
     }
 
     /* Release any unused reserved blocks */
-    freed = lc_blockFreeExtents(fs, fs->fs_extents,
-                                LC_EXTENT_EFREE |
-                                (inval ? LC_EXTENT_INVAL : 0));
+    freed = lc_blockFreeExtents(fs, fs->fs_extents, LC_EXTENT_EFREE);
     assert(fs->fs_reservedBlocks == freed);
     fs->fs_reservedBlocks -= freed;
     fs->fs_extents = NULL;

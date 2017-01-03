@@ -162,9 +162,9 @@ void lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
 void lc_freeInodeDataBlocks(struct fs *fs, struct inode *inode,
                             struct extent **extents);
 
-void lc_pcache_init(struct fs *fs, uint32_t count, uint32_t lcount);
-void lc_destroy_pages(struct gfs *gfs, struct fs *fs, struct pcache *pcache,
-                      bool remove);
+void lc_bcacheInit(struct fs *fs, uint32_t count, uint32_t lcount);
+void lc_bcacheFree(struct fs *fs);
+void lc_destroyPages(struct gfs *gfs, struct fs *fs, bool remove);
 struct page *lc_getPage(struct fs *fs, uint64_t block, bool read);
 struct page *lc_getPageNoBlock(struct gfs *gfs, struct fs *fs, char *data,
                                struct page *prev);

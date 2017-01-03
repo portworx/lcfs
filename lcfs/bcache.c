@@ -5,7 +5,7 @@ static inline int
 lc_pageBlockHash(struct fs *fs, uint64_t block) {
     assert(block);
     assert(block != LC_INVALID_BLOCK);
-    return block % fs->fs_pcacheSize;
+    return block % fs->fs_bcache->lb_pcacheSize;
 }
 
 /* Allocate a new page */
@@ -22,7 +22,7 @@ lc_newPage(struct gfs *gfs, struct fs *fs) {
     page->p_dnext = NULL;
     page->p_dvalid = 0;
     pthread_mutex_init(&page->p_dlock, NULL);
-    __sync_add_and_fetch(&fs->fs_rfs->fs_tpcount, 1);
+    __sync_add_and_fetch(&fs->fs_bcache->lb_pcount, 1);
     __sync_add_and_fetch(&gfs->gfs_pcount, 1);
     return page;
 }
@@ -40,32 +40,58 @@ lc_freePage(struct gfs *gfs, struct fs *fs, struct page *page) {
     }
     pthread_mutex_destroy(&page->p_dlock);
     lc_free(fs->fs_rfs, page, sizeof(struct page), LC_MEMTYPE_PAGE);
-    __sync_sub_and_fetch(&fs->fs_rfs->fs_tpcount, 1);
+    __sync_sub_and_fetch(&fs->fs_bcache->lb_pcount, 1);
     __sync_sub_and_fetch(&gfs->gfs_pcount, 1);
 }
 
 /* Allocate and initialize page block hash table */
 void
-lc_pcache_init(struct fs *fs, uint32_t count, uint32_t lcount) {
-    struct pcache *pcache;
+lc_bcacheInit(struct fs *fs, uint32_t count, uint32_t lcount) {
+    struct lbcache *lbcache;
     int i;
 
-    pcache = lc_malloc(fs, sizeof(struct pcache) * count, LC_MEMTYPE_PCACHE);
-    memset(pcache, 0, sizeof(struct pcache) * count);
-    fs->fs_pcacheLocks = lc_malloc(fs, sizeof(pthread_mutex_t) * lcount,
-                               LC_MEMTYPE_PCLOCK);
+    lbcache = lc_malloc(fs, sizeof(struct lbcache), LC_MEMTYPE_LBCACHE);
+    lbcache->lb_pcache = lc_malloc(fs, sizeof(struct pcache) * count,
+                                   LC_MEMTYPE_PCACHE);
+    memset(lbcache->lb_pcache, 0, sizeof(struct pcache) * count);
+    lbcache->lb_pcacheLocks = lc_malloc(fs, sizeof(pthread_mutex_t) * lcount,
+                                        LC_MEMTYPE_PCLOCK);
     for (i = 0; i < lcount; i++) {
-        pthread_mutex_init(&fs->fs_pcacheLocks[i], NULL);
+        pthread_mutex_init(&lbcache->lb_pcacheLocks[i], NULL);
     }
-    fs->fs_pcacheLockCount = lcount;
-    fs->fs_pcache = pcache;
-    fs->fs_pcacheSize = count;
+    lbcache->lb_pcacheSize = count;
+    lbcache->lb_pcacheLockCount = lcount;
+    lbcache->lb_refCount = 1;
+    lbcache->lb_pcount = 0;
+    fs->fs_bcache = lbcache;
+}
+
+/* Free bcache structure */
+void
+lc_bcacheFree(struct fs *fs) {
+    struct lbcache *lbcache = fs->fs_bcache;
+    uint32_t i;
+
+    if (fs->fs_parent == NULL) {
+        assert(lbcache->lb_pcount == 0);
+        lc_free(fs, lbcache->lb_pcache,
+                sizeof(struct pcache) * lbcache->lb_pcacheSize,
+                LC_MEMTYPE_PCACHE);
+        for (i = 0; i < lbcache->lb_pcacheLockCount; i++) {
+            pthread_mutex_destroy(&lbcache->lb_pcacheLocks[i]);
+        }
+        lc_free(fs, lbcache->lb_pcacheLocks,
+                sizeof(pthread_mutex_t) * lbcache->lb_pcacheLockCount,
+                LC_MEMTYPE_PCLOCK);
+        lc_free(fs, lbcache, sizeof(struct lbcache), LC_MEMTYPE_LBCACHE);
+    }
+    fs->fs_bcache = NULL;
 }
 
 /* Find the lock hash for the list */
 static inline uint32_t
 lc_lockHash(struct fs *fs, uint64_t hash) {
-    return hash % fs->fs_pcacheLockCount;
+    return hash % fs->fs_bcache->lb_pcacheLockCount;
 }
 
 /* Lock a hash list */
@@ -73,7 +99,7 @@ static void
 lc_pcLockHash(struct fs *fs, uint64_t hash) {
     uint32_t lock = lc_lockHash(fs, hash);
 
-    pthread_mutex_lock(&fs->fs_pcacheLocks[lock]);
+    pthread_mutex_lock(&fs->fs_bcache->lb_pcacheLocks[lock]);
 }
 
 /* Lock a hash list */
@@ -81,40 +107,56 @@ static void
 lc_pcUnLockHash(struct fs *fs, uint64_t hash) {
     uint32_t lock = lc_lockHash(fs, hash);
 
-    pthread_mutex_unlock(&fs->fs_pcacheLocks[lock]);
+    pthread_mutex_unlock(&fs->fs_bcache->lb_pcacheLocks[lock]);
 }
 
 /* Remove pages from page cache and free the hash table */
 void
-lc_destroy_pages(struct gfs *gfs, struct fs *fs, struct pcache *pcache,
-                 bool remove) {
-    uint64_t i, count = 0, pcount;
-    struct page *page;
+lc_destroyPages(struct gfs *gfs, struct fs *fs, bool remove) {
+    uint64_t i, count = 0, pcount, gindex = fs->fs_gindex;
+    struct lbcache *lbcache = fs->fs_bcache;
+    struct page *page, **prev;
+    struct pcache *pcache;
+    bool all;
 
-    for (i = 0; i < fs->fs_pcacheSize; i++) {
+    if (lbcache == NULL) {
+        return;
+    }
+    all = (fs->fs_parent == NULL);
+
+    /* No need to process individual layers during an unmount */
+    /* XXX Disabled for now as this is slowing down layer removals */
+    if (!all && (!remove || true)) {
+        fs->fs_bcache = NULL;
+        return;
+    }
+    pcache = lbcache->lb_pcache;
+    for (i = 0; i < lbcache->lb_pcacheSize; i++) {
         pcount = 0;
         lc_pcLockHash(fs, i);
-        while ((page = pcache[i].pc_head)) {
-            pcache[i].pc_head = page->p_cnext;
-            page->p_block = LC_INVALID_BLOCK;
-            page->p_cnext = NULL;
-            page->p_dvalid = 0;
-            lc_freePage(gfs, fs, page);
-            pcount++;
+        page = pcache[i].pc_head;
+        prev = &pcache[i].pc_head;
+        while (page) {
+            if (all || (page->p_lindex == gindex)) {
+                *prev = page->p_cnext;
+                page->p_block = LC_INVALID_BLOCK;
+                page->p_cnext = NULL;
+                page->p_dvalid = 0;
+                lc_freePage(gfs, fs, page);
+                pcount++;
+            } else {
+                prev = &page->p_cnext;
+            }
+            page = *prev;
         }
-        assert(pcount == pcache[i].pc_pcount);
-        assert(pcache[i].pc_head == NULL);
+        if (all) {
+            assert(pcount == pcache[i].pc_pcount);
+            assert(pcache[i].pc_head == NULL);
+        }
         lc_pcUnLockHash(fs, i);
         count += pcount;
     }
-    lc_free(fs, pcache, sizeof(struct pcache) * fs->fs_pcacheSize,
-            LC_MEMTYPE_PCACHE);
-    for (i = 0; i < fs->fs_pcacheLockCount; i++) {
-        pthread_mutex_destroy(&fs->fs_pcacheLocks[i]);
-    }
-    lc_free(fs, fs->fs_pcacheLocks,
-            sizeof(pthread_mutex_t) * fs->fs_pcacheLockCount,
-            LC_MEMTYPE_PCLOCK);
+    lc_bcacheFree(fs);
     if (count && remove) {
         __sync_add_and_fetch(&gfs->gfs_preused, count);
     }
@@ -124,7 +166,7 @@ lc_destroy_pages(struct gfs *gfs, struct fs *fs, struct pcache *pcache,
 void
 lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page, bool read) {
     struct page *cpage, *prev = NULL, *fpage = NULL, *fprev = NULL;
-    struct pcache *pcache = fs->fs_pcache;
+    struct pcache *pcache = fs->fs_bcache->lb_pcache;
     uint64_t hash, hit, count = 0;
 
     hash = lc_pageBlockHash(fs, page->p_block);
@@ -152,7 +194,8 @@ lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page, bool read) {
 
     /* Free a page if page cache is above limit */
     if ((fpage == NULL) &&
-        (pcache[hash].pc_pcount > (LC_PAGE_MAX / fs->fs_pcacheSize))) {
+        (pcache[hash].pc_pcount >
+         (LC_PAGE_MAX / fs->fs_bcache->lb_pcacheSize))) {
         cpage = pcache[hash].pc_head;
         hit = page->p_hitCount;
 
@@ -226,7 +269,7 @@ lc_releaseReadPages(struct gfs *gfs, struct fs *fs,
 /* Invalidate a page if present in cache */
 int
 lc_invalPage(struct gfs *gfs, struct fs *fs, uint64_t block) {
-    struct pcache *pcache = fs->fs_pcache;
+    struct pcache *pcache = fs->fs_bcache->lb_pcache;
     int hash = lc_pageBlockHash(fs, block);
     struct page *page = NULL, **prev = &pcache[hash].pc_head;
 
@@ -260,12 +303,14 @@ lc_invalPage(struct gfs *gfs, struct fs *fs, uint64_t block) {
 void
 lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
                     struct page *page, uint64_t block) {
-    struct pcache *pcache = fs->fs_pcache;
+    struct pcache *pcache = fs->fs_bcache->lb_pcache;
     int hash = lc_pageBlockHash(fs, block);
     struct page *cpage;
 
     assert(page->p_block == LC_INVALID_BLOCK);
     page->p_block = block;
+    page->p_lindex = fs->fs_gindex;
+    page->p_nocache = true;
     lc_pcLockHash(fs, hash);
     cpage = pcache[hash].pc_head;
 
@@ -288,7 +333,7 @@ lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
 struct page *
 lc_getPage(struct fs *fs, uint64_t block, bool read) {
     int hash = lc_pageBlockHash(fs, block);
-    struct pcache *pcache = fs->fs_pcache;
+    struct pcache *pcache = fs->fs_bcache->lb_pcache;
     struct page *page, *new = NULL;
     struct gfs *gfs = fs->fs_gfs;
     bool hit = false;
@@ -315,6 +360,7 @@ retry:
         page = new;
         new = NULL;
         page->p_block = block;
+        page->p_lindex = fs->fs_gindex;
         page->p_cnext = pcache[hash].pc_head;
         pcache[hash].pc_head = page;
         pcache[hash].pc_pcount++;
@@ -326,6 +372,8 @@ retry:
         new = lc_newPage(gfs, fs);
         assert(!new->p_dvalid);
         goto retry;
+    } else if (page->p_lindex != fs->fs_gindex) {
+        page->p_lindex = 0;
     }
 
     /* If raced with another thread, free the unused page */
@@ -535,20 +583,21 @@ lc_invalidateDirtyPages(struct gfs *gfs, struct fs *fs) {
 /* Purge some pages of a tree of layers */
 static uint64_t
 lc_purgeTreePages(struct gfs *gfs, struct fs *fs, bool force) {
-    struct pcache *pcache = fs->fs_pcache;
+    struct lbcache *lbcache = fs->fs_bcache;
+    struct pcache *pcache = lbcache->lb_pcache;
     struct page *page, *prev, *next;;
     uint64_t i, j, count = 0;
 
     assert(fs->fs_parent == NULL);
-    for (j = 0; j < fs->fs_pcacheSize; j++) {
-        if (fs->fs_tpcount == 0) {
+    for (j = 0; j < lbcache->lb_pcacheSize; j++) {
+        if (lbcache->lb_pcount == 0) {
             break;
         }
         i = fs->fs_purgeIndex++;
-        if (fs->fs_purgeIndex >= fs->fs_pcacheSize) {
+        if (fs->fs_purgeIndex >= lbcache->lb_pcacheSize) {
              fs->fs_purgeIndex = 0;
         }
-        assert(i < fs->fs_pcacheSize);
+        assert(i < lbcache->lb_pcacheSize);
         if (pcache[i].pc_pcount == 0) {
             continue;
         }
@@ -629,7 +678,7 @@ lc_purgePages(struct gfs *gfs, bool force) {
             if (fs->fs_pcount) {
                 lc_flushDirtyInodeList(fs, true);
             }
-            if ((fs->fs_parent == NULL) && fs->fs_tpcount) {
+            if ((fs->fs_parent == NULL) && fs->fs_bcache->lb_pcount) {
                 count += lc_purgeTreePages(gfs, fs, false);
             }
             lc_unlock(fs);
@@ -675,7 +724,7 @@ lc_flusher(void *data) {
         for (i = 1; i <= gfs->gfs_scount; i++) {
             fs = gfs->gfs_fs[i];
             if ((fs == NULL) || !fs->fs_readOnly || fs->fs_snap ||
-                (fs->fs_rfs->fs_tpcount == 0) || (fs->fs_atime >= sec)) {
+                (fs->fs_bcache->lb_pcount == 0) || (fs->fs_atime >= sec)) {
                 continue;
             }
             if (!lc_tryLock(fs, false)) {

@@ -123,16 +123,7 @@ struct fs {
     uint64_t fs_icacheSize;
 
     /* Page block hash table */
-    struct pcache *fs_pcache;
-
-    /* Locks for the page cache lists */
-    pthread_mutex_t *fs_pcacheLocks;
-
-    /* Number of hash lists in pcache */
-    uint32_t fs_pcacheSize;
-
-    /* Number of page cache locks */
-    uint32_t fs_pcacheLockCount;
+    struct lbcache *fs_bcache;
 
     /* Lock serializing inode cloning */
     pthread_mutex_t fs_ilock;
@@ -247,9 +238,6 @@ struct fs {
 
     /* Count of inodes */
     uint64_t fs_icount;
-
-    /* Count of clean pages page cache for the tree */
-    uint64_t fs_tpcount;
 
     /* Count of dirty pages */
     uint64_t fs_pcount;

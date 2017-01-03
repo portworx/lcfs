@@ -36,6 +36,28 @@ struct pcache {
 } __attribute__((packed));
 
 
+/* Block cache for a layer tree */
+struct lbcache {
+
+    /* Block cache hash headers */
+    struct pcache *lb_pcache;
+
+    /* Locks for the page cache lists */
+    pthread_mutex_t *lb_pcacheLocks;
+
+    /* Number of hash lists in pcache */
+    uint32_t lb_pcacheSize;
+
+    /* Number of page cache locks */
+    uint32_t lb_pcacheLockCount;
+
+    /* Count of clean pages */
+    uint64_t lb_pcount;
+
+    /* Reference count */
+    uint32_t lb_refCount;
+} __attribute__((packed));
+
 /* Page structure used for caching a file system block */
 struct page {
 
@@ -43,7 +65,10 @@ struct page {
     char *p_data;
 
     /* Block mapping to */
-    uint64_t p_block;
+    uint64_t p_block:48;
+
+    /* Layer index allocated this block */
+    uint64_t p_lindex:16;
 
     /* Reference count on this page */
     uint32_t p_refCount;

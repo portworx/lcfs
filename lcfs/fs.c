@@ -122,10 +122,8 @@ lc_freeLayer(struct fs *fs, bool remove) {
     assert(fs->fs_pcount == 0);
     assert(!remove || (fs->fs_blocks == fs->fs_freed));
 
-    if (fs->fs_pcache && (fs->fs_parent == NULL)) {
-        lc_destroy_pages(gfs, fs, fs->fs_pcache, remove);
-    }
-    assert(fs->fs_tpcount == 0);
+    lc_destroyPages(gfs, fs, remove);
+    assert(fs->fs_bcache == NULL);
     lc_statsDeinit(fs);
     pthread_mutex_destroy(&fs->fs_ilock);
     pthread_mutex_destroy(&fs->fs_dilock);
@@ -411,7 +409,7 @@ lc_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
         assert(pfs->fs_next == NULL);
         fs->fs_prev = pfs;
         pfs->fs_next = fs;
-        lc_pcache_init(fs, LC_PCACHE_SIZE, LC_PCLOCK_COUNT);
+        lc_bcacheInit(fs, LC_PCACHE_SIZE, LC_PCLOCK_COUNT);
         fs->fs_rfs = fs;
     } else {
 
@@ -527,7 +525,7 @@ lc_mount(char *device, struct gfs **gfsp) {
     fs->fs_root = LC_ROOT_INODE;
     fs->fs_sblock = LC_SUPER_BLOCK;
     fs->fs_rfs = fs;
-    lc_pcache_init(fs, LC_PCACHE_SIZE, LC_PCLOCK_COUNT);
+    lc_bcacheInit(fs, LC_PCACHE_SIZE, LC_PCLOCK_COUNT);
     gfs->gfs_fs[0] = fs;
     gfs->gfs_roots[0] = LC_ROOT_INODE;
 

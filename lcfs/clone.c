@@ -27,10 +27,7 @@ lc_getRootIno(struct fs *fs, const char *name, struct inode *pdir) {
 void
 lc_linkParent(struct fs *fs, struct fs *pfs) {
     fs->fs_parent = pfs;
-    fs->fs_pcache = pfs->fs_pcache;
-    fs->fs_pcacheSize = pfs->fs_pcacheSize;
-    fs->fs_pcacheLocks = pfs->fs_pcacheLocks;
-    fs->fs_pcacheLockCount = pfs->fs_pcacheLockCount;
+    fs->fs_bcache = pfs->fs_bcache;
     fs->fs_rfs = pfs->fs_rfs;
 }
 
@@ -105,7 +102,7 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     }
     lc_rootInit(fs, fs->fs_root);
     if (base) {
-        lc_pcache_init(fs, LC_PCACHE_SIZE, LC_PCLOCK_COUNT);
+        lc_bcacheInit(fs, LC_PCACHE_SIZE, LC_PCLOCK_COUNT);
         fs->fs_rfs = fs;
     } else {
         dir = fs->fs_rootInode;
@@ -123,9 +120,6 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
 
     /* Add this file system to global list of file systems */
     err = lc_addfs(gfs, fs, pfs);
-    if (pfs) {
-        lc_unlock(pfs);
-    }
     if (err) {
         lc_inodeLock(pdir, true);
         lc_dirRemove(pdir, name);
@@ -150,7 +144,6 @@ out:
         fuse_reply_ioctl(req, 0, NULL, 0);
     }
     lc_statsAdd(rfs, LC_CLONE_CREATE, err, &start);
-    lc_unlock(rfs);
     if (fs) {
         if (err) {
             fs->fs_removed = true;
@@ -160,6 +153,10 @@ out:
             lc_unlock(fs);
         }
     }
+    if (pfs) {
+        lc_unlock(pfs);
+    }
+    lc_unlock(rfs);
 }
 
 /* Check if a layer could be removed */
@@ -176,8 +173,8 @@ lc_removeLayer(struct fs *rfs, struct inode *dir, ino_t ino, bool rmdir,
 /* Remove a layer */
 void
 lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name) {
+    struct fs *fs = NULL, *rfs, *bfs = NULL;
     ino_t ino = gfs->gfs_snap_root;
-    struct fs *fs = NULL, *rfs;
     struct inode *pdir = NULL;
     struct timeval start;
     int err = 0;
@@ -197,6 +194,14 @@ lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name) {
     }
     assert(fs->fs_removed);
     lc_inodeUnlock(pdir);
+    if (fs->fs_parent) {
+
+        /* Have the base layer locked so that that will not be deleted before
+         * this layer is freed.
+         */
+        bfs = fs->fs_rfs;
+        lc_lock(bfs, false);
+    }
     fuse_reply_ioctl(req, 0, NULL, 0);
     root = fs->fs_root;
 
@@ -206,10 +211,6 @@ lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name) {
     /* Notify VFS about removal of a directory */
     fuse_lowlevel_notify_delete(gfs->gfs_ch, ino, root,
                                 name, strlen(name));
-
-    /* XXX Dereferencing fs_pcache and other structures from parent layer may
-     * run into trouble if parent layer gets deleted in between.
-     */
     lc_invalidateDirtyPages(gfs, fs);
     lc_invalidateInodePages(gfs, fs);
     lc_invalidateInodeBlocks(gfs, fs);
@@ -217,6 +218,9 @@ lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name) {
     lc_freeLayerBlocks(gfs, fs, true, true, fs->fs_parent);
     lc_unlock(fs);
     lc_destroyFs(fs, true);
+    if (bfs) {
+        lc_unlock(bfs);
+    }
 
 out:
     lc_statsAdd(rfs, LC_CLONE_REMOVE, err, &start);

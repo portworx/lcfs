@@ -11,6 +11,7 @@ static const char *mrequests[] = {
     "DCACHE",
     "ICACHE",
     "INODE",
+    "LBCACHE",
     "PCACHE",
     "PCLOCK",
     "EXTENT",

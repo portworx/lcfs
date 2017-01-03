@@ -1,7 +1,7 @@
 #ifndef _INLINES_H
 #define _INLINES_H
 
-#if 0
+#if 1
 #define lc_printf  printf
 #else
 #define lc_printf(a...)

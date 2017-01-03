@@ -173,6 +173,5 @@ lc_extentAdjacent(uint64_t estart, uint64_t eblock, uint64_t count,
 #define LC_EXTENT_EFREE 0x1  /* Free extents */
 #define LC_EXTENT_FLUSH 0x2  /* Flush extent list to disk */
 #define LC_EXTENT_LAYER 0x4  /* Keep the extents in layer pool */
-#define LC_EXTENT_INVAL 0x8  /* Invalidate extents in block cache */
 
 #endif
