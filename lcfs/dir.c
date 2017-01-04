@@ -636,6 +636,8 @@ lc_dirReaddir(fuse_req_t req, struct fs *fs, struct inode *dir,
                 esize = fuse_add_direntry_plus(req, &buf[csize], size - csize,
                                                dirent->di_name, &ep,
                                                hoff | dirent->di_index);
+#else
+                esize = 0;
 #endif
             }
             csize += esize;

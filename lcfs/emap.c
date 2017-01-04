@@ -64,6 +64,7 @@ lc_inodeEmapLookup(struct gfs *gfs, struct inode *inode, uint64_t page,
     return lc_inodeEmapExtentLookup(gfs, inode, page, extents);
 }
 
+/* Remove specified extent from inode's emap */
 static void
 lc_removeInodeExtents(struct gfs *gfs, struct fs *fs, struct inode *inode,
                       uint64_t page, uint64_t block, uint64_t pcount,
@@ -95,7 +96,9 @@ lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
 
     while (count) {
         if (extent == NULL) {
-            inode->i_dinode.di_blocks += count;
+            if (bstart != LC_PAGE_HOLE) {
+                inode->i_dinode.di_blocks += count;
+            }
             break;
         }
         block = lc_inodeEmapExtentLookup(gfs, inode, page, &extent);
@@ -114,9 +117,13 @@ lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
             } else {
                 bcount++;
             }
+            if (bstart == LC_PAGE_HOLE) {
+                inode->i_dinode.di_blocks--;
+                assert(count == 1);
+            }
 
             /* Check if the last extent has more blocks */
-            if (extent && (page >= lc_getExtentStart(extent)) &&
+            if (extent && (count > 1) && (page >= lc_getExtentStart(extent)) &&
                 (page < (lc_getExtentStart(extent) +
                          lc_getExtentCount(extent)))) {
                 end = lc_getExtentStart(extent) + lc_getExtentCount(extent);
@@ -133,7 +140,7 @@ lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
                     }
                 }
             }
-        } else {
+        } else if (bstart != LC_PAGE_HOLE) {
             inode->i_dinode.di_blocks++;
         }
         page++;
@@ -142,7 +149,9 @@ lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
     if (bcount) {
         lc_removeInodeExtents(gfs, fs, inode, pg, blk, bcount, extents);
     }
-    lc_addEmapExtent(gfs, fs, &inode->i_emap, pstart, bstart, pcount);
+    if (bstart != LC_PAGE_HOLE) {
+        lc_addEmapExtent(gfs, fs, &inode->i_emap, pstart, bstart, pcount);
+    }
 }
 
 /* Expand a single extent to a emap list */
@@ -222,8 +231,12 @@ lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     if (extent) {
         lc_printf("File %ld fragmented\n", inode->i_ino);
     } else {
-        block = inode->i_extentBlock;
         bcount = inode->i_extentLength;
+        if (bcount == 0) {
+            block = LC_INVALID_BLOCK;
+        } else {
+            block = inode->i_extentBlock;
+        }
     }
 
     /* Add emap blocks with emap entries */
@@ -281,6 +294,10 @@ lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
     if (inode->i_extentLength) {
         assert(inode->i_dinode.di_blocks == inode->i_extentLength);
         assert(inode->i_extentBlock != 0);
+        return;
+    }
+    if (inode->i_dinode.di_blocks == 0) {
+        assert(inode->i_extentBlock == LC_INVALID_BLOCK);
         return;
     }
     lc_printf("Inode %ld with fragmented extents, blocks %d\n", inode->i_ino, inode->i_dinode.di_blocks);

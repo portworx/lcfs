@@ -107,6 +107,13 @@ $XATTR
 rm -fr file file1 passwd
 
 ls -ltRi
+
+echo hello > file
+echo foo > file
+cat /etc/passwd > file
+cat /etc/passwd >> file
+rm file
+
 cd -
 
 mkdir $MNT/lcfs

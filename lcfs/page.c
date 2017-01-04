@@ -693,8 +693,9 @@ void
 lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
               bool release, bool unlock) {
     uint64_t count = 0, bcount, start, end = 0, pstart = -1, zcount = 0;
-    uint64_t lpage, pcount = 0, block, tcount = 0, rcount, bstart = -1;
+    uint64_t lpage, pcount = 0, tcount = 0, rcount = 0, bstart = -1;
     struct page *page, *dpage = NULL, *tpage = NULL;
+    uint64_t fcount = 0, block = LC_INVALID_BLOCK;
     struct extent *extents = NULL, *extent, *tmp;
     bool single, nocache;
     char *pdata;
@@ -729,7 +730,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
             break;
         }
         rcount /= 2;
-    } while ((block == LC_INVALID_BLOCK) && rcount);
+    } while (rcount);
     assert(block != LC_INVALID_BLOCK);
     if (bcount != rcount) {
         single = false;
@@ -812,10 +813,17 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
             pcount = 0;
             count = 0;
         }
+        assert(count < rcount);
         pdata = lc_removeDirtyPage(gfs, inode, i, false);
         if (pdata) {
             assert(count < rcount);
             if (!single) {
+                if (pdata == gfs->gfs_zPage) {
+                    lc_inodeEmapUpdate(gfs, fs, inode, i, LC_PAGE_HOLE, 1,
+                                       &extents);
+                    fcount++;
+                    continue;
+                }
                 if (pcount == 0) {
                     pstart = i;
                     bstart = block + count;
@@ -829,8 +837,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
                 } else {
                     pcount++;
                 }
-            }
-            if (pdata == gfs->gfs_zPage) {
+            } else if (pdata == gfs->gfs_zPage) {
                 zcount++;
             }
             page = lc_getPageNew(gfs, fs, block + count, pdata);
@@ -849,7 +856,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
         assert(!single);
         lc_inodeEmapUpdate(gfs, fs, inode, pstart, bstart, pcount, &extents);
     }
-    assert(bcount == tcount);
+    assert(bcount == (tcount + fcount));
     assert(inode->i_dpcount == 0);
 
 out:
@@ -878,13 +885,19 @@ out:
     if (unlock) {
         lc_inodeUnlock(inode);
     }
+    if (tcount > zcount) {
+        lc_memTransferCount(fs, tcount - zcount);
+    }
     if (tcount) {
-        if (tcount > zcount) {
-            lc_memTransferCount(fs, tcount - zcount);
-        }
         lc_addPageForWriteBack(gfs, fs, dpage, tpage, tcount);
+    }
+    tcount += fcount;
+    if (tcount) {
         pcount = __sync_fetch_and_sub(&fs->fs_pcount, tcount);
         assert(pcount >= tcount);
+    }
+    if (rcount > count) {
+        lc_blockFree(gfs, fs, block + count, rcount - count, true);
     }
 }
 
