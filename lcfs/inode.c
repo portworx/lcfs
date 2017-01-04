@@ -646,14 +646,16 @@ lc_cloneRootDir(struct inode *pdir, struct inode *dir) {
 
 /* Clone an inode from a parent layer */
 struct inode *
-lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
+lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino, bool exclusive) {
     bool reg = S_ISREG(parent->i_mode);
     struct inode *inode;
     int flags = 0;
 
     inode = lc_newInode(fs, LC_INVALID_BLOCK, 0, reg, false);
     memcpy(&inode->i_dinode, &parent->i_dinode, sizeof(struct dinode));
-
+    lc_inodeLock(inode, true);
+    lc_addInode(fs, inode);
+    pthread_mutex_unlock(&fs->fs_ilock);
     if (reg) {
         assert(parent->i_page == NULL);
         assert(parent->i_dpcount == 0);
@@ -690,8 +692,11 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino) {
     if (lc_xattrCopy(inode, parent)) {
         flags |= LC_INODE_XATTRDIRTY;
     }
-    lc_addInode(fs, inode);
     lc_markInodeDirty(inode, flags);
+    if (!exclusive) {
+        lc_inodeUnlock(inode);
+        lc_inodeLock(inode, false);
+    }
     __sync_add_and_fetch(&fs->fs_gfs->gfs_clones, 1);
     lc_updateFtypeStats(fs, inode->i_mode, true);
     return inode;
@@ -715,20 +720,20 @@ lc_getInodeParent(struct fs *fs, ino_t inum, bool copy, bool exclusive) {
         if (parent != NULL) {
             assert(!(parent->i_flags & LC_INODE_REMOVED));
             if (copy) {
+                /* Clone the inode only when modified */
+
                 if (fs->fs_icacheSize != csize) {
                     hash = lc_inodeHash(fs, inum);
                 }
-
-                /* Clone the inode only when modified */
-                /* XXX Reduce the time this lock is held */
                 pthread_mutex_lock(&fs->fs_ilock);
                 inode = lc_lookupInodeCache(fs, inum, hash);
                 if (inode == NULL) {
                     assert(fs->fs_snap == NULL);
-                    inode = lc_cloneInode(fs, parent, inum);
+                    inode = lc_cloneInode(fs, parent, inum, exclusive);
+                } else {
+                    pthread_mutex_unlock(&fs->fs_ilock);
+                    lc_inodeLock(inode, exclusive);
                 }
-                pthread_mutex_unlock(&fs->fs_ilock);
-                lc_inodeLock(inode, exclusive);
             } else {
                 /* XXX Remember this for future lookup */
                 inode = parent;

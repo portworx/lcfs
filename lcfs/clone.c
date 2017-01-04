@@ -100,22 +100,14 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
     if (init) {
         fs->fs_super->sb_flags |= LC_SUPER_INIT;
     }
-    lc_rootInit(fs, fs->fs_root);
     if (base) {
-        lc_bcacheInit(fs, LC_PCACHE_SIZE, LC_PCLOCK_COUNT);
         fs->fs_rfs = fs;
     } else {
-        dir = fs->fs_rootInode;
-        dir->i_flags |= LC_INODE_SHARED;
-
-        /* Copy the parent root directory */
         pfs = lc_getfs(pinum, false);
         assert(pfs->fs_pcount == 0);
         pfs->fs_frozen = true;
         assert(pfs->fs_root == lc_getInodeHandle(pinum));
-        lc_cloneRootDir(pfs->fs_rootInode, dir);
         lc_linkParent(fs, pfs);
-        fs->fs_parent = pfs;
     }
 
     /* Add this file system to global list of file systems */
@@ -129,6 +121,17 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
         lc_freeLayerBlocks(gfs, fs, true, true, false);
         goto out;
     }
+    fuse_reply_ioctl(req, 0, NULL, 0);
+    lc_rootInit(fs, fs->fs_root);
+    if (base) {
+        lc_bcacheInit(fs, LC_PCACHE_SIZE, LC_PCLOCK_COUNT);
+    } else {
+        dir = fs->fs_rootInode;
+        dir->i_flags |= LC_INODE_SHARED;
+
+        /* Copy the parent root directory */
+        lc_cloneRootDir(pfs->fs_rootInode, dir);
+    }
     lc_printf("Created fs with parent %ld root %ld index %d block %ld name %s\n",
                pfs ? pfs->fs_root : -1, root, fs->fs_gindex, fs->fs_sblock, name);
 #if 0
@@ -140,8 +143,6 @@ lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
 out:
     if (err) {
         fuse_reply_err(req, err);
-    } else {
-        fuse_reply_ioctl(req, 0, NULL, 0);
     }
     lc_statsAdd(rfs, LC_CLONE_CREATE, err, &start);
     if (fs) {

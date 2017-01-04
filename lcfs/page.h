@@ -45,6 +45,9 @@ struct lbcache {
     /* Locks for the page cache lists */
     pthread_mutex_t *lb_pcacheLocks;
 
+    /* Locks for serializing I/Os */
+    pthread_mutex_t *lb_pioLocks;
+
     /* Number of hash lists in pcache */
     uint32_t lb_pcacheSize;
 
@@ -53,9 +56,6 @@ struct lbcache {
 
     /* Count of clean pages */
     uint64_t lb_pcount;
-
-    /* Reference count */
-    uint32_t lb_refCount;
 } __attribute__((packed));
 
 /* Page structure used for caching a file system block */
@@ -87,10 +87,6 @@ struct page {
 
     /* Next page in file system dirty list */
     struct page *p_dnext;
-
-    /* Lock protecting data read */
-    pthread_mutex_t p_dlock;
-
 };
 
 /* Page structure used for caching dirty pages of an inode
