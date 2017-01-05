@@ -12,13 +12,13 @@ endif
 
 GR_CONTAINER:=px-graph
 
-TARGETS := gr-docker
+TARGETS := gr-docker lcfs-plugin
 
 all: $(TARGETS)
 
 build: docker
 
-clean: gr-clean
+clean: gr-clean lcfs-plugin-clean
 
 deploy: 
 
@@ -72,3 +72,16 @@ gr-clean:
 	@echo "removing $(REPO)$(GR_CONTAINER)"
 	-docker rm -vf $(REPO)$(GR_CONTAINER)
 	-docker rmi $(GR_CONTAINER)_tmp
+
+lcfs-plugin:
+	@echo "Building lcfs plugin"
+	@cd plugin && make
+
+lcfs-plugin-clean:
+	@cd plugin && make clean
+
+vendor:
+	@cd plugin && make vendor
+
+vendor-install:
+	@cd plugin && make vendor-install
