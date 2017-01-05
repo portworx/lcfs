@@ -645,7 +645,7 @@ static uint64_t
 lc_purgeTreePages(struct gfs *gfs, struct fs *fs, bool force) {
     struct lbcache *lbcache = fs->fs_bcache;
     struct pcache *pcache = lbcache->lb_pcache;
-    struct page *page, **prev, *next;;
+    struct page *page, **prev;
     uint64_t i, j, count = 0;
     uint32_t lhash;
 
@@ -666,12 +666,12 @@ lc_purgeTreePages(struct gfs *gfs, struct fs *fs, bool force) {
         }
         lhash = lc_pcLockHash(fs, i);
         prev = &pcache[i].pc_head;
+        page = pcache[i].pc_head;
         while (page) {
 
             /* Free pages if not in use currently */
             if (page->p_refCount == 0) {
                 *prev = page->p_cnext;
-                next = page->p_cnext;
                 page->p_cnext = NULL;
                 page->p_block = LC_INVALID_BLOCK;
                 page->p_dvalid = 0;
@@ -679,7 +679,7 @@ lc_purgeTreePages(struct gfs *gfs, struct fs *fs, bool force) {
                 assert(pcache[i].pc_pcount > 0);
                 pcache[i].pc_pcount--;
                 count++;
-                page = next;
+                page = *prev;
                 continue;
             }
             prev = &page->p_cnext;

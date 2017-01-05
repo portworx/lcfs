@@ -3,7 +3,6 @@
 #define LC_TIMEOUT_SEC  1.0
 
 /* XXX Check return values from fuse_reply_*, for example on interrupt */
-/* XXX Do we need to track lookup counts and forget? */
 
 /* Initialize default values in fuse_entry_param structure.
  */
@@ -1300,10 +1299,7 @@ lc_init(void *userdata, struct fuse_conn_info *conn) {
 /* Destroy a file system */
 static void
 lc_destroy(void *fsp) {
-    struct gfs *gfs = (struct gfs *)fsp;
-
     //ProfilerStop();
-    lc_unmount(gfs);
 }
 
 /* Fuse operations registered with the fuse driver */

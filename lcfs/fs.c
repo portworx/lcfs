@@ -499,6 +499,8 @@ lc_mount(char *device, struct gfs **gfsp) {
     int fd, err;
     int i;
 
+    lc_memoryInit();
+
     /* Open the device for mounting */
     fd = open(device, O_RDWR | O_DIRECT | O_EXCL | O_NOATIME, 0);
     if (fd == -1) {

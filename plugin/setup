@@ -3,8 +3,6 @@ set -x
 rm lcfs_plugin 2>/dev/null
 go build -o lcfs_plugin lcfs_plugin.go
 
-docker plugin disable lcfs 2>/dev/null
-docker plugin rm lcfs 2>/dev/null
 sudo rm -fr rootfs 2>/dev/null 2>/dev/null
 
 docker build -t rootfsimage .

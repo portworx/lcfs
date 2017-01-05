@@ -8,27 +8,10 @@
     ```
 # Create a v2 lcfs graphdriver plugin
 
-  Make sure lcfs file system is mounted at /lcfs or modify field source
-  in config.json with correct mount point.
+  Make sure lcfs file system is mounted at /var/lib/docker
+  (or specify -g argument with a different directory for docker) and
+  /lcfs (or modify field source in config.json with correct mount point).
 
     ```
     # ./setup
-    ```
-
-  Restart docker as shown below.
-
-    ```
-    # /usr/bin/dockerd --experimental -s lcfs
-
-    ```
-# Build lcfs plugin code (V1 plugins - not needed if above method is chosen)
-
-    ```
-    # go build -o lcfs_plugin lcfs_plugin.go
-    ```
-
-  You can run the plugin manually by
-
-    ```
-    # ./lcfs_plugin
     ```
