@@ -2,21 +2,25 @@
 set -x
 
 MNT=/tmp/lcfs-testmountpoint
+MNT2=/tmp/lcfs-testmountpoint2
 LCFS=$PWD/lcfs
 XATTR=$PWD/testxattr
 CSTAT=$PWD/cstat
 
 fusermount -u $MNT 2>/dev/null
+fusermount -u $MNT2 2>/dev/null
 umount -f $MNT 2>/dev/null
+umount -f $MNT2 2>/dev/null
 fusermount -u $MNT 2>/dev/null
-rm -fr $MNT 2>/dev/null
-mkdir $MNT
+fusermount -u $MNT2 2>/dev/null
+rm -fr $MNT $MNT2 2>/dev/null
+mkdir $MNT $MNT2
 
 DEVICE=/tmp/lcfs-testdevice
 rm $DEVICE 2>/dev/null
 dd if=/dev/zero of=$DEVICE count=60000 bs=4096
 
-$LCFS $DEVICE $MNT -f &
+$LCFS $DEVICE $MNT $MNT2 -f &
 sleep 10
 cd $MNT
 
@@ -117,20 +121,21 @@ rm file
 cd -
 
 mkdir $MNT/lcfs
-#service docker stop
-#dockerd -s lcfs -g $MNT 2>/dev/null &
-#sleep 10
-#docker run hello-world
+service docker stop
+../plugin/lcfs_plugin &
+dockerd -s lcfs -g $MNT 2>/dev/null &
+sleep 10
+docker run hello-world
 
 cd $MNT/lcfs
 $CSTAT .
 cd -
 
-#docker ps --all --format {{.ID}} | xargs docker rm
-#docker rmi hello-world
-#cat /var/run/docker.pid | xargs kill
-#sleep 10
-#service docker start
+docker ps --all --format {{.ID}} | xargs docker rm
+docker rmi hello-world
+cat /var/run/docker.pid | xargs kill
+sleep 10
+service docker start
 
 rmdir $MNT/lcfs
 mkdir $MNT/lcfs/dir
@@ -152,9 +157,10 @@ set -x
 cd -
 
 fusermount -u $MNT
+fusermount -u $MNT2
 sleep 10
 
-$LCFS $DEVICE $MNT -f &
+$LCFS $DEVICE $MNT $MNT2 -f &
 sleep 10
 cd $MNT
 ls -ltRi > /dev/null
@@ -172,9 +178,10 @@ rmdir dir
 cd -
 
 fusermount -u $MNT
+fusermount -u $MNT2
 sleep 10
 
-$LCFS $DEVICE $MNT -f &
+$LCFS $DEVICE $MNT $MNT2 -f &
 sleep 10
 cd $MNT
 
@@ -187,8 +194,9 @@ cd -
 df -k $MNT
 df -i $MNT
 fusermount -u $MNT
+fusermount -u $MNT2
 sleep 10
 
-rm -fr $MNT $DEVICE
+rm -fr $MNT $MNT2 $DEVICE
 pkill lcfs_plugin
 wait

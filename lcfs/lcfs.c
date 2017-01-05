@@ -206,10 +206,18 @@ main(int argc, char *argv[]) {
 #else
     char *arg[argc + 1];
     int i, err = -1;
+    struct stat st;
 
     if ((argc < 4) || (argc > 6)) {
         usage(argv[0]);
         exit(EINVAL);
+    }
+
+    /* Make sure mount points exist */
+    if (stat(argv[2], &st) || stat(argv[3], &st)) {
+        perror("stat");
+        usage(argv[0]);
+        exit(errno);
     }
 
     /* XXX Block signals around lc_mount/lc_unmount calls */
