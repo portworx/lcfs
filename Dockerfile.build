@@ -1,11 +1,17 @@
 # vim:set ft=dockerfile ts=4:
-# px-graph build Docker file [201701.05MeV]
+# px-graph build Docker file [201701.06MeV]
 # NOTE: this dockerfile does NOT create a runnable container
 # it builds the lcfs and docker plugin binaries which will be copied out
 # and run in it's own container with a private version of docker
 
 FROM golang
 MAINTAINER Michael Vilain <michael@portworx.com>
+
+# tools to build libfuse for lcfs
+RUN apt-get update && \
+ 	apt-get install -y build-essential util-linux libcurl4-openssl-dev \
+ 			libxml2-dev mime-support libgoogle-perftools-dev
+ 			ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
 
 ADD . /go/src/github.com/portworx/px-graph
 
@@ -17,4 +23,14 @@ RUN go get github.com/Sirupsen/logrus \
 	github.com/docker/docker/pkg/reexec \
 	github.com/docker/go-plugins-helpers/graphdriver
 
+WORKDIR /go/src/github.com/portworx/px-graph/lcfs
+RUN wget https://github.com/libfuse/libfuse/releases/download/fuse-2.9.7/fuse-2.9.7.tar.gz
+RUN tar -xvzf fuse-2.9.7.tar.gz
+WORKDIR fuse-2.9.7
+RUN ./configure && make -j8 && make install
+WORKDIR /go/src/github.com/portworx/px-graph/lcfs
+RUN make
+RUN mv lcfs /tmp/lcfs2.bin
+
+WORKDIR /go/src/github.com/portworx/px-graph/plugin
 RUN go build -o /tmp/lcfs_plugin.bin lcfs_plugin.go
