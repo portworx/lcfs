@@ -45,3 +45,5 @@
 
 For restarting from scratch, stop docker, unmount lcfs, zero out first block
 (4KB) of the device and repeat above steps.
+
+**NOTE**: This driver does not work with docker 1.12 currently.  See JIRA bugs LCFS-10 and LCFS-15.
