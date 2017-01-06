@@ -54,7 +54,7 @@ Anything created under tmp directory in root directory is considered temporary.
 
 ### Layer root directory
 
-There is another directory under which roots of all layers are placed and called layer root directory.  This directory also cannot be removed once created.
+There is another directory under which roots of all layers are placed and called layer root directory.  This directory also cannot be removed once created.  This directory is for internal use and creating files in this directory is not allowed.
 
 ### File handles
 
@@ -87,7 +87,7 @@ Every layer keeps track of space allocated within that layer and all that space 
 
 As for shared space between layers, a layer will free space in the global pool only if the space was originally allocated in the layer, not if the space was inherited from a previous layer.
 
-There should be a minimum size for the device to be formatted/mounted as a file system.  Operations like writes and creating new layers are failed when file system free space goes below a certain threshold.
+There should be a minimum size for the device to be formatted/mounted as a file system.  Operations like writes, file creations and creating new layers are failed when file system free space goes below a certain threshold.
 
 ## File operations
 
