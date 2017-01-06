@@ -14,7 +14,7 @@ lc_readBlock(struct gfs *gfs, struct fs *fs, off_t block, void *dbuf) {
 }
 
 /* Write a file system block */
-int
+void
 lc_writeBlock(struct gfs *gfs, struct fs *fs, void *buf, off_t block) {
     size_t count;
 
@@ -24,11 +24,10 @@ lc_writeBlock(struct gfs *gfs, struct fs *fs, void *buf, off_t block) {
     assert(count == LC_BLOCK_SIZE);
     __sync_add_and_fetch(&gfs->gfs_writes, 1);
     __sync_add_and_fetch(&fs->fs_writes, 1);
-    return 0;
 }
 
 /* Write a scatter gather list of buffers */
-int
+void
 lc_writeBlocks(struct gfs *gfs, struct fs *fs,
                 struct iovec *iov, int iovcnt, off_t block) {
     ssize_t count;
@@ -39,5 +38,4 @@ lc_writeBlocks(struct gfs *gfs, struct fs *fs,
     assert(count != -1);
     __sync_add_and_fetch(&gfs->gfs_writes, 1);
     __sync_add_and_fetch(&fs->fs_writes, 1);
-    return 0;
 }

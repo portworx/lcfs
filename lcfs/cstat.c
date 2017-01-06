@@ -29,7 +29,7 @@ main(int argc, char *argv[]) {
         perror("open");
         exit(errno);
     }
-    err = ioctl(fd, _IOW(0, argc == 2 ? SNAP_STAT : CLEAR_STAT, name),
+    err = ioctl(fd, _IOW(0, argc == 2 ? LAYER_STAT : CLEAR_STAT, name),
                 argv[1]);
     if (err) {
         perror("ioctl");

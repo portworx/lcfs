@@ -150,8 +150,8 @@ lc_lookupInode(struct fs *fs, ino_t ino) {
     if (ino == fs->fs_root) {
         return fs->fs_rootInode;
     }
-    if (ino == gfs->gfs_snap_root) {
-        return gfs->gfs_snap_rootInode;
+    if (ino == gfs->gfs_layerRoot) {
+        return gfs->gfs_layerRootInode;
     }
     return lc_lookupInodeCache(fs, ino, lc_inodeHash(fs, ino));
 }
@@ -181,27 +181,27 @@ lc_rootInit(struct fs *fs, ino_t root) {
     lc_markInodeDirty(dir, LC_INODE_DIRDIRTY);
 }
 
-/* Set up snapshot root inode */
+/* Set up layer root inode */
 void
-lc_setSnapshotRoot(struct gfs *gfs, ino_t ino) {
+lc_setLayerRoot(struct gfs *gfs, ino_t ino) {
     struct inode *dir;
 
     /* Switching layer root is supported just to make tests to run */
-    if (gfs->gfs_snap_root) {
+    if (gfs->gfs_layerRoot) {
         if (gfs->gfs_scount) {
-            printf("Warning: Snapshot root changed when snapshots are present\n");
+            printf("Warning: Layer root changed when layers are present\n");
         }
-        printf("Switching snapshot root from %ld to %ld\n", gfs->gfs_snap_root, ino);
-        gfs->gfs_snap_root = 0;
+        printf("Switching layer root from %ld to %ld\n", gfs->gfs_layerRoot, ino);
+        gfs->gfs_layerRoot = 0;
     }
     dir = lc_getInode(lc_getGlobalFs(gfs), ino, NULL, false, false);
     if (dir) {
-        gfs->gfs_snap_root = ino;
+        gfs->gfs_layerRoot = ino;
         lc_dirConvertHashed(dir->i_fs, dir);
-        gfs->gfs_snap_rootInode = dir;
+        gfs->gfs_layerRootInode = dir;
         lc_inodeUnlock(dir);
     }
-    printf("snapshot root inode %ld\n", ino);
+    printf("layer root inode %ld\n", ino);
 }
 
 /* Read inodes from an inode block */
@@ -251,7 +251,7 @@ lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
 }
 
 /* Initialize inode table of a file system */
-int
+void
 lc_readInodes(struct gfs *gfs, struct fs *fs) {
     uint64_t iblock, block = fs->fs_super->sb_inodeBlock;
     bool flush = false, read = true;
@@ -341,7 +341,6 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
         lc_free(fs, ibuf, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
         lc_free(fs, xbuf, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
     }
-    return 0;
 }
 
 /* Free an inode and associated resources */
@@ -553,7 +552,7 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs) {
         count += lc_flushInode(gfs, fs, inode);
     }
     if (fs == lc_getGlobalFs(gfs)) {
-        inode = gfs->gfs_snap_rootInode;
+        inode = gfs->gfs_layerRootInode;
         if (inode && !fs->fs_removed && lc_inodeDirty(inode)) {
             count += lc_flushInode(gfs, fs, inode);
         }
@@ -728,7 +727,7 @@ lc_getInodeParent(struct fs *fs, ino_t inum, bool copy, bool exclusive) {
                 pthread_mutex_lock(&fs->fs_ilock);
                 inode = lc_lookupInodeCache(fs, inum, hash);
                 if (inode == NULL) {
-                    assert(fs->fs_snap == NULL);
+                    assert(fs->fs_child == NULL);
                     inode = lc_cloneInode(fs, parent, inum, exclusive);
                 } else {
                     pthread_mutex_unlock(&fs->fs_ilock);

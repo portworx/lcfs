@@ -26,7 +26,7 @@
 #include <assert.h>
 #include <linux/ioctl.h>
 
-#include <gperftools/profiler.h>
+//#include <gperftools/profiler.h>
 
 #include "lcfs.h"
 #include "layout.h"
@@ -54,8 +54,8 @@ void lc_displayGlobalMemStats();
 void lc_displayMemStats(struct fs *fs);
 
 void lc_readBlock(struct gfs *gfs, struct fs *fs, off_t block, void *dbuf);
-int lc_writeBlock(struct gfs *gfs, struct fs *fs, void *buf, off_t block);
-int lc_writeBlocks(struct gfs *gfs, struct fs *fs,
+void lc_writeBlock(struct gfs *gfs, struct fs *fs, void *buf, off_t block);
+void lc_writeBlocks(struct gfs *gfs, struct fs *fs,
                     struct iovec *iov, int iovcnt, off_t block);
 
 void lc_addExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
@@ -63,7 +63,7 @@ void lc_addExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
 uint64_t lc_removeExtent(struct fs *fs, struct extent **extents,
                          uint64_t start, uint64_t count);
 void lc_freeExtent(struct gfs *gfs, struct fs *fs, struct extent *extent,
-                   struct extent *prev, struct extent **extents, bool layer);
+                   struct extent **prev, bool layer);
 
 void lc_blockAllocatorInit(struct gfs *gfs, struct fs *fs);
 void lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs);
@@ -89,8 +89,9 @@ void lc_readExtents(struct gfs *gfs, struct fs *fs);
 void lc_displayAllocStats(struct fs *fs);
 
 void lc_superRead(struct gfs *gfs, struct fs *fs, uint64_t block);
-int lc_superWrite(struct gfs *gfs, struct fs *fs);
-void lc_superInit(struct super *super, size_t size, bool global);
+void lc_superWrite(struct gfs *gfs, struct fs *fs);
+void lc_superInit(struct super *super, uint64_t root, size_t size,
+                  uint32_t flags, bool global);
 
 struct fs *lc_getfs(ino_t ino, bool exclusive);
 uint64_t lc_getfsForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp);
@@ -107,7 +108,7 @@ void lc_invalidateInodeBlocks(struct gfs *gfs, struct fs *fs);
 void lc_sync(struct gfs *gfs, struct fs *fs, bool super);
 void lc_unmount(struct gfs *gfs);
 void lc_syncAllLayers(struct gfs *gfs);
-struct fs *lc_newFs(struct gfs *gfs, size_t icsize, bool rw);
+struct fs *lc_newFs(struct gfs *gfs, bool rw);
 void lc_destroyFs(struct fs *fs, bool remove);
 
 void lc_icache_init(struct fs *fs, size_t size);
@@ -115,7 +116,7 @@ void lc_icache_deinit(struct icache *icache);
 ino_t lc_inodeAlloc(struct fs *fs);
 void lc_updateFtypeStats(struct fs *fs, mode_t mode, bool incr);
 void lc_displayFtypeStats(struct fs *fs);
-int lc_readInodes(struct gfs *gfs, struct fs *fs);
+void lc_readInodes(struct gfs *gfs, struct fs *fs);
 void lc_destroyInodes(struct fs *fs, bool remove);
 struct inode *lc_getInode(struct fs *fs, ino_t ino, struct inode *handle,
                            bool copy, bool exclusive);
@@ -124,7 +125,7 @@ struct inode *lc_inodeInit(struct fs *fs, mode_t mode,
                             const char *target);
 void lc_rootInit(struct fs *fs, ino_t root);
 void lc_cloneRootDir(struct inode *pdir, struct inode *dir);
-void lc_setSnapshotRoot(struct gfs *gfs, ino_t ino);
+void lc_setLayerRoot(struct gfs *gfs, ino_t ino);
 void lc_updateInodeTimes(struct inode *inode, bool mtime, bool ctime);
 void lc_syncInodes(struct gfs *gfs, struct fs *fs);
 void lc_inodeLock(struct inode *inode, bool exclusive);
@@ -230,10 +231,10 @@ void lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
 void lc_xattrFree(struct inode *inode);
 
 void lc_linkParent(struct fs *fs, struct fs *pfs);
-void lc_newClone(fuse_req_t req, struct gfs *gfs, const char *name,
-                  const char *parent, size_t size, bool rw);
-void lc_removeClone(fuse_req_t req, struct gfs *gfs, const char *name);
-void lc_snapIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
+void lc_newLayer(fuse_req_t req, struct gfs *gfs, const char *name,
+                 const char *parent, size_t size, bool rw);
+void lc_removeLayer(fuse_req_t req, struct gfs *gfs, const char *name);
+void lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
                   enum ioctl_cmd cmd);
 
 void lc_statsNew(struct fs *fs);

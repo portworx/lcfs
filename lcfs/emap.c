@@ -6,11 +6,14 @@ lc_addEmapExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
                  uint64_t page, uint64_t block, uint64_t count) {
     uint64_t ecount;
 
+    /* Break up the extent if it is too big to fit */
     while (count) {
         ecount = count;
         if (ecount > LC_EXTENT_EMAP_MAX) {
             ecount = LC_EXTENT_EMAP_MAX;
         }
+
+        /* XXX Remember last extent added and continue from there */
         lc_addExtent(gfs, fs, extents, page, block, ecount, true);
         page += ecount;
         block += ecount;
@@ -24,9 +27,14 @@ lc_inodeEmapExtentLookup(struct gfs *gfs, struct inode *inode, uint64_t page,
                          struct extent **extents) {
     struct extent *extent = extents ? *extents : inode->i_emap;
 
+    /* Continue searching from last extent if there is one, otherwise from the
+     * beginning.
+     */
     while (extent) {
         assert(extent->ex_type == LC_EXTENT_EMAP);
         lc_validateExtent(gfs, extent);
+
+        /* Extent list is sorted, so stop when a later page is found */
         if (page < lc_getExtentStart(extent)) {
             if (extents) {
                 *extents = extent;
@@ -64,16 +72,21 @@ lc_inodeEmapLookup(struct gfs *gfs, struct inode *inode, uint64_t page,
     return lc_inodeEmapExtentLookup(gfs, inode, page, extents);
 }
 
-/* Remove specified extent from inode's emap */
+/* Remove specified extent from inode's emap and free blocks */
 static void
 lc_removeInodeExtents(struct gfs *gfs, struct fs *fs, struct inode *inode,
                       uint64_t page, uint64_t block, uint64_t pcount,
                       struct extent **extents) {
     uint64_t count = pcount, blk = block, pg = page, ecount;
 
+    /* There could be multiple extents if the pcount is bigger than what a
+     * single extent could store.
+     */
     while (count) {
         ecount = lc_removeExtent(fs, &inode->i_emap, pg, count);
         assert(ecount <= count);
+
+        /* Add the extent to a list for deferred freeing */
         lc_addSpaceExtent(gfs, fs, extents, blk, ecount, false);
         pg += ecount;
         blk += ecount;
@@ -94,7 +107,10 @@ lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
     assert(inode->i_extentLength == 0);
     assert(count);
 
+    /* Remove existing blocks for the specified range from inode emap */
     while (count) {
+
+        /* If there are no more extents, nothing more to do */
         if (extent == NULL) {
             if (bstart != LC_PAGE_HOLE) {
                 inode->i_dinode.di_blocks += count;
@@ -103,10 +119,16 @@ lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
         }
         block = lc_inodeEmapExtentLookup(gfs, inode, page, &extent);
         if (block != LC_PAGE_HOLE) {
+
+            /* Remove the block */
             if (bcount == 0) {
                 pg = page;
                 blk = block;
             }
+
+            /* If this block is not contiguous to the previous one, free up the
+             * ones we have accumulated so far.
+             */
             if ((blk + bcount) != block) {
                 lc_removeInodeExtents(gfs, fs, inode, pg, blk, bcount,
                                       extents);
@@ -117,12 +139,16 @@ lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
             } else {
                 bcount++;
             }
+
+            /* Decrement total block counting if punching a hole */
             if (bstart == LC_PAGE_HOLE) {
                 inode->i_dinode.di_blocks--;
                 assert(count == 1);
             }
 
-            /* Check if the last extent has more blocks */
+            /* Check if the last extent has more blocks mapping to the
+             * specified range of pages
+             */
             if (extent && (count > 1) && (page >= lc_getExtentStart(extent)) &&
                 (page < (lc_getExtentStart(extent) +
                          lc_getExtentCount(extent)))) {
@@ -133,6 +159,8 @@ lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
                         ecount = count;
                     }
                     if (ecount) {
+
+                        /* Consume rest of the extent and continue */
                         bcount += (ecount - 1);
                         page += ecount;
                         count -= ecount;
@@ -141,6 +169,10 @@ lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
                 }
             }
         } else if (bstart != LC_PAGE_HOLE) {
+
+            /* Increment total block count when a new block allocated for a
+             * page which did not have a block before.
+             */
             inode->i_dinode.di_blocks++;
         }
         page++;
@@ -149,12 +181,14 @@ lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
     if (bcount) {
         lc_removeInodeExtents(gfs, fs, inode, pg, blk, bcount, extents);
     }
+
+    /* Add newly allocated blocks unless punching a hole */
     if (bstart != LC_PAGE_HOLE) {
         lc_addEmapExtent(gfs, fs, &inode->i_emap, pstart, bstart, pcount);
     }
 }
 
-/* Expand a single extent to a emap list */
+/* Expand a single direct extent to an emap list */
 void
 lc_expandEmap(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     assert(S_ISREG(inode->i_mode));
@@ -166,7 +200,7 @@ lc_expandEmap(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     lc_markInodeDirty(inode, LC_INODE_EMAPDIRTY);
 }
 
-/* Create a new emap extent list for the inode, copying existing emap list */
+/* Create a new emap extent list for the inode, copying emap list of parent */
 void
 lc_copyEmap(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     struct extent *extent = inode->i_emap;
@@ -177,6 +211,8 @@ lc_copyEmap(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     while (extent) {
         assert(extent->ex_type == LC_EXTENT_EMAP);
         lc_validateExtent(gfs, extent);
+
+        /* XXX Remember last extent added and continue from there */
         lc_addEmapExtent(gfs, fs, &inode->i_emap, lc_getExtentStart(extent),
                          lc_getExtentBlock(extent), lc_getExtentCount(extent));
         extent = extent->ex_next;
@@ -193,6 +229,8 @@ lc_flushEmapBlocks(struct gfs *gfs, struct fs *fs,
     struct emapBlock *bblock;
 
     block = lc_blockAllocExact(fs, pcount, true, true);
+
+    /* Link the blocks together */
     while (page) {
         count--;
         lc_addPageBlockHash(gfs, fs, page, block + count);
@@ -226,6 +264,8 @@ lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         inode->i_flags &= ~LC_INODE_EMAPDIRTY;
         return;
     }
+
+    /* Flush all the dirty pages */
     lc_flushPages(gfs, fs, inode, true, false);
     extent = inode->i_emap;
     if (extent) {
@@ -269,6 +309,8 @@ lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         block = lc_flushEmapBlocks(gfs, fs, page, pcount);
         lc_replaceMetaBlocks(fs, &inode->i_emapDirExtents, block, pcount);
     }
+
+    /* Store the first emap block information in inode */
     inode->i_emapDirBlock = block;
     assert(inode->i_flags & LC_INODE_DIRTY);
     inode->i_flags &= ~LC_INODE_EMAPDIRTY;
@@ -284,8 +326,10 @@ lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
     uint64_t block;
 
     assert(S_ISREG(inode->i_mode));
-    if (inode->i_size == 0) {
-        assert(inode->i_dinode.di_blocks == 0);
+
+    /* Nothing to read for an empty file */
+    assert(inode->i_size || (inode->i_dinode.di_blocks == 0));
+    if (inode->i_dinode.di_blocks == 0) {
         assert(inode->i_extentLength == 0);
         return;
     }
@@ -296,18 +340,18 @@ lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
         assert(inode->i_extentBlock != 0);
         return;
     }
-    if (inode->i_dinode.di_blocks == 0) {
-        assert(inode->i_extentBlock == LC_INVALID_BLOCK);
-        return;
-    }
+
     lc_printf("Inode %ld with fragmented extents, blocks %d\n", inode->i_ino, inode->i_dinode.di_blocks);
     bcount = inode->i_dinode.di_blocks;
     inode->i_dinode.di_blocks = 0;
     block = inode->i_emapDirBlock;
+
+    /* Read emap blocks */
     while (block != LC_INVALID_BLOCK) {
-        //lc_printf("Reading emap block %ld\n", block);
         lc_addSpaceExtent(gfs, fs, &inode->i_emapDirExtents, block, 1, false);
         lc_readBlock(gfs, fs, block, bblock);
+
+        /* Process emap entries from the emap block */
         for (i = 0; i < LC_EMAP_BLOCK; i++) {
             emap = &bblock->eb_emap[i];
             if (emap->e_block == 0) {
@@ -315,6 +359,8 @@ lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
             }
             assert(emap->e_count > 0);
             //lc_printf("page %ld at block %ld count %d\n", emap->e_off, emap->e_block, emap->e_count);
+
+            /* XXX Remember last extent added and continue from there */
             lc_addEmapExtent(gfs, fs, &inode->i_emap,
                              emap->e_off, emap->e_block, emap->e_count);
             inode->i_dinode.di_blocks += emap->e_count;
@@ -343,8 +389,10 @@ lc_freeInodeDataBlocks(struct fs *fs, struct inode *inode,
 void
 lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
                 size_t size, uint64_t pg, bool remove, bool *truncated) {
-    struct extent *extents = NULL, *extent, *prev, *next;
+    struct extent *extents = NULL, *extent, **prev, *next;
     uint64_t bcount = 0, estart, ecount, eblock, freed;
+
+    assert(remove || (size == 0));
 
     /* Take care of files with single extent */
     if (remove && inode->i_extentLength) {
@@ -355,12 +403,16 @@ lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
             lc_expandEmap(gfs, fs, inode);
         } else {
             if (inode->i_extentLength > pg) {
+
+                /* Trim the extent */
                 bcount = inode->i_extentLength - pg;
                 lc_addSpaceExtent(gfs, fs, &extents,
                                   inode->i_extentBlock + pg, bcount, false);
                 inode->i_extentLength = pg;
             }
             if (inode->i_extentLength == 0) {
+
+                /* If the whole extent is freed, then reset start block */
                 inode->i_extentBlock = 0;
             }
         }
@@ -368,13 +420,15 @@ lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
 
     /* Remove blockmap entries past the new size */
     if (inode->i_emap) {
-        prev = NULL;
+        prev = &inode->i_emap;
         extent = inode->i_emap;
         while (extent) {
             assert(extent->ex_type == LC_EXTENT_EMAP);
             lc_validateExtent(gfs, extent);
             if (!remove) {
-                lc_freeExtent(gfs, fs, extent, NULL, &inode->i_emap, true);
+
+                /* Free the extent and continue on unmount */
+                lc_freeExtent(gfs, fs, extent, &inode->i_emap, true);
                 extent = inode->i_emap;
                 continue;
             }
@@ -383,9 +437,11 @@ lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
             eblock = lc_getExtentBlock(extent);
             next = extent->ex_next;
             if (pg < estart) {
+
+                /* Free blocks mapping to pages past the new size */
                 bcount += ecount;
                 lc_addSpaceExtent(gfs, fs, &extents, eblock, ecount, false);
-                lc_freeExtent(gfs, fs, extent, prev, &inode->i_emap, true);
+                lc_freeExtent(gfs, fs, extent, prev, true);
             } else if (pg < (estart + ecount)) {
                 freed = (estart + ecount) - pg;
                 if ((size % LC_BLOCK_SIZE) != 0) {
@@ -396,22 +452,27 @@ lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
                     *truncated = true;
                 }
                 if (freed) {
+
+                    /* Trim the extent */
                     bcount += freed;
                     lc_addSpaceExtent(gfs, fs, &extents,
                                       eblock + ecount - freed, freed, false);
                     if (freed == ecount) {
-                        lc_freeExtent(gfs, fs, extent, prev, &inode->i_emap,
-                                      true);
+
+                        /* Free the whole extent */
+                        lc_freeExtent(gfs, fs, extent, prev, true);
                     } else {
                         lc_decrExtentCount(gfs, extent, freed);
-                        prev = extent;
+                        prev = &extent->ex_next;
                     }
                 } else {
-                    prev = extent;
+                    prev = &extent->ex_next;
                 }
             } else {
+
+                /* Keep this extent */
                 assert(bcount == 0);
-                prev = extent;
+                prev = &extent->ex_next;
             }
             extent = next;
         }
@@ -429,6 +490,8 @@ lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
         assert((inode->i_dinode.di_blocks == 0) || !remove);
         assert(inode->i_emap == NULL);
         if (remove) {
+
+            /* This inode is not sharing any blocks with its parents */
             inode->i_private = true;
         }
     }

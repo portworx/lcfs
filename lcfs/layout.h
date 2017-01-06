@@ -53,11 +53,11 @@ struct super {
     /* Inode start block */
     uint64_t sb_inodeBlock;
 
-    /* Next snapshot in sibling chain */
-    uint64_t sb_nextSnap;
+    /* Next layer in sibling chain */
+    uint64_t sb_nextLayer;
 
-    /* First child snapshot */
-    uint64_t sb_childSnap;
+    /* First child layer */
+    uint64_t sb_childLayer;
 
     /* CRC of this block */
     uint32_t sb_crc;

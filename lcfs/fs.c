@@ -2,7 +2,7 @@
 
 /* Allocate a new file system structure */
 struct fs *
-lc_newFs(struct gfs *gfs, size_t icsize, bool rw) {
+lc_newFs(struct gfs *gfs, bool rw) {
     struct fs *fs = lc_malloc(NULL, sizeof(struct fs), LC_MEMTYPE_GFS);
     time_t t;
 
@@ -17,8 +17,6 @@ lc_newFs(struct gfs *gfs, size_t icsize, bool rw) {
     pthread_mutex_init(&fs->fs_dilock, NULL);
     pthread_mutex_init(&fs->fs_alock, NULL);
     pthread_rwlock_init(&fs->fs_rwlock, NULL);
-    lc_icache_init(fs, icsize);
-    lc_statsNew(fs);
     __sync_add_and_fetch(&gfs->gfs_count, 1);
     return fs;
 }
@@ -149,7 +147,7 @@ lc_destroyFs(struct fs *fs, bool remove) {
 }
 
 /* Lock a file system in shared while starting a request.
- * File system is locked in exclusive mode while taking/deleting snapshots.
+ * File system is locked in exclusive mode while taking/deleting layers.
  */
 void
 lc_lock(struct fs *fs, bool exclusive) {
@@ -183,8 +181,8 @@ lc_getIndex(struct fs *nfs, ino_t parent, ino_t ino) {
     int i, gindex = nfs->fs_gindex;
     ino_t root;
 
-    /* Snapshots are allowed in one directory right now */
-    if ((gindex == 0) && gfs->gfs_scount && (parent == gfs->gfs_snap_root)) {
+    /* Layers are allowed in one directory right now */
+    if ((gindex == 0) && gfs->gfs_scount && (parent == gfs->gfs_layerRoot)) {
         root = lc_getInodeHandle(ino);
         assert(lc_globalRoot(ino));
         for (i = 1; i <= gfs->gfs_scount; i++) {
@@ -234,7 +232,7 @@ lc_getfsForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
         lc_reportError(__func__, __LINE__, root, EINVAL);
         return EINVAL;
     }
-    if (fs->fs_snap) {
+    if (fs->fs_child) {
         pthread_mutex_unlock(&gfs->gfs_lock);
         lc_reportError(__func__, __LINE__, root, EEXIST);
         return EEXIST;
@@ -249,21 +247,21 @@ lc_getfsForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
     }
     fs->fs_gindex = -1;
     pfs = fs->fs_parent;
-    if (pfs && (pfs->fs_snap == fs)) {
+    if (pfs && (pfs->fs_child == fs)) {
 
         /* Parent points to this layer */
-        pfs->fs_snap = fs->fs_next;
+        pfs->fs_child = fs->fs_next;
         if (fs->fs_next) {
             fs->fs_next->fs_prev = NULL;
         }
-        pfs->fs_super->sb_childSnap = fs->fs_super->sb_nextSnap;
+        pfs->fs_super->sb_childLayer = fs->fs_super->sb_nextLayer;
         pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
     } else {
 
         /* Remove from the common parent list */
         nfs = fs->fs_prev;
         nfs->fs_next = fs->fs_next;
-        nfs->fs_super->sb_nextSnap = fs->fs_super->sb_nextSnap;
+        nfs->fs_super->sb_nextLayer = fs->fs_super->sb_nextLayer;
         nfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
         if (fs->fs_next) {
             fs->fs_next->fs_prev = fs->fs_prev;
@@ -279,7 +277,7 @@ lc_getfsForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
 /* Add a file system to global list of file systems */
 int
 lc_addfs(struct gfs *gfs, struct fs *fs, struct fs *pfs) {
-    struct fs *snap, *rfs = fs->fs_rfs;
+    struct fs *child, *rfs = fs->fs_rfs;
     int i;
 
     fs->fs_sblock = lc_blockAllocExact(fs, 1, true, false);
@@ -309,22 +307,22 @@ lc_addfs(struct gfs *gfs, struct fs *fs, struct fs *pfs) {
         printf("Too many layers.  Retry after remount or deleting some.\n");
         return EOVERFLOW;
     }
-    snap = pfs ? pfs->fs_snap : lc_getGlobalFs(gfs);
+    child = pfs ? pfs->fs_child : lc_getGlobalFs(gfs);
 
-    /* Add this file system to the snapshot list or root file systems list */
-    if (snap) {
-        fs->fs_prev = snap;
-        if (snap->fs_next) {
-            snap->fs_next->fs_prev = fs;
+    /* Add this file system to the layer list or root file systems list */
+    if (child) {
+        fs->fs_prev = child;
+        if (child->fs_next) {
+            child->fs_next->fs_prev = fs;
         }
-        fs->fs_next = snap->fs_next;
-        snap->fs_next = fs;
-        fs->fs_super->sb_nextSnap = snap->fs_super->sb_nextSnap;
-        snap->fs_super->sb_nextSnap = fs->fs_sblock;
-        snap->fs_super->sb_flags |= LC_SUPER_DIRTY;
+        fs->fs_next = child->fs_next;
+        child->fs_next = fs;
+        fs->fs_super->sb_nextLayer = child->fs_super->sb_nextLayer;
+        child->fs_super->sb_nextLayer = fs->fs_sblock;
+        child->fs_super->sb_flags |= LC_SUPER_DIRTY;
     } else if (pfs) {
-        pfs->fs_snap = fs;
-        pfs->fs_super->sb_childSnap = fs->fs_sblock;
+        pfs->fs_child = fs;
+        pfs->fs_super->sb_childLayer = fs->fs_sblock;
         pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
     }
     pthread_mutex_unlock(&gfs->gfs_lock);
@@ -334,7 +332,7 @@ lc_addfs(struct gfs *gfs, struct fs *fs, struct fs *pfs) {
 /* Format a file system by initializing its super block */
 static void
 lc_format(struct gfs *gfs, struct fs *fs, size_t size) {
-    lc_superInit(gfs->gfs_super, size, true);
+    lc_superInit(gfs->gfs_super, LC_ROOT_INODE, size, LC_SUPER_RDWR, true);
     lc_blockAllocatorInit(gfs, fs);
     lc_rootInit(fs, fs->fs_root);
 }
@@ -363,9 +361,12 @@ lc_gfsAlloc(int fd) {
 /* Free resources allocated for the global file system */
 static void
 lc_gfsDeinit(struct gfs *gfs) {
+    int err;
+
     assert(gfs->gfs_pcount == 0);
     if (gfs->gfs_fd) {
-        fsync(gfs->gfs_fd);
+        err = fsync(gfs->gfs_fd);
+        assert(err == 0);
         close(gfs->gfs_fd);
     }
     assert(gfs->gfs_count == 0);
@@ -388,7 +389,9 @@ lc_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
 
     /* XXX Size the icache based on inodes allocated in layer */
     icsize = (child || pfs->fs_parent) ? LC_ICACHE_SIZE : LC_ICACHE_SIZE_MAX;
-    fs = lc_newFs(gfs, icsize, true);
+    fs = lc_newFs(gfs, true);
+    lc_icache_init(fs, icsize);
+    lc_statsNew(fs);
     fs->fs_sblock = block;
     lc_superRead(gfs, fs, block);
     if (fs->fs_super->sb_flags & LC_SUPER_RDWR) {
@@ -398,8 +401,8 @@ lc_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
     if (child) {
 
         /* First child layer of the parent */
-        assert(pfs->fs_snap == NULL);
-        pfs->fs_snap = fs;
+        assert(pfs->fs_child == NULL);
+        pfs->fs_child = fs;
         pfs->fs_frozen = true;
         lc_linkParent(fs, pfs);
         fs->fs_parent = pfs;
@@ -442,25 +445,25 @@ lc_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
 
 /* Initialize all file systems from disk */
 static void
-lc_initSnapshots(struct gfs *gfs, struct fs *pfs) {
+lc_initLayers(struct gfs *gfs, struct fs *pfs) {
     struct fs *fs, *nfs = pfs;
     uint64_t block;
 
-    /* Initialize all snapshots of the same parent */
-    block = pfs->fs_super->sb_nextSnap;
+    /* Initialize all layers of the same parent */
+    block = pfs->fs_super->sb_nextLayer;
     while (block) {
         fs = lc_initfs(gfs, nfs, block, false);
         nfs = fs;
-        block = fs->fs_super->sb_nextSnap;
+        block = fs->fs_super->sb_nextLayer;
     }
 
-    /* Now initialize all the child snapshots */
+    /* Now initialize all the child layers */
     nfs = pfs;
     while (nfs) {
-        block = nfs->fs_super->sb_childSnap;
+        block = nfs->fs_super->sb_childLayer;
         if (block) {
             fs = lc_initfs(gfs, nfs, block, true);
-            lc_initSnapshots(gfs, fs);
+            lc_initLayers(gfs, fs);
         }
         nfs = nfs->fs_next;
     }
@@ -481,12 +484,12 @@ lc_setupSpecialInodes(struct gfs *gfs, struct fs *fs) {
     if (ino != LC_INVALID_INODE) {
         dir = lc_getInode(lc_getGlobalFs(gfs), ino, NULL, false, false);
         if (dir) {
-            gfs->gfs_snap_root = ino;
+            gfs->gfs_layerRoot = ino;
             lc_dirConvertHashed(fs, dir);
-            gfs->gfs_snap_rootInode = dir;
+            gfs->gfs_layerRootInode = dir;
             lc_inodeUnlock(dir);
         }
-        printf("snapshot root %ld\n", ino);
+        printf("layer root %ld\n", ino);
     }
 }
 
@@ -496,8 +499,7 @@ lc_mount(char *device, struct gfs **gfsp) {
     struct gfs *gfs;
     struct fs *fs;
     size_t size;
-    int fd, err;
-    int i;
+    int i, fd;
 
     lc_memoryInit();
 
@@ -523,7 +525,9 @@ lc_mount(char *device, struct gfs **gfsp) {
 
     /* Initialize a file system structure in memory */
     /* XXX Recreate file system after abnormal shutdown for now */
-    fs = lc_newFs(gfs, LC_ICACHE_SIZE_MAX, true);
+    fs = lc_newFs(gfs, true);
+    lc_icache_init(fs, LC_ICACHE_SIZE_MAX);
+    lc_statsNew(fs);
     fs->fs_root = LC_ROOT_INODE;
     fs->fs_sblock = LC_SUPER_BLOCK;
     fs->fs_rfs = fs;
@@ -548,16 +552,12 @@ lc_mount(char *device, struct gfs **gfsp) {
         gfs->gfs_super->sb_mounts++;
         printf("Mounting %s, size %ld nmounts %ld\n",
                device, size, gfs->gfs_super->sb_mounts);
-        lc_initSnapshots(gfs, fs);
+        lc_initLayers(gfs, fs);
         for (i = 0; i <= gfs->gfs_scount; i++) {
             fs = gfs->gfs_fs[i];
             if (fs) {
                 lc_readExtents(gfs, fs);
-                err = lc_readInodes(gfs, fs);
-                if (err != 0) {
-                    printf("Reading inodes failed, err %d\n", err);
-                    return EIO;
-                }
+                lc_readInodes(gfs, fs);
             }
         }
         fs = lc_getGlobalFs(gfs);
@@ -565,15 +565,10 @@ lc_mount(char *device, struct gfs **gfsp) {
     }
 
     /* Write out the file system super block */
-    gfs->gfs_super->sb_flags |= LC_SUPER_DIRTY | LC_SUPER_RDWR |
-                                LC_SUPER_MOUNTED;
-    err = lc_superWrite(gfs, fs);
-    if (err != 0) {
-        printf("Superblock write failed, err %d\n", err);
-    } else {
-        *gfsp = gfs;
-    }
-    return err;
+    gfs->gfs_super->sb_flags |= LC_SUPER_DIRTY | LC_SUPER_MOUNTED;
+    lc_superWrite(gfs, fs);
+    *gfsp = gfs;
+    return 0;
 }
 
 /* Sync a dirty file system */
@@ -593,13 +588,10 @@ lc_sync(struct gfs *gfs, struct fs *fs, bool super) {
 
         /* Flush everything to disk before marking file system clean */
         if (super && !fs->fs_removed) {
-            fsync(gfs->gfs_fd);
+            err = fsync(gfs->gfs_fd);
+            assert(err == 0);
             fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
-            err = lc_superWrite(gfs, fs);
-            if (err) {
-                printf("Superblock update error %d for fs index %d root %ld\n",
-                       err, fs->fs_gindex, fs->fs_root);
-            }
+            lc_superWrite(gfs, fs);
         }
     }
 }

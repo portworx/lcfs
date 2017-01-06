@@ -804,7 +804,7 @@ lc_flusher(void *data) {
             fs = gfs->gfs_fs[i];
 
             /* Process layers which are inactive for some time */
-            if ((fs == NULL) || !fs->fs_readOnly || fs->fs_snap ||
+            if ((fs == NULL) || !fs->fs_readOnly || fs->fs_child ||
                 (fs->fs_bcache->lb_pcount == 0) || (fs->fs_atime >= sec)) {
                 continue;
             }
@@ -812,7 +812,7 @@ lc_flusher(void *data) {
             /* If shared lock is not available, the layer is being deleted */
             if (!lc_tryLock(fs, false)) {
                 pthread_mutex_unlock(&gfs->gfs_lock);
-                if ((fs->fs_snap == NULL) && (fs->fs_atime < sec)) {
+                if ((fs->fs_child == NULL) && (fs->fs_atime < sec)) {
                     count += lc_purgeTreePages(gfs, fs->fs_rfs, true);
                 }
                 lc_unlock(fs);

@@ -1,5 +1,8 @@
 #include "includes.h"
 
+/* Set this for tracking total count of various requests and the time taken for
+ * processing those requests.
+ */
 static bool stats_enabled = true;
 
 /* Type of requests tracked in stats */
@@ -32,8 +35,8 @@ static const char *requests[] = {
     "CREATE",
     "WRITE_BUF",
     "READDIR_PLUS",
-    "CLONE_CREATE",
-    "CLONE_REMOVE",
+    "LAYER_CREATE",
+    "LAYER_REMOVE",
     "MOUNT",
     "STAT",
     "UMOUNT",
@@ -57,6 +60,8 @@ lc_statsNew(struct fs *fs) {
     memset(&stats->s_max, 0, sizeof(struct timeval) * LC_REQUEST_MAX);
     memset(&stats->s_total, 0, sizeof(struct timeval) * LC_REQUEST_MAX);
     for (i = 0; i < LC_REQUEST_MAX; i++) {
+
+        /* Time is not tracked for certain requests */
         stats->s_min[i] = ((i == LC_FLUSH) || (i == LC_LCYNCDIR) ||
                            (i == LC_LCYNC)) ?  (struct timeval){0, 0} : min;
     }
@@ -91,9 +96,13 @@ lc_statsAdd(struct fs *fs, enum lc_stats type, bool err,
         }
         return;
     }
+
+    /* Calculate time taken to process this request and update stats */
     gettimeofday(&stop, NULL);
     timersub(&stop, start, &total);
     pthread_mutex_lock(&stats->s_lock);
+
+    /* Increment total count */
     stats->s_count[type]++;
     if (err) {
         stats->s_err[type]++;
@@ -105,6 +114,8 @@ lc_statsAdd(struct fs *fs, enum lc_stats type, bool err,
     if (timercmp(&stats->s_min[type], &total, >)) {
         stats->s_min[type] = total;
     }
+
+    /* Update layer access time */
     fs->fs_atime = stop.tv_sec;
     pthread_mutex_unlock(&stats->s_lock);
 }
@@ -130,7 +141,8 @@ lc_displayStats(struct fs *fs) {
     printf("\tRequest:\tTotal\t\tFailed\tAverage\t\tMax\t\tMin\n\n");
     for (i = 0; i < LC_REQUEST_MAX; i++) {
         if (stats->s_count[i]) {
-            printf("%15s: %10ld\t%10ld\t%2lds.%06ldu\t%2lds.%06ldu\t%2lds.%06ldu\n",
+            printf("%15s: %10ld\t%10ld\t%2lds.%06ldu\t%2lds.%06ldu\t"
+                   "%2lds.%06ldu\n",
                    requests[i], stats->s_count[i], stats->s_err[i],
                    stats->s_total[i].tv_sec / stats->s_count[i],
                    stats->s_total[i].tv_usec / stats->s_count[i],
@@ -206,5 +218,7 @@ lc_statsDeinit(struct fs *fs) {
         lc_displayStats(fs);
         pthread_mutex_destroy(&fs->fs_stats->s_lock);
         lc_free(fs, fs->fs_stats, sizeof(struct stats), LC_MEMTYPE_STATS);
+    } else {
+        assert(fs->fs_stats == NULL);
     }
 }

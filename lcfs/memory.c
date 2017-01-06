@@ -1,8 +1,25 @@
 #include "includes.h"
 
+/* Set for tracking memory allocation and free operations */
 static bool memStatsEnabled = true;
-static uint64_t global_memory = 0, global_malloc = 0, global_free = 0;
-static uint64_t total_memory = 0, max_memory = 0;
+
+static struct lc_memory {
+
+    /* Total memory currently used for data pages */
+    uint64_t m_totalMemory;
+
+    /* Maximum memory that can be used for data pages */
+    uint64_t m_dataMemory;
+
+    /* Memory allocated globally */
+    uint64_t m_globalMemory;
+
+    /* Count of global mallocs */
+    uint64_t m_globalMalloc;
+
+    /* Count of global free */
+    uint64_t m_globalFree;
+} lc_mem;
 
 /* Type of malloc requests */
 static const char *mrequests[] = {
@@ -33,17 +50,19 @@ void
 lc_memoryInit(void) {
     struct sysinfo info;
 
-    max_memory = LC_PCACHE_MEMORY;
+    lc_mem.m_dataMemory = LC_PCACHE_MEMORY;
     sysinfo(&info);
-    if (info.totalram < max_memory) {
-        max_memory = (info.totalram * LC_PCACHE_MEMORY_MIN) / 100;
+    if (info.totalram < lc_mem.m_dataMemory) {
+        lc_mem.m_dataMemory = (info.totalram * LC_PCACHE_MEMORY_MIN) / 100;
     }
+    lc_printf("Maximum memory allowed for data pages %ld MB\n",
+              lc_mem.m_dataMemory / (1024 * 1024));
 }
 
-/* Check memory usage under limit */
+/* Check memory usage for data pages is under limit or not */
 bool
 lc_checkMemoryAvailable() {
-    return total_memory < max_memory;
+    return lc_mem.m_totalMemory < lc_mem.m_dataMemory;
 }
 
 /* Flush dirty pages and purge cache entries when running low on memory */
@@ -51,6 +70,9 @@ void
 lc_waitMemory(void) {
     struct gfs *gfs = getfs();
 
+    /* If memory used for data usage is above limit, Flush dirty pages and
+     * purge cache entries.
+     */
     if (!lc_checkMemoryAvailable()) {
         lc_purgePages(gfs, true);
     }
@@ -62,21 +84,26 @@ lc_memStatsUpdate(struct fs *fs, size_t size, bool alloc,
                   enum lc_memTypes type) {
     uint64_t freed;
 
+    /* Update memory usage for data pages */
     if ((type == LC_MEMTYPE_PAGE) || (type == LC_MEMTYPE_DATA) ||
         (type == LC_MEMTYPE_BLOCK)) {
         if (alloc) {
-            __sync_add_and_fetch(&total_memory, size);
+            __sync_add_and_fetch(&lc_mem.m_totalMemory, size);
         } else {
-            freed = __sync_fetch_and_sub(&total_memory, size);
+            freed = __sync_fetch_and_sub(&lc_mem.m_totalMemory, size);
             assert(freed >= size);
         }
     }
+
+    /* Skip memory tracking if not enabled */
     if (!memStatsEnabled) {
         return;
     }
 
     //lc_printf("lc_memStatsUpdate: size %ld for %s %s\n", size, mrequests[type], alloc ? "allocated" : "freed");
     if (fs) {
+
+        /* Per layer stats */
         if (alloc) {
             __sync_add_and_fetch(&fs->fs_memory, size);
             __sync_add_and_fetch(&fs->fs_malloc[type], 1);
@@ -86,14 +113,16 @@ lc_memStatsUpdate(struct fs *fs, size_t size, bool alloc,
             __sync_add_and_fetch(&fs->fs_free[type], 1);
         }
     } else {
+
+        /* Global stats */
         assert(type == LC_MEMTYPE_GFS);
         if (alloc) {
-            __sync_add_and_fetch(&global_memory, size);
-            __sync_add_and_fetch(&global_malloc, 1);
+            __sync_add_and_fetch(&lc_mem.m_globalMemory, size);
+            __sync_add_and_fetch(&lc_mem.m_globalMalloc, 1);
         } else {
-            freed = __sync_fetch_and_sub(&global_memory, size);
+            freed = __sync_fetch_and_sub(&lc_mem.m_globalMemory, size);
             assert(freed >= size);
-            __sync_add_and_fetch(&global_free, 1);
+            __sync_add_and_fetch(&lc_mem.m_globalFree, 1);
         }
     }
 }
@@ -113,6 +142,7 @@ lc_memTransferCount(struct fs *fs, uint64_t count) {
     struct fs *rfs = fs->fs_rfs;
     uint64_t size, freed;
 
+    /* This is done when a dirty page is moved to shared block page cache */
     if (memStatsEnabled && (fs != rfs)) {
         size = count * LC_BLOCK_SIZE;
         __sync_add_and_fetch(&rfs->fs_memory, size);
@@ -123,14 +153,14 @@ lc_memTransferCount(struct fs *fs, uint64_t count) {
     }
 }
 
-/* Allocarte requested amount of memory for the specified purpose */
+/* Allocart requested amount of memory for the specified purpose */
 void *
 lc_malloc(struct fs *fs, size_t size, enum lc_memTypes type) {
     lc_memStatsUpdate(fs, size, true, type);
     return malloc(size);
 }
 
-/* Allocate block aligned memory */
+/* Allocate block aligned memory, needed for direct I/O */
 void
 lc_mallocBlockAligned(struct fs *fs, void **memptr, enum lc_memTypes type) {
     int err = posix_memalign(memptr, LC_BLOCK_SIZE, LC_BLOCK_SIZE);
@@ -164,12 +194,13 @@ lc_checkMemStats(struct fs *fs) {
 /* Display global memory stats */
 void
 lc_displayGlobalMemStats() {
-    if (global_memory) {
+    if (lc_mem.m_globalMemory) {
         printf("\tGlobal Allocated %ld Freed %ld Total in use %ld bytes\n",
-               global_malloc, global_free, global_memory);
+               lc_mem.m_globalMalloc, lc_mem.m_globalFree,
+               lc_mem.m_globalMemory);
     }
-    if (total_memory) {
-        printf("Total memory used for pages %ld\n", total_memory);
+    if (lc_mem.m_totalMemory) {
+        printf("Total memory used for pages %ld\n", lc_mem.m_totalMemory);
     }
 }
 
@@ -186,8 +217,8 @@ lc_displayMemStats(struct fs *fs) {
         return;
     }
     gettimeofday(&now, NULL);
-    printf("\n\nMemory Stats for file system %p with root %ld index %d at %s\n",
-           fs, fs->fs_root, fs->fs_gindex, ctime(&now.tv_sec));
+    printf("\n\nMemory Stats for file system %p with root %ld index %d at "
+           "%s\n", fs, fs->fs_root, fs->fs_gindex, ctime(&now.tv_sec));
     for (i = LC_MEMTYPE_GFS + 1; i < LC_MEMTYPE_MAX; i++) {
         if (fs->fs_malloc[i]) {
             printf("\t%s Allocated %ld Freed %ld in use %ld\n",

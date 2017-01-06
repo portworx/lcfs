@@ -13,11 +13,11 @@ struct gfs {
     /* Global File system super block */
     struct super *gfs_super;
 
-    /* Directory inode in which snapshot roots are placed (/lcfs) */
-    ino_t gfs_snap_root;
+    /* Directory inode in which layer roots are placed (/lcfs) */
+    ino_t gfs_layerRoot;
 
-    /* Inode mapping to gfs_snap_root */
-    struct inode *gfs_snap_rootInode;
+    /* Inode mapping to gfs_layerRoot */
+    struct inode *gfs_layerRootInode;
 
     /* Inode of tmp directory */
     ino_t gfs_tmp_root;
@@ -142,17 +142,17 @@ struct fs {
     /* Root of the layer tree */
     struct fs *fs_rfs;
 
-    /* Snapshot file system of this layer */
-    struct fs *fs_snap;
+    /* Layer file system of this layer */
+    struct fs *fs_child;
 
-    /* Next file system in the snapshot chain of the parent fs */
+    /* Next file system in the layer chain of the parent fs */
     struct fs *fs_next;
 
-    /* Previous file system in the snapshot chain of the parent fs */
+    /* Previous file system in the layer chain of the parent fs */
     struct fs *fs_prev;
 
     /* Lock taken in shared mode by all file system operations.
-     * This lock is taken in exclusive mode when snapshots are created/deleted.
+     * This lock is taken in exclusive mode when layers are created/deleted.
      */
     pthread_rwlock_t fs_rwlock;
 
@@ -280,7 +280,7 @@ struct fs {
     /* Next index in inode block */
     uint8_t fs_inodeBlockIndex;
 
-    /* Set if readOnly snapshot */
+    /* Set if readOnly layer */
     bool fs_readOnly;
 
     /* No more changes in the file system */

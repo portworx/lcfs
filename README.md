@@ -52,9 +52,9 @@ The root directory of the file system has inode number 2 and cannot be removed.
 
 Anything created under tmp directory in root directory is considered temporary.
 
-### Snapshot root directory
+### Layer root directory
 
-There is another directory under which roots of all layers are placed and called snapshot root directory.  This directory also cannot be removed once created.
+There is another directory under which roots of all layers are placed and called layer root directory.  This directory also cannot be removed once created.
 
 ### File handles
 
@@ -71,9 +71,9 @@ more changes are allowed in the layer).
 
 New layers are added after locking the parent layer in shared mode, if there is a parent layer.  The newly created layer will be linked to the parent layer.  All the layers taken on a parent layer are linked together as well.
 
-A layer is removed after locking that layer in exclusive mode.  That makes sure all operations on that layer are drained.
-
 A layer with no parent layer forms a base layer.  Base layer for any layer can be reached by traversing the parent layers starting from that layer.  All layers with same base layer form a “tree of layers”.
+
+A layer is removed after locking that layer in exclusive mode.  That makes sure all operations on that layer are drained.  Also shared locks on the base layer is held during that operaton.
 
 Root layer is locked in shared mode while creating/deleting layers.  Root layer is locked exclusive while unmounting the file system.
 
@@ -122,7 +122,7 @@ It looks like many unix commands unnecessarily query or try to remove extended a
 
 ### ioctls
 
-There is support for a few ioctls for operations like creating/removing/loading/unloading layers.  Currently, ioctls are supported only on the snapshot root directory.
+There is support for a few ioctls for operations like creating/removing/loading/unloading layers.  Currently, ioctls are supported only on the layer root directory.
 
 ## Copying Up(COW, Redirect-On-Write)
 
@@ -131,6 +131,9 @@ When a shared file is modified in a layer, its metadata is copied up completely 
 Initially after a copy up of an inode, user data of file is shared between newly copied up inode and original inode and copy-up of user data happens in units of 4KB as and when user data gets modified in the layer.  While copying up a page, if a whole page is modified, then old data does not have to be read-in.  New data is written to a new location and old data block is untouched.
 
 In practice, most applications truncate the whole file and write new data to the file, thus individual pages of the files are not copied up.
+
+User data blocks and certain metadata blocks (emap blocks, directory blocks, extended attributes etc.) are
+never overwritten.
 
 ## Caching
 

@@ -48,7 +48,7 @@ create(struct fs *fs, ino_t parent, const char *name, mode_t mode,
         lc_reportError(__func__, __LINE__, parent, EROFS);
         return EROFS;
     }
-    if (parent == gfs->gfs_snap_root) {
+    if (parent == gfs->gfs_layerRoot) {
         lc_reportError(__func__, __LINE__, parent, EPERM);
         return EPERM;
     }
@@ -230,8 +230,8 @@ lc_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
         goto out;
     }
 
-    /* Check if looking up a snapshot root */
-    if (parent == fs->fs_gfs->gfs_snap_root) {
+    /* Check if looking up a layer root */
+    if (parent == fs->fs_gfs->gfs_layerRoot) {
         gindex = lc_getIndex(fs, parent, ino);
         if (fs->fs_gindex != gindex) {
             nfs = lc_getfs(lc_setHandle(gindex, ino), false);
@@ -453,7 +453,7 @@ lc_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
         gfs = getfs();
         global = lc_getInodeHandle(parent) == LC_ROOT_INODE;
         if (global && (strcmp(name, "lcfs") == 0)) {
-            lc_setSnapshotRoot(gfs, e.ino);
+            lc_setLayerRoot(gfs, e.ino);
         } else if (global && (strcmp(name, "tmp") == 0)) {
             gfs->gfs_tmp_root = e.ino;
             printf("tmp root %ld\n", e.ino);
@@ -1130,7 +1130,7 @@ static void
 lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
          struct fuse_file_info *fi, unsigned flags,
          const void *in_buf, size_t in_bufsz, size_t out_bufsz) {
-    char name[in_bufsz + 1], *snap, *parent;
+    char name[in_bufsz + 1], *layer, *parent;
     struct gfs *gfs = getfs();
     int len, op;
 
@@ -1138,10 +1138,10 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
     op = _IOC_NR(cmd);
 
     /* XXX For allowing tests to run */
-    if ((op == SNAP_CREATE) && (gfs->gfs_snap_root != ino)) {
-        lc_setSnapshotRoot(gfs, ino);
+    if ((op == LAYER_CREATE) && (gfs->gfs_layerRoot != ino)) {
+        lc_setLayerRoot(gfs, ino);
     }
-    if (ino != gfs->gfs_snap_root) {
+    if (ino != gfs->gfs_layerRoot) {
         //lc_reportError(__func__, __LINE__, ino, ENOSYS);
         fuse_reply_err(req, ENOSYS);
         return;
@@ -1151,31 +1151,31 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
     }
     name[in_bufsz] = 0;
     switch (op) {
-    case SNAP_CREATE:
-    case CLONE_CREATE:
+    case LAYER_CREATE:
+    case LAYER_CREATE_RW:
         len = _IOC_TYPE(cmd);
         if (len) {
             parent = name;
             name[len] = 0;
-            snap = &name[len + 1];
+            layer = &name[len + 1];
         } else {
             parent = "";
             len = 0;
-            snap = name;
+            layer = name;
         }
-        lc_newClone(req, gfs, snap, parent, len, op == CLONE_CREATE);
+        lc_newLayer(req, gfs, layer, parent, len, op == LAYER_CREATE_RW);
         return;
 
-    case SNAP_REMOVE:
-        lc_removeClone(req, gfs, name);
+    case LAYER_REMOVE:
+        lc_removeLayer(req, gfs, name);
         return;
 
-    case SNAP_MOUNT:
-    case SNAP_STAT:
-    case SNAP_UMOUNT:
+    case LAYER_MOUNT:
+    case LAYER_STAT:
+    case LAYER_UMOUNT:
     case UMOUNT_ALL:
     case CLEAR_STAT:
-        lc_snapIoctl(req, gfs, name, op);
+        lc_layerIoctl(req, gfs, name, op);
         return;
 
     default:

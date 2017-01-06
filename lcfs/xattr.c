@@ -45,7 +45,7 @@ lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
 
     lc_statsBegin(&start);
     fs = lc_getfs(ino, false);
-    if (fs->fs_snap) {
+    if (fs->fs_child) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
         err = EROFS;
@@ -265,7 +265,7 @@ lc_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
 
     lc_statsBegin(&start);
     fs = lc_getfs(ino, false);
-    if (fs->fs_snap) {
+    if (fs->fs_child) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
         err = EROFS;
