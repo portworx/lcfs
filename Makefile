@@ -39,4 +39,4 @@ gr-plugin:
 gr-clean:
 	@echo "removing $(REPO)$(GR_CONTAINER)"
 	-docker rm -vf $(REPO)$(GR_CONTAINER)
-	-docker rmi $(GR_CONTAINER)_tmp
+	-docker rmi $(GR_CONTAINER)
