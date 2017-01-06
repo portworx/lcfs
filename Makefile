@@ -34,6 +34,7 @@ gr-plugin:
 	docker build -t $(GR_CONTAINER) -f Dockerfile.build .
 	docker run --name $(GR_CONTAINER) $(GR_CONTAINER) ls -l /tmp
 	docker cp $(GR_CONTAINER):/tmp/lcfs_plugin.bin .
+	docker cp $(GR_CONTAINER):/tmp/lcfs.bin .
 	docker rm $(GR_CONTAINER)
 
 gr-clean:

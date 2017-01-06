@@ -11,7 +11,7 @@ MAINTAINER Michael Vilain <michael@portworx.com>
 RUN apt-get update && \
  	apt-get install -y build-essential util-linux libcurl4-openssl-dev \
  			libxml2-dev mime-support libgoogle-perftools-dev
- 			ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
 
 ADD . /go/src/github.com/portworx/px-graph
 
@@ -27,10 +27,10 @@ WORKDIR /go/src/github.com/portworx/px-graph/lcfs
 RUN wget https://github.com/libfuse/libfuse/releases/download/fuse-2.9.7/fuse-2.9.7.tar.gz
 RUN tar -xvzf fuse-2.9.7.tar.gz
 WORKDIR fuse-2.9.7
-RUN ./configure && make -j8 && make install
+RUN ./configure --prefix=/usr && make -j8 && make install
 WORKDIR /go/src/github.com/portworx/px-graph/lcfs
 RUN make
-RUN mv lcfs /tmp/lcfs2.bin
+RUN mv lcfs /tmp/lcfs.bin
 
 WORKDIR /go/src/github.com/portworx/px-graph/plugin
 RUN go build -o /tmp/lcfs_plugin.bin lcfs_plugin.go
