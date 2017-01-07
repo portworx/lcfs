@@ -805,7 +805,7 @@ lc_flusher(void *data) {
 
             /* Process layers which are inactive for some time */
             if ((fs == NULL) || !fs->fs_readOnly || fs->fs_child ||
-                (fs->fs_bcache->lb_pcount == 0) || (fs->fs_atime >= sec)) {
+                (fs->fs_atime >= sec)) {
                 continue;
             }
 
