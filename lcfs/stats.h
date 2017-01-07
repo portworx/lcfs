@@ -23,7 +23,7 @@ enum lc_stats {
     LC_READDIR = 17,
     LC_RELEASEDIR = 18,
     LC_LCYNCDIR = 19,
-    LC_STATLC = 20,
+    LC_STATFS = 20,
     LC_SETXATTR = 21,
     LC_GETXATTR = 22,
     LC_LISTXATTR = 23,

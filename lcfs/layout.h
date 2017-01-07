@@ -1,23 +1,52 @@
 #ifndef _LAYOUT_H__
 #define _LAYOUT_H__
 
+/* Current layout version */
 #define LC_VERSION     1
+
+/* Magic number stored in superblock */
 #define LC_SUPER_MAGIC 0x5F5F5F5F
+
+/* Location of global super block */
 #define LC_SUPER_BLOCK 0
+
+/* Block size - unit of space allocation */
 #define LC_BLOCK_SIZE  4096
+
+/* Root inode number */
 #define LC_ROOT_INODE  2
-#define LC_INVALID_BLOCK   -1
+
+/* Invalid block */
+#define LC_INVALID_BLOCK    0x0000FFFFFFFFFFFF
+
+/* Invalid inode */
 #define LC_INVALID_INODE   -1
+
+/* Block at which allocations start */
 #define LC_START_BLOCK (LC_SUPER_BLOCK + 1)
+
+/* Starting inode number for allocation */
 #define LC_START_INODE LC_ROOT_INODE
+
+/* Minimum size of a device for creating a file system */
 #define LC_MIN_BLOCKS       10000ul
+
+/* Minimum free space for allowing creation of new layers */
 #define LC_LAYER_MIN_BLOCKS 10000ul
 
+/* Number of bytes in file handle for storing layer index */
 #define LC_FH_LAYER     48ul
+
+/* Mask for extracting inode numbder from file handle */
 #define LC_FH_INODE     0x0000FFFFFFFFFFFFul
 
+/* Magic number stored in emap blocks */
 #define LC_EMAP_MAGIC  0x6452FABC
+
+/* Magic number stored in directory blocks */
 #define LC_DIR_MAGIC   0x7FBD853A
+
+/* Magic number stored in extended attribute blocks */
 #define LC_XATTR_MAGIC 0xBDEF4389
 
 /* Superblock Flags */
@@ -26,12 +55,18 @@
 #define LC_SUPER_MOUNTED   0x00000004  // Layer is mounted
 #define LC_SUPER_INIT      0x00000008  // Init layer
 
-/* File types */
+/* Directory name in which layers are created */
+#define LC_LAYER_ROOT_DIR   "lcfs"
+
+/* Directory in which temporary data placed */
+#define LC_LAYER_TMP_DIR    "tmp"
+
+/* File types for counting each type created in a layer */
 enum lc_ftypes {
-    LC_FTYPE_REGULAR,
-    LC_FTYPE_DIRECTORY,
-    LC_FTYPE_SYMBOLIC_LINK,
-    LC_FTYPE_OTHER,
+    LC_FTYPE_REGULAR,           /* Regular file */
+    LC_FTYPE_DIRECTORY,         /* Directory */
+    LC_FTYPE_SYMBOLIC_LINK,     /* Symbolic link */
+    LC_FTYPE_OTHER,             /* Other file types */
     LC_FTYPE_MAX,
 };
 
@@ -172,14 +207,21 @@ struct dinode {
 } __attribute__((packed));
 static_assert(sizeof(struct dinode) == 104, "dinode size != 104");
 
+/* Size of disk inode */
 #define LC_DINODE_SIZE      128
 static_assert(sizeof(struct dinode) <= LC_DINODE_SIZE,
               "dinode size > LC_DINODE_SIZE");
+
+/* Number of inodes that can be stored in a block */
 #define LC_INODE_BLOCK_MAX  (LC_BLOCK_SIZE / LC_DINODE_SIZE)
 
+/* Index of the inode in an inode block */
 #define LC_DINODE_INDEX     48ul
+
+/* Mask for finding the inode block number from i_block */
 #define LC_DINODE_BLOCK     0x0000FFFFFFFFFFFFul
 
+/* Number of inode block numbers that can be stored in a block */
 #define LC_IBLOCK_MAX  ((LC_BLOCK_SIZE / sizeof(uint64_t)) - 2)
 
 /* Inode block table */

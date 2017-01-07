@@ -11,6 +11,8 @@ lc_xattrLink(struct inode *inode, const char *name, int len,
     xattr->x_name = lc_malloc(fs, len + 1, LC_MEMTYPE_XATTRNAME);
     memcpy(xattr->x_name, name, len);
     xattr->x_name[len] = 0;
+
+    /* Check if value provided for the attribute */
     if (size) {
         xattr->x_value = lc_malloc(fs, size, LC_MEMTYPE_XATTRVALUE);
         memcpy(xattr->x_value, value, size);
@@ -20,6 +22,8 @@ lc_xattrLink(struct inode *inode, const char *name, int len,
     xattr->x_size = size;
     xattr->x_next = inode->i_xattr;
     inode->i_xattr = xattr;
+
+    /* Keep track of total length for all attribute names */
     inode->i_xsize += len + 1;
 }
 
@@ -59,11 +63,18 @@ lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
         goto out;
     }
 
+    /* If the file system does not have any extended attributes before, enable
+     * that now.
+     */
     if (!fs->fs_xattrEnabled) {
         gfs->gfs_xattr_enabled = true;
         fs->fs_xattrEnabled = true;
         lc_printf("Enabled extended attributes\n");
     }
+
+    /* Initialize extended attributes for the inode if this is the first
+     * extended attribute for the inode.
+     */
     if (inode->i_xattrData == NULL) {
         lc_xattrInit(fs, inode);
     }
@@ -135,10 +146,15 @@ lc_xattrGet(fuse_req_t req, ino_t ino, const char *name,
     struct xattr *xattr;
     struct inode *inode;
     struct fs *fs;
+    size_t xsize;
     int err = 0;
 
     lc_statsBegin(&start);
     fs = lc_getfs(ino, false);
+
+    /* If the file system does not have any extended attributes, return without
+     * looking up the inode.
+     */
     if (!fs->fs_xattrEnabled) {
         fuse_reply_err(req, ENODATA);
         err = ENODATA;
@@ -151,18 +167,29 @@ lc_xattrGet(fuse_req_t req, ino_t ino, const char *name,
         err = ENOENT;
         goto out;
     }
+
+    /* Traverse the attribute list looking for the requested attribute */
     xattr = inode->i_xattrData ? inode->i_xattr : NULL;
     while (xattr) {
         if (strcmp(name, xattr->x_name) == 0) {
+            xsize = xattr->x_size;
             if (size == 0) {
-                fuse_reply_xattr(req, xattr->x_size);
-            } else if (size >= xattr->x_size) {
-                fuse_reply_buf(req, xattr->x_value, xattr->x_size);
+                lc_inodeUnlock(inode);
+
+                /* If no buffer given, return the size of the attribute */
+                fuse_reply_xattr(req, xsize);
+            } else if (size >= xsize) {
+
+                /* Respond with the attribute */
+                fuse_reply_buf(req, xattr->x_value, xsize);
+                lc_inodeUnlock(inode);
             } else {
+                lc_inodeUnlock(inode);
+
+                /* If attribute cannot fit in the buffer, return an error */
                 fuse_reply_err(req, ERANGE);
                 err = ERANGE;
             }
-            lc_inodeUnlock(inode);
             goto out;
         }
         xattr = xattr->x_next;
@@ -183,11 +210,16 @@ lc_xattrList(fuse_req_t req, ino_t ino, size_t size) {
     struct xattr *xattr;
     struct inode *inode;
     int i = 0, err = 0;
+    size_t xsize;
     struct fs *fs;
     char *buf;
 
     lc_statsBegin(&start);
     fs = lc_getfs(ino, false);
+
+    /* If the file system does not have any extended attributes, return without
+     * looking up the inode.
+     */
     if (!fs->fs_xattrEnabled) {
         fuse_reply_err(req, ENODATA);
         err = ENODATA;
@@ -200,43 +232,57 @@ lc_xattrList(fuse_req_t req, ino_t ino, size_t size) {
         err = ENOENT;
         goto out;
     }
+
+    /* If inode does not have any extended attributes, return early */
     if (inode->i_xattrData == NULL) {
-        fuse_reply_err(req, ENODATA);
         lc_inodeUnlock(inode);
+        fuse_reply_err(req, ENODATA);
         lc_reportError(__func__, __LINE__, ino, ENODATA);
         err = ENODATA;
         goto out;
     }
+
+    /* If checking the total size of attribute names, provide that info */
+    xsize = inode->i_xsize;
     if (size == 0) {
-        fuse_reply_xattr(req, inode->i_xsize);
         lc_inodeUnlock(inode);
+        fuse_reply_xattr(req, xsize);
         goto out;
     }
-    if (size < inode->i_xsize) {
+
+    /* If provided buffer is too small, return with ERANGE error */
+    if (size < xsize) {
         lc_inodeUnlock(inode);
         fuse_reply_err(req, ERANGE);
         lc_reportError(__func__, __LINE__, ino, ERANGE);
         err = ERANGE;
         goto out;
     }
-    if (inode->i_xsize == 0) {
+
+    /* If inode does not have any extended attributes, return early */
+    if (xsize == 0) {
         lc_inodeUnlock(inode);
         fuse_reply_err(req, ENODATA);
         lc_reportError(__func__, __LINE__, ino, ENODATA);
         err = ENODATA;
         goto out;
     }
-    buf = lc_malloc(fs, inode->i_xsize, LC_MEMTYPE_XATTRBUF);
+
+    /* Copy out the attributes */
+    /* XXX Split the buffer into many iovs if there are too many attributes? */
+    buf = lc_malloc(fs, xsize, LC_MEMTYPE_XATTRBUF);
     xattr = inode->i_xattr;
     while (xattr) {
         strcpy(&buf[i], xattr->x_name);
         i += strlen(xattr->x_name) + 1;
         xattr = xattr->x_next;
     }
-    fuse_reply_buf(req, buf, inode->i_xsize);
-    assert(i == inode->i_xsize);
+    assert(i == xsize);
     lc_inodeUnlock(inode);
-    lc_free(fs, buf, inode->i_xsize, LC_MEMTYPE_XATTRBUF);
+    fuse_reply_buf(req, buf, i);
+
+    /* XXX Save the buffer for future use? */
+    lc_free(fs, buf, i, LC_MEMTYPE_XATTRBUF);
 
 out:
     lc_statsAdd(fs, LC_LISTXATTR, err, &start);
@@ -257,7 +303,7 @@ lc_freeXattr(struct fs *fs, struct xattr *xattr) {
 /* Remove the specified extended attribute */
 void
 lc_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
-    struct xattr *xattr, *pxattr = NULL;
+    struct xattr *xattr, **pxattr = NULL;
     struct timeval start;
     struct inode *inode;
     int err = 0, len;
@@ -271,6 +317,10 @@ lc_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
         err = EROFS;
         goto out;
     }
+
+    /* If the file system does not have any extended attributes, return without
+     * looking up the inode.
+     */
     if (!fs->fs_xattrEnabled) {
         fuse_reply_err(req, ENODATA);
         err = ENODATA;
@@ -288,11 +338,10 @@ lc_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
     while (xattr) {
         if (strcmp(name, xattr->x_name) == 0) {
             fuse_reply_err(req, 0);
-            if (pxattr) {
-                pxattr->x_next = xattr->x_next;
-            } else {
-                inode->i_xattr = xattr->x_next;
+            if (pxattr == NULL) {
+                pxattr = &inode->i_xattr;
             }
+            *pxattr = xattr->x_next;
             lc_freeXattr(fs, xattr);
             len = strlen(name) + 1;
             assert(inode->i_xsize >= len);
@@ -302,11 +351,11 @@ lc_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
             lc_inodeUnlock(inode);
             goto out;
         }
-        pxattr = xattr;
+        pxattr = &xattr->x_next;
         xattr = xattr->x_next;
     }
-    fuse_reply_err(req, ENODATA);
     lc_inodeUnlock(inode);
+    fuse_reply_err(req, ENODATA);
     //lc_reportError(__func__, __LINE__, ino, ENODATA);
     err = ENODATA;
 
@@ -315,7 +364,7 @@ out:
     lc_unlock(fs);
 }
 
-/* Copy extended attributes of one inode to another */
+/* Copy extended attributes from parent inode */
 bool
 lc_xattrCopy(struct inode *inode, struct inode *parent) {
     struct fs *fs = inode->i_fs;
@@ -354,6 +403,8 @@ lc_xattrFlushBlocks(struct gfs *gfs, struct fs *fs,
     struct xblock *xblock;
 
     block = lc_blockAllocExact(fs, pcount, true, true);
+
+    /* Link all the blocks together */
     while (page) {
         count--;
         lc_addPageBlockHash(gfs, fs, page, block + count);
@@ -396,9 +447,11 @@ lc_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         inode->i_flags &= ~LC_INODE_XATTRDIRTY;
         return;
     }
+
+    /* Traverse extended attribute list and copy those to pages */
     while (xattr) {
         nsize = strlen(xattr->x_name);
-        dsize = (2 * sizeof(uint16_t)) + nsize + xattr->x_size;
+        dsize = sizeof(struct dxattr) + nsize + xattr->x_size;
         if (remain < dsize) {
             if (xblock) {
                 page = lc_xattrAddPage(gfs, fs, xblock, remain, page);
@@ -430,6 +483,8 @@ lc_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         lc_replaceMetaBlocks(fs, &inode->i_xattrExtents, block, pcount);
     }
     assert(size == 0);
+
+    /* Link extended attribute blocks from the inode */
     inode->i_xattrBlock = block;
     assert(inode->i_flags & LC_INODE_DIRTY);
     inode->i_flags &= ~LC_INODE_XATTRDIRTY;
@@ -447,6 +502,9 @@ lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
 
     assert(inode->i_xattrData == NULL);
     if (block != LC_INVALID_BLOCK) {
+
+        /* Enable extended attributes on the file system if not enabled already
+         */
         if (!fs->fs_xattrEnabled) {
             gfs->gfs_xattr_enabled = true;
             fs->fs_xattrEnabled = true;
@@ -454,12 +512,16 @@ lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
         }
         lc_xattrInit(fs, inode);
     }
+
+    /* Read all extended attribute blocks linked from the inode */
     while (block != LC_INVALID_BLOCK) {
         lc_addSpaceExtent(gfs, fs, &inode->i_xattrExtents, block, 1, false);
         lc_readBlock(gfs, fs, block, xblock);
         xbuf = (char *)&xblock->xb_attr[0];
         remain = LC_BLOCK_SIZE - sizeof(struct xblock);
-        while (remain > (2 * sizeof(uint16_t))) {
+
+        /* Process all attributes from the block */
+        while (remain > sizeof(struct dxattr)) {
             dxattr = (struct dxattr *)xbuf;
             nsize = dxattr->dx_nsize;
             if (nsize == 0) {
@@ -467,7 +529,7 @@ lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
             }
             lc_xattrLink(inode, dxattr->dx_nameValue, nsize,
                           &dxattr->dx_nameValue[nsize], dxattr->dx_nvalue);
-            dsize = (2 * sizeof(uint16_t)) + nsize + dxattr->dx_nvalue;
+            dsize = sizeof(struct dxattr) + nsize + dxattr->dx_nvalue;
             xbuf += dsize;
             remain -= dsize;
         }

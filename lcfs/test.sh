@@ -90,21 +90,21 @@ cat passwd > /dev/null
 dd if=/dev/zero of=file count=1000 bs=4096
 cat file > /dev/null
 
-dd if=/dev/zero of=file count=10 bs=4096
+dd if=/dev/urandom of=file count=10 bs=4096
 ls -l file
-dd if=/dev/zero of=file count=10 bs=4096 conv=notrunc
+dd if=/dev/urandom of=file count=10 bs=4096 conv=notrunc
 ls -l file
-dd if=/dev/zero of=file count=10 bs=4096 seek=5 conv=notrunc
+dd if=/dev/urandom of=file count=10 bs=4096 seek=5 conv=notrunc
 ls -l file
-dd if=/dev/zero of=file count=10 bs=4096 seek=5
-dd if=/dev/zero of=file count=10 bs=4096 seek=2 conv=fdatasync
-dd if=/dev/zero of=file count=10 bs=4096 seek=10 conv=fsync
+dd if=/dev/urandom of=file count=10 bs=4096 seek=5
+dd if=/dev/urandom of=file count=10 bs=4096 seek=2 conv=fdatasync
+dd if=/dev/urandom of=file count=10 bs=4096 seek=10 conv=fsync
 ls -l file
 
-dd if=/dev/zero of=file1 count=1 bs=1024 seek=23 conv=notrunc
-dd if=/dev/zero of=file1 count=1 bs=1024 seek=23 conv=notrunc
-dd if=/dev/zero of=file1 count=1 bs=1024 seek=22 conv=notrunc
-dd if=/dev/zero of=file1 count=1 bs=1024 seek=24 conv=notrunc
+dd if=/dev/urandom of=file1 count=1 bs=1024 seek=23 conv=notrunc
+dd if=/dev/urandom of=file1 count=1 bs=1024 seek=23 conv=notrunc
+dd if=/dev/urandom of=file1 count=1 bs=1024 seek=22 conv=notrunc
+dd if=/dev/urandom of=file1 count=1 bs=1024 seek=24 conv=notrunc
 
 $XATTR
 
@@ -150,7 +150,7 @@ mkdir dir
 set +x
 for (( i = 0; i < 500; i += 2 ))
 do
-    dd if=/dev/zero of=file conv=notrunc count=1 bs=4096 seek=$i 2&>/dev/null
+    dd if=/dev/urandom of=file conv=notrunc count=1 bs=4096 seek=$i 2&>/dev/null
     touch dir/file$i
 done
 set -x
@@ -170,7 +170,7 @@ stat dir
 set +x
 for (( i = 0; i < 500; i += 2 ))
 do
-    dd if=/dev/zero of=file conv=notrunc count=1 bs=4096 seek=$i 2&>/dev/null
+    dd if=/dev/urandom of=file conv=notrunc count=1 bs=4096 seek=$i 2&>/dev/null
     rm dir/file$i
 done
 set -x
@@ -187,7 +187,7 @@ cd $MNT
 
 ls -ltRi > /dev/null
 touch file
-dd if=/dev/zero of=file count=10 bs=4096
+dd if=/dev/urandom of=file count=10 bs=4096
 rm -fr $MNT/*
 cd -
 

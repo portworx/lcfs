@@ -187,7 +187,6 @@ struct fs {
     time_t fs_atime;
 
     /* Dirty pages pending write */
-    /* XXX Use an array? */
     struct page *fs_dpages;
 
     /* Flusher index */

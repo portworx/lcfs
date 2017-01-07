@@ -1,8 +1,10 @@
 #include "includes.h"
 
+/* Enable tracking counting of files of different types */
 static bool lc_ftypeStatsEnabled = true;
 
 /* Given an inode number, return the hash index */
+/* XXX Figure out a better hashing scheme */
 static inline int
 lc_inodeHash(struct fs *fs, ino_t ino) {
     return ino % fs->fs_icacheSize;
@@ -21,6 +23,28 @@ lc_icache_init(struct fs *fs, size_t size) {
     }
     fs->fs_icache = icache;
     fs->fs_icacheSize = size;
+}
+
+/* Copy disk inode to stat structure */
+void
+lc_copyStat(struct stat *st, struct inode *inode) {
+    struct dinode *dinode = &inode->i_dinode;
+
+    st->st_dev = 0;
+    st->st_ino = dinode->di_ino;
+    st->st_mode = dinode->di_mode;
+    st->st_nlink = dinode->di_nlink;
+    st->st_uid = dinode->di_uid;
+    st->st_gid = dinode->di_gid;
+    st->st_rdev = dinode->di_rdev;
+    st->st_size = dinode->di_size;
+    st->st_blksize = LC_BLOCK_SIZE;
+    st->st_blocks = dinode->di_blocks;
+
+    /* atime is not tracked */
+    st->st_atim = dinode->di_mtime;
+    st->st_mtim = dinode->di_mtime;
+    st->st_ctim = dinode->di_ctime;
 }
 
 /* Initialize a disk inode */
@@ -69,10 +93,14 @@ lc_newInode(struct fs *fs, uint64_t block, uint64_t len, bool reg, bool new) {
     inode->i_ocount = 0;
     inode->i_flags = 0;
     if (reg) {
+
+        /* Initialize part of the inode allocated for regular files */
         inode->i_rdata = (struct rdata *)(((char *)inode) +
                                           sizeof(struct inode));
         memset(inode->i_rdata, 0, sizeof(struct rdata));
     } else {
+
+        /* This initializes fields specific to non-regular files */
         inode->i_rdata = NULL;
     }
     if (new) {
@@ -86,6 +114,8 @@ lc_newInode(struct fs *fs, uint64_t block, uint64_t len, bool reg, bool new) {
 void
 lc_inodeLock(struct inode *inode, bool exclusive) {
     if (inode->i_fs->fs_frozen) {
+
+        /* Inode locks are disabled in immutable layers */
         return;
     }
     if (exclusive) {
@@ -109,7 +139,7 @@ lc_inodeUnlock(struct inode *inode) {
     pthread_rwlock_unlock(&inode->i_rwlock);
 }
 
-/* Add an inode to the hash and file system list */
+/* Add an inode to the hash table of the layer */
 static void
 lc_addInode(struct fs *fs, struct inode *inode) {
     int hash = lc_inodeHash(fs, inode->i_ino);
@@ -161,6 +191,7 @@ void
 lc_updateInodeTimes(struct inode *inode, bool mtime, bool ctime) {
     struct timespec tv;
 
+    assert(mtime || ctime);
     clock_gettime(CLOCK_REALTIME, &tv);
     if (mtime) {
         inode->i_dinode.di_mtime = tv;
@@ -191,7 +222,8 @@ lc_setLayerRoot(struct gfs *gfs, ino_t ino) {
         if (gfs->gfs_scount) {
             printf("Warning: Layer root changed when layers are present\n");
         }
-        printf("Switching layer root from %ld to %ld\n", gfs->gfs_layerRoot, ino);
+        printf("Switching layer root from %ld to %ld\n",
+               gfs->gfs_layerRoot, ino);
         gfs->gfs_layerRoot = 0;
     }
     dir = lc_getInode(lc_getGlobalFs(gfs), ino, NULL, false, false);
@@ -231,17 +263,27 @@ lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
         memcpy(&inode->i_dinode, &buf[offset], sizeof(struct dinode));
         lc_addInode(fs, inode);
         if (reg) {
+
+            /* Read emap of fragmented regular files */
             lc_emapRead(gfs, fs, inode, ibuf);
         } else if (S_ISDIR(inode->i_mode)) {
+
+            /* Read directory entries */
             lc_dirRead(gfs, fs, inode, ibuf);
         } else if (len) {
+
+            /* Setup target of a symbolic link */
             inode->i_target = (((char *)inode) + sizeof(struct inode));
             memcpy(inode->i_target, &buf[offset + sizeof(struct dinode)], len);
             inode->i_target[len] = 0;
             assert(i == 0);
             i = LC_INODE_BLOCK_MAX;
         }
+
+        /* Read extended attributes */
         lc_xattrRead(gfs, fs, inode, ibuf);
+
+        /* Set up root inode when read */
         if (inode->i_ino == fs->fs_root) {
             assert(S_ISDIR(inode->i_mode));
             fs->fs_rootInode = inode;
@@ -260,11 +302,12 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
     int i, j, k, l;
 
     lc_printf("Reading inodes for fs %d %ld, block %ld\n", fs->fs_gindex, fs->fs_root, block);
-    if (block != LC_INVALID_BLOCK) {
-        lc_mallocBlockAligned(fs, (void **)&buf, LC_MEMTYPE_BLOCK);
-        lc_mallocBlockAligned(fs, (void **)&ibuf, LC_MEMTYPE_BLOCK);
-        lc_mallocBlockAligned(fs, (void **)&xbuf, LC_MEMTYPE_BLOCK);
-    }
+    assert(block != LC_INVALID_BLOCK);
+    lc_mallocBlockAligned(fs, (void **)&buf, LC_MEMTYPE_BLOCK);
+    lc_mallocBlockAligned(fs, (void **)&ibuf, LC_MEMTYPE_BLOCK);
+    lc_mallocBlockAligned(fs, (void **)&xbuf, LC_MEMTYPE_BLOCK);
+
+    /* Read inode blocks linked from the super block */
     while (block != LC_INVALID_BLOCK) {
         if (read) {
             //lc_printf("Reading inode table from block %ld\n", block);
@@ -274,21 +317,22 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
         }
         k = LC_IBLOCK_MAX;
         l = LC_IBLOCK_MAX - 1;
+
+        /* Process inode blocks from the block read */
         for (i = 0; i < LC_IBLOCK_MAX; i++) {
             iblock = buf->ib_blks[i];
             if (iblock == 0) {
                 l = i;
                 break;
             }
-            if (iblock == LC_INVALID_BLOCK) {
-                assert(iblock != LC_INVALID_BLOCK);
-                if (k == LC_IBLOCK_MAX) {
-                    k = i;
-                }
-                continue;
-            }
+
+            assert(iblock != LC_INVALID_BLOCK);
             if (lc_readInodesBlock(gfs, fs, iblock, ibuf, xbuf)) {
                 lc_freeLayerMetaBlocks(fs, iblock, 1);
+
+                /* If the inode block is completely empty, insert a dummy entry
+                 * and remember first such entry in the block.
+                 */
                 buf->ib_blks[i] = LC_INVALID_BLOCK;
                 if (k == LC_IBLOCK_MAX) {
                     k = i;
@@ -296,6 +340,8 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
                 flush = true;
             }
         }
+
+        /* Flush if some inode blocks are removed */
         if (flush) {
 
             /* Compact the block by removing all LC_INVALID_BLOCK entries */
@@ -319,7 +365,9 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
                 }
             }
 
-            /* Free the block if completely empty */
+            /* Free next inode block if current block completely empty after
+             * copying in the next block to current block.
+             */
             if ((buf->ib_blks[0] == 0) && (buf->ib_next != LC_INVALID_BLOCK)) {
                 iblock = buf->ib_next;
                 //lc_printf("Reading inode table from block %ld, moving to %ld\n", iblock, block);
@@ -327,20 +375,17 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
                 lc_freeLayerMetaBlocks(fs, iblock, 1);
                 read = false;
                 continue;
-            } else {
-                lc_writeBlock(gfs, fs, buf, block);
-                flush = false;
             }
+            lc_writeBlock(gfs, fs, buf, block);
+            flush = false;
         }
         block = buf->ib_next;
     }
     assert(fs->fs_rootInode != NULL);
     assert(!flush);
-    if (buf) {
-        lc_free(fs, buf, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
-        lc_free(fs, ibuf, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
-        lc_free(fs, xbuf, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
-    }
+    lc_free(fs, buf, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
+    lc_free(fs, ibuf, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
+    lc_free(fs, xbuf, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
 }
 
 /* Free an inode and associated resources */
@@ -350,6 +395,8 @@ lc_freeInode(struct inode *inode) {
     struct fs *fs = inode->i_fs;
 
     if (S_ISREG(inode->i_mode)) {
+
+        /* Free pages of a regular file */
         lc_truncPages(inode, 0, false);
         assert(inode->i_page == NULL);
         assert(inode->i_emap == NULL);
@@ -357,8 +404,12 @@ lc_freeInode(struct inode *inode) {
         assert(inode->i_dpcount == 0);
         size += sizeof(struct rdata);
     } else if (S_ISDIR(inode->i_mode)) {
+
+        /* Free directory entries */
         lc_dirFree(inode);
     } else if (S_ISLNK(inode->i_mode)) {
+
+        /* Free target of a symbolic link if the inode owns that */
         inode->i_target = NULL;
         if (!(inode->i_flags & LC_INODE_SHARED)) {
             size += inode->i_size + 1;
@@ -393,13 +444,17 @@ lc_flushInodePages(struct gfs *gfs, struct fs *fs) {
     fs->fs_inodePagesCount = 0;
 }
 
-/* Allocate a block for an inode */
+/* Allocate a slot in an inode block for storing an inode */
 static bool
 fs_allocInodeBlock(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     uint64_t block;
     bool allocated = false;
 
     pthread_mutex_lock(&fs->fs_alock);
+
+    /* Allocate new inode blocks if needed.  Allocate a few together so that
+     * inode blocks can be somewhat contiguous on disk.
+     */
     if ((fs->fs_inodeBlocks == NULL) ||
         (fs->fs_inodeIndex >= LC_IBLOCK_MAX)) {
         lc_newInodeBlock(gfs, fs);
@@ -412,6 +467,8 @@ fs_allocInodeBlock(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     if ((fs->fs_inodeBlockIndex == 0) ||
         (fs->fs_inodeBlockIndex >= LC_INODE_BLOCK_MAX)) {
         if (fs->fs_blockInodesCount == 0) {
+
+            /* Reserve a few blocks for inodes */
             pthread_mutex_unlock(&fs->fs_alock);
             block = lc_blockAllocExact(fs, LC_INODE_CLUSTER_SIZE, true, true);
             pthread_mutex_lock(&fs->fs_alock);
@@ -422,12 +479,16 @@ fs_allocInodeBlock(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         assert(fs->fs_blockInodes != LC_INVALID_BLOCK);
         assert(fs->fs_blockInodes != 0);
         assert(fs->fs_blockInodesCount > 0);
+
+        /* Pick up the next available inode block */
         inode->i_block = fs->fs_blockInodes++;
         fs->fs_blockInodesCount--;
         fs->fs_inodeBlocks->ib_blks[fs->fs_inodeIndex++] = inode->i_block;
         fs->fs_inodeBlockIndex = 1;
         allocated = true;
     } else {
+
+        /* Pick next available slot in the current inode block */
         assert(fs->fs_blockInodes != LC_INVALID_BLOCK);
         assert(fs->fs_blockInodes != 0);
         inode->i_block = ((uint64_t)fs->fs_inodeBlockIndex <<
@@ -452,13 +513,19 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     off_t offset;
 
     assert(inode->i_fs == fs);
+
+    /* Flush extended attributes if those are modified */
     if (inode->i_flags & LC_INODE_XATTRDIRTY) {
         lc_xattrFlush(gfs, fs, inode);
     }
 
     if (inode->i_flags & LC_INODE_EMAPDIRTY) {
+
+        /* Flush dirty pages and emap blocks */
         lc_emapFlush(gfs, fs, inode);
     } else if (inode->i_flags & LC_INODE_DIRDIRTY) {
+
+        /* Flush directory entries */
         lc_dirFlush(gfs, fs, inode);
     }
 
@@ -480,18 +547,19 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             inode->i_xattrBlock = LC_INVALID_BLOCK;
         }
 
-        /* An removed inode with a disk copy, needs to be written out so that
+        /* A removed inode with a disk copy, needs to be written out so that
          * it would be considered removed when the layer is remounted.
          */
         if (!(inode->i_flags & LC_INODE_REMOVED) ||
             (inode->i_block != LC_INVALID_BLOCK)) {
             allocated = false;
             if (inode->i_block == LC_INVALID_BLOCK) {
+
+                /* Find an inode block with a slot for this inode */
                 allocated = fs_allocInodeBlock(gfs, fs, inode);
             }
             offset = (inode->i_block >> LC_DINODE_INDEX) * LC_DINODE_SIZE;
             block = inode->i_block & LC_DINODE_BLOCK;
-            //lc_printf("inode %ld block %ld offset %ld block %ld\n", inode->i_ino, inode->i_block, offset, block);
             assert(offset < LC_BLOCK_SIZE);
             written = true;
             assert(!(inode->i_flags & LC_INODE_REMOVED) ||
@@ -501,6 +569,8 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             if (allocated) {
                 assert(offset == 0);
                 page = lc_getPageNewData(fs, block);
+
+                /* Zero out rest of the block */
                 memset(&page->p_data[sizeof(struct dinode)], 0,
                        LC_BLOCK_SIZE - sizeof(struct dinode));
             } else {
@@ -508,6 +578,8 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             }
             memcpy(&page->p_data[offset], &inode->i_dinode,
                    sizeof(struct dinode));
+
+            /* Store the target of the symbolic link in the same block */
             if (S_ISLNK(inode->i_mode)) {
                 assert(inode->i_block == block);
                 memcpy(&page->p_data[sizeof(struct dinode)], inode->i_target,
@@ -521,6 +593,10 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
                 page->p_dvalid = 1;
                 if (fs->fs_inodePages &&
                     (page->p_block != (fs->fs_inodePages->p_block + 1))) {
+
+                    /* Flush inode pages if the new block is not immediately
+                     * after the previous dirty block.
+                     */
                     lc_flushInodePages(gfs, fs);
                 }
                 page->p_dnext = fs->fs_inodePages;
@@ -547,23 +623,31 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs) {
     int i;
 
     lc_printf("Syncing inodes for fs %d %ld\n", fs->fs_gindex, fs->fs_root);
+
+    /* Flush the root inode first */
     inode = fs->fs_rootInode;
     if (inode && !fs->fs_removed && lc_inodeDirty(inode)) {
         count += lc_flushInode(gfs, fs, inode);
     }
     if (fs == lc_getGlobalFs(gfs)) {
+
+        /* Flush the layer root directory */
         inode = gfs->gfs_layerRootInode;
         if (inode && !fs->fs_removed && lc_inodeDirty(inode)) {
             count += lc_flushInode(gfs, fs, inode);
         }
     }
-    for (i = 0; i < fs->fs_icacheSize; i++) {
+
+    /* Flush rest of the dirty inodes */
+    for (i = 0; (i < fs->fs_icacheSize) && !fs->fs_removed; i++) {
         inode = fs->fs_icache[i].ic_head;
         while (inode && !fs->fs_removed) {
             if ((inode->i_flags & LC_INODE_REMOVED) &&
                 S_ISREG(inode->i_mode) &&
                 inode->i_size) {
                 assert(lc_inodeDirty(inode));
+
+                /* Truncate pages of a removed inode on umount */
                 lc_truncPages(inode, 0, true);
             }
             if (lc_inodeDirty(inode)) {
@@ -602,6 +686,8 @@ lc_destroyInodes(struct fs *fs, bool remove) {
             if (!(inode->i_flags & LC_INODE_REMOVED)) {
                 rcount++;
             }
+
+            /* Invalidate kernel page cache when a layer is deleted */
             if (remove && !fs->fs_readOnly && inode->i_private &&
                 inode->i_size) {
                 fuse_lowlevel_notify_inval_inode(
@@ -650,6 +736,9 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino, bool exclusive) {
     struct inode *inode;
     int flags = 0;
 
+    /* Initialize the inode and add to the hash and drop the layer lock after
+     * taking the lock on the inode.
+     */
     inode = lc_newInode(fs, LC_INVALID_BLOCK, 0, reg, false);
     memcpy(&inode->i_dinode, &parent->i_dinode, sizeof(struct dinode));
     lc_inodeLock(inode, true);
@@ -659,7 +748,7 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino, bool exclusive) {
         assert(parent->i_page == NULL);
         assert(parent->i_dpcount == 0);
 
-        /* Share pages initially */
+        /* Share emap and blocks initially */
         if (parent->i_dinode.di_blocks) {
             if (parent->i_extentLength) {
                 inode->i_extentBlock = parent->i_extentBlock;
@@ -671,27 +760,39 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino, bool exclusive) {
                 flags |= LC_INODE_EMAPDIRTY;
             }
         } else {
+
+            /* A file with no blocks is not sharing anything with parent */
             inode->i_private = true;
         }
     } else if (S_ISDIR(inode->i_mode)) {
         if (parent->i_dirent) {
+
+            /* Directory entries are shared initially */
             inode->i_dirent = parent->i_dirent;
             inode->i_flags |= LC_INODE_SHARED;
             if (parent->i_flags & LC_INODE_DHASHED) {
                 inode->i_flags |= LC_INODE_DHASHED;
             }
             flags |= LC_INODE_DIRDIRTY;
+        } else {
+            assert(parent->i_size == 0);
         }
     } else if (S_ISLNK(inode->i_mode)) {
+
+        /* Target of symbolic link is shared with parent */
         inode->i_target = parent->i_target;
         inode->i_flags |= LC_INODE_SHARED;
     }
+
+    /* Parent is different for files in root directory */
     inode->i_parent = (parent->i_parent == parent->i_fs->fs_root) ?
                       fs->fs_root : parent->i_parent;
     if (lc_xattrCopy(inode, parent)) {
         flags |= LC_INODE_XATTRDIRTY;
     }
     lc_markInodeDirty(inode, flags);
+
+    /* If shared lock is requested, take that after dropping exclusive lock */
     if (!exclusive) {
         lc_inodeUnlock(inode);
         lc_inodeLock(inode, false);
@@ -701,7 +802,7 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino, bool exclusive) {
     return inode;
 }
 
-/* Lookup the requested inode in the chain */
+/* Lookup the requested inode in the parent chain */
 static struct inode *
 lc_getInodeParent(struct fs *fs, ino_t inum, bool copy, bool exclusive) {
     struct inode *inode = NULL, *parent;
@@ -711,16 +812,20 @@ lc_getInodeParent(struct fs *fs, ino_t inum, bool copy, bool exclusive) {
 
     pfs = fs->fs_parent;
     while (pfs) {
+
+        /* Hash changes with inode cache size */
         if (pfs->fs_icacheSize != csize) {
             hash = lc_inodeHash(pfs, inum);
             csize = pfs->fs_icacheSize;
         }
+
+        /* Check parent layers until an inode is found */
         parent = lc_lookupInodeCache(pfs, inum, hash);
         if (parent != NULL) {
             assert(!(parent->i_flags & LC_INODE_REMOVED));
             if (copy) {
-                /* Clone the inode only when modified */
 
+                /* Clone the inode only when modified */
                 if (fs->fs_icacheSize != csize) {
                     hash = lc_inodeHash(fs, inum);
                 }
@@ -747,7 +852,7 @@ lc_getInodeParent(struct fs *fs, ino_t inum, bool copy, bool exclusive) {
 /* Get an inode locked in the requested mode */
 struct inode *
 lc_getInode(struct fs *fs, ino_t ino, struct inode *handle,
-             bool copy, bool exclusive) {
+            bool copy, bool exclusive) {
     ino_t inum = lc_getInodeHandle(ino);
     struct inode *inode;
 
@@ -766,7 +871,10 @@ lc_getInode(struct fs *fs, ino_t ino, struct inode *handle,
     if (inode) {
         lc_inodeLock(inode, exclusive);
         return inode;
-    } else if (handle && !copy) {
+    }
+
+    /* If just reading inode and parent inode is known, return that */
+    if (handle && !copy) {
         inode = handle;
         assert(inode->i_ino == inum);
         assert(inode->i_fs->fs_rfs == fs->fs_rfs);
@@ -781,6 +889,7 @@ lc_getInode(struct fs *fs, ino_t ino, struct inode *handle,
     if (inode == NULL) {
         lc_printf("Inode is NULL, fs gindex %d root %ld ino %ld\n",
                    fs->fs_gindex, fs->fs_root, ino);
+        assert(inode);
     }
     return inode;
 }
@@ -841,6 +950,8 @@ lc_inodeInit(struct fs *fs, mode_t mode, uid_t uid, gid_t gid,
 
     inode = lc_newInode(fs, LC_INVALID_BLOCK, len, S_ISREG(mode), true);
     if (len) {
+
+        /* Copy the target of symbolic link */
         inode->i_target = (((char *)inode) + sizeof(struct inode));
         memcpy(inode->i_target, target, len);
         inode->i_target[len] = 0;

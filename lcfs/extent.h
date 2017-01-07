@@ -3,8 +3,17 @@
 
 #include "includes.h"
 
-#define LC_EXTENT_SPACE 0x0
-#define LC_EXTENT_EMAP  0x1
+/* Type of extents */
+enum lc_extentType {
+
+    /* Extent tracking space */
+    LC_EXTENT_SPACE = 0,
+
+    /* Extent tracking inode extent map */
+    LC_EXTENT_EMAP = 1,
+} __attribute__((packed));
+
+/* Number of bits used to represent block in an emap extent */
 #define LC_EXTENT_EMAP_CSIZE    16
 #define LC_EXTENT_EMAP_MAX ((1 << LC_EXTENT_EMAP_CSIZE) - 1)
 
@@ -92,7 +101,7 @@ lc_setExtentCount(struct extent *extent, uint64_t count) {
 
 /* Initialize an extent */
 static inline void
-lc_initExtent(struct gfs *gfs, struct extent *extent, uint8_t type,
+lc_initExtent(struct gfs *gfs, struct extent *extent, enum lc_extentType type,
               uint64_t start, uint64_t block, uint64_t count,
               struct extent *next) {
     assert(count > 0);

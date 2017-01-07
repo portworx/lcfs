@@ -144,6 +144,8 @@ out:
 int
 main(int argc, char *argv[]) {
 #ifdef FUSE3
+
+    /* XXX Make V2 plugins work with FUSE 3.0 */
     struct fuse_cmdline_opts opts;
     struct fuse_session *se;
     int i, err = -1, ret;

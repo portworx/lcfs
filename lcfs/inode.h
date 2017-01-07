@@ -25,10 +25,19 @@ struct icache {
     struct inode *ic_head;
 };
 
+/* Minimum directory size before converting to hash table */
 #define LC_DIRCACHE_MIN  32
+
+/* Size of the directory hash table */
 #define LC_DIRCACHE_SIZE 512
+
+/* Number of characters included from the name for calculating hash */
 #define LC_DIRHASH_LEN   10
+
+/* Bytes shifted in readdir offset for storing hash index */
 #define LC_DIRHASH_SHIFT 32ul
+
+/* Portion of the readdir offset storing index in the list */
 #define LC_DIRHASH_INDEX 0x00000000FFFFFFFFul
 
 /* Directory entry */
@@ -115,15 +124,15 @@ struct ixattr {
     uint32_t xd_xsize;
 } __attribute__((packed));
 
-#define LC_INODE_DIRTY          0x01
-#define LC_INODE_EMAPDIRTY      0x02
-#define LC_INODE_DIRDIRTY       0x04
-#define LC_INODE_XATTRDIRTY     0x08
-#define LC_INODE_REMOVED        0x10
-#define LC_INODE_SHARED         0x20
-#define LC_INODE_TMP            0x40
-#define LC_INODE_HASHED         0x80
-#define LC_INODE_DHASHED        0x80
+#define LC_INODE_DIRTY          0x01  /* Inode is dirty */
+#define LC_INODE_EMAPDIRTY      0x02  /* Dirty pages and Emap */
+#define LC_INODE_DIRDIRTY       0x04  /* Dirty directory */
+#define LC_INODE_XATTRDIRTY     0x08  /* Dirty extended attributes */
+#define LC_INODE_REMOVED        0x10  /* File is removed */
+#define LC_INODE_SHARED         0x20  /* Sharing emap/directory with parent */
+#define LC_INODE_TMP            0x40  /* Created under /tmp */
+#define LC_INODE_HASHED         0x80  /* Hashed directory */
+#define LC_INODE_DHASHED        0x80  /* Dirty pages in a hash table */
 
 /* Inode structure */
 struct inode {
@@ -152,6 +161,7 @@ struct inode {
     union {
 
         /* Data specific for regular files */
+        /* XXX This pointer can be eliminated with macros */
         struct rdata *i_rdata;
 
         /* Directory entries of a directory */

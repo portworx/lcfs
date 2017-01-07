@@ -113,6 +113,7 @@ void lc_destroyFs(struct fs *fs, bool remove);
 
 void lc_icache_init(struct fs *fs, size_t size);
 void lc_icache_deinit(struct icache *icache);
+void lc_copyStat(struct stat *st, struct inode *inode);
 ino_t lc_inodeAlloc(struct fs *fs);
 void lc_updateFtypeStats(struct fs *fs, mode_t mode, bool incr);
 void lc_displayFtypeStats(struct fs *fs);
@@ -164,7 +165,7 @@ void lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
                  void *buf);
 void lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
-                     size_t size, uint64_t pg, bool remove, bool *truncated);
+                     size_t size, uint64_t pg, bool remove);
 void lc_freeInodeDataBlocks(struct fs *fs, struct inode *inode,
                             struct extent **extents);
 
@@ -201,8 +202,6 @@ void lc_readPages(fuse_req_t req, struct inode *inode, off_t soffset,
                   struct fuse_bufvec *bufv);
 void lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
                    bool release, bool unlock);
-void lc_truncatePage(struct fs *fs, struct inode *inode, struct dpage *dpage,
-                     uint64_t pg, uint16_t poffset);
 void lc_truncPages(struct inode *inode, off_t size, bool remove);
 void lc_flushDirtyPages(struct gfs *gfs, struct fs *fs);
 void lc_addDirtyInode(struct fs *fs, struct inode *inode);
@@ -217,7 +216,6 @@ void lc_freePages(struct fs *fs, struct dpage *dpages, uint64_t pcount);
 int lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
                    void **fsp);
 void lc_epInit(struct fuse_entry_param *ep);
-void lc_copyStat(struct stat *st, struct inode *inode);
 
 void lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
                   const char *value, size_t size, int flags);

@@ -3,27 +3,50 @@
 
 #include "includes.h"
 
+/* HOLE representation for a page of an inode */
 #define LC_PAGE_HOLE       ((uint64_t)-1)
 
 /* Initial size of the page hash table */
 /* XXX This needs to consider available memory */
 #define LC_PCACHE_SIZE_MIN  1024
 #define LC_PCACHE_SIZE      (1024 * 1024)
+
+/* Maximum number of pages */
 #define LC_PAGE_MAX         1200000
 static_assert(LC_PAGE_MAX >= LC_PCACHE_SIZE, "LC_PAGE_MAX <= LC_PCACHE_SIZE");
 
+/* Number of locks for the block cache hash lists */
 #define LC_PCLOCK_COUNT     1024
 
+/* Number of hash lists for the dirty pages */
+/* XXX Adjust this with size of the file */
 #define LC_PAGECACHE_SIZE  32
+
+/* Maximum number of blocks grouped in a single I/O request */
 #define LC_CLUSTER_SIZE    256
 
+/* Maximum memory in bytes allowed for data pages */
 #define LC_PCACHE_MEMORY        (512ull * 1024ull * 1024ull)
+
+/* Minimum amount of total system memory which can be used for data pages if
+ * system does not have LC_PCACHE_MEMORY bytes of memory.
+ */
 #define LC_PCACHE_MEMORY_MIN    25
+
+/* Maximum number of dirty pages a file could have before flushing triggered */
 #define LC_MAX_FILE_DIRTYPAGES  131072
+
+/* Maximum number of dirty pages a layer could have before flushing triggered
+ */
 #define LC_MAX_LAYER_DIRTYPAGES 524288
 
+/* Maximum number of pages checked in a hash list for picking one for freeing
+ */
 #define LC_CACHE_PURGE_CHECK_MAX 10
 
+/* Number of minimum blocks a file need to grow before it is converted to use a
+ * hash scheme for dirty pages.
+ */
 #define LC_DHASH_MIN            1024
 
 /* Page cache header */
