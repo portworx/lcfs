@@ -8,6 +8,11 @@
 #define FUSE_USE_VERSION 29
 #endif
 
+#define LC_FTYPE_ENABLE
+#define LC_STATS_ENABLE
+#define LC_MEMSTATS_ENABLE
+//#define LC_PROFILING
+
 #define _GNU_SOURCE
 
 #include <fuse_lowlevel.h>
@@ -26,7 +31,9 @@
 #include <assert.h>
 #include <linux/ioctl.h>
 
-//#include <gperftools/profiler.h>
+#ifdef LC_PROFILING
+#include <gperftools/profiler.h>
+#endif
 
 #include "lcfs.h"
 #include "layout.h"

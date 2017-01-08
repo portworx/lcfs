@@ -1375,6 +1375,8 @@ lc_readdirplus(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 /* Initialize a new file system */
 static void
 lc_init(void *userdata, struct fuse_conn_info *conn) {
+    struct gfs *gfs = (struct gfs *)userdata;
+
 #ifdef FUSE3
 
     /* Use splice */
@@ -1387,17 +1389,24 @@ lc_init(void *userdata, struct fuse_conn_info *conn) {
     /* Need to support ioctls on directories */
     conn->want |= FUSE_CAP_IOCTL_DIR;
 #endif
-
-    /* XXX Identify fist and second lc_init() calls */
-    //ProfilerStart("/tmp/lcfs");
+    if (gfs) {
+#ifdef LC_PROFILING
+        ProfilerStart("/tmp/lcfs");
+#endif
+    }
 }
 
 /* Destroy a file system */
 static void
 lc_destroy(void *fsp) {
-    /* XXX Identify fist and second lc_destroy() calls */
+    struct gfs *gfs = (struct gfs *)fsp;
 
-    //ProfilerStop();
+    if (gfs) {
+#ifdef LC_PROFILING
+        ProfilerStop();
+#endif
+        lc_unmount(gfs);
+    }
 }
 
 /* Fuse operations registered with the fuse driver */

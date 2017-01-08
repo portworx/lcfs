@@ -34,13 +34,9 @@ struct gfs {
     /* Zero page */
     char *gfs_zPage;
 
-    /* fuse thread serving duplicate mountpoint */
-    pthread_t gfs_dup;
-
-#ifdef FUSE3
     /* fuse session */
     struct fuse_session *gfs_se;
-#else
+#ifndef FUSE3
     /* fuse channel */
     struct fuse_chan *gfs_ch;
 #endif

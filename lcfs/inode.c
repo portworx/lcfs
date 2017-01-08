@@ -1,7 +1,11 @@
 #include "includes.h"
 
 /* Enable tracking counting of files of different types */
+#ifdef LC_FTYPE_ENABLE
 static bool lc_ftypeStatsEnabled = true;
+#else
+static bool lc_ftypeStatsEnabled = false;
+#endif
 
 /* Given an inode number, return the hash index */
 /* XXX Figure out a better hashing scheme */
