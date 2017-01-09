@@ -13,7 +13,9 @@ This file system is provided to Docker by way of the FUSE low level API.
 # Installing the Portworx Graph driver for Docker
 PX-Graph is available as a v2 plugin and requires Docker version 1.13 or higher. It is available on the public Docker hub and is installed using `docker plugin install portworx/px-graph`.
 
-> Currently the v2 interface is not generally available. There is an [oustanding issue with the v2 interface](https://github.com/docker/docker/issues/28948). Therefore, Portworx provides an alternate way of installing the PX-Graph plugin.  To use this alternate method, follow [these instructions](https://github.com/portworx/px-graph/tree/master/v2-install).
+> Currently the v2 interface is not generally available. There is an [oustanding issue with the v2 interface](https://github.com/docker/docker/issues/28948). Therefore, Portworx provides an alternate way of installing the PX-Graph plugin.  
+> Follow [these instructions](https://github.com/portworx/px-graph/tree/master/v2-install) to install Px-Graph
+
 
 ## Design
 
