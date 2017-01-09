@@ -1,3 +1,4 @@
+#!/bin/bash -xe
 set -x
 
 make clean
