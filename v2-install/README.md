@@ -10,11 +10,12 @@ To install Px-Graph, there are four actions you must perform:
 These four steps are detailed below.
 
 ##  Step 1 - Install LCFS
-1. Build lcfs following the instructions in that [directory](https://github.com/portworx/px-graph/tree/master/lcfs).
-2. Stop docker - for example, `sudo systemctl stop docker`
-3. Chose a device to provide to lcfs.  lcfs requires a block device (you can also use a file, but this is not recommended due to performance reasons).  In this example, we use `/dev/sdb`.
-4. Remove `/var/lib/docker` and `/lcfs` if they are present.
-5. Start lcfs
+1. git clone the repo git@github.com:portworx/px-graph.git
+2. Build lcfs following the instructions in that [directory](https://github.com/portworx/px-graph/tree/master/lcfs).
+3. Stop docker - for example, `sudo systemctl stop docker`
+4. Chose a device to provide to lcfs.  lcfs requires a block device (you can also use a file, but this is not recommended due to performance reasons).  In this example, we use `/dev/sdb`.
+5. Remove `/var/lib/docker` and `/lcfs` if they are present.
+6. Start lcfs
 ```
 # sudo rm -fr /var/lib/docker /lcfs
 # sudo mkdir /lcfs /var/lib/docker
