@@ -14,7 +14,7 @@ This file system is provided to Docker by way of the FUSE low level API.
 # Installing the Portworx Graph driver for Docker
 Px-Graph is available as a v2 plugin and requires Docker version 1.13 or highet.  It is available on the public Docker hub and is installed using `docker plugin install portworx/px-graph`.
 
-> Currently the v2 interface is not generally available and has an [oustanding issue with the v2 interface](https://github.com/docker/docker/issues/28948).  Therefore Portworx provides an alternate way of installing the px-graph plugin.  To use this alternate method, follow [these instructions](https://github.com/portworx/px-graph/tree/master/docker.1.13)
+> Currently the v2 interface is not generally available.  There is an [oustanding issue with the v2 interface](https://github.com/docker/docker/issues/28948).  Therefore Portworx provides an alternate way of installing the px-graph plugin.  To use this alternate method, follow [these instructions](https://github.com/portworx/px-graph/tree/master/docker.1.13)
 
 ## Design
 Portworx Graphdriver is a custom built file system to meet the needs of a docker graphdriver, similar to AUFS and Overlay graphdrivers.  Unlike AUFS and Overlay, this new graphdriver is a native file system, which means it does not operate on top of another file system, but operate directly on top of block devices.  Thus this file system does not have the inefficiencies of merged file systems.
