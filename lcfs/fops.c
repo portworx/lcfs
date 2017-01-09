@@ -98,6 +98,17 @@ lc_truncate(struct inode *inode, off_t size) {
     inode->i_size = size;
 }
 
+/* Removal of a directory */
+static void
+lc_removeDir(struct fs *fs, struct inode *dir) {
+    assert(dir->i_size == 0);
+    assert(dir->i_nlink == 2);
+    dir->i_nlink = 0;
+    if (dir->i_flags & LC_INODE_DHASHED) {
+        lc_dirFreeHash(fs, dir);
+    }
+}
+
 /* Remove an inode */
 int
 lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
@@ -119,20 +130,24 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
          * directories are not empty.
          */
         if (inode->i_size && (fs == lc_getGlobalFs(fs->fs_gfs))) {
-            lc_removeTree(fs, inode);
-        }
+            if (inodep) {
 
-        /* Do not allow removing directories not empty */
-        if (inode->i_size) {
-            lc_inodeUnlock(inode);
-            //lc_reportError(__func__, __LINE__, ino, EEXIST);
-            return EEXIST;
+                /* Let caller do this processing after responding */
+                *inodep = inode;
+                unlock = false;
+            } else {
+                lc_removeTree(fs, inode);
+            }
         }
-        assert(inode->i_size == 0);
-        assert(inode->i_nlink == 2);
-        inode->i_nlink = 0;
-        if (inode->i_flags & LC_INODE_DHASHED) {
-            lc_dirFreeHash(fs, inode);
+        if (unlock) {
+            if (inode->i_size) {
+
+                /* Do not allow removing directories not empty */
+                lc_inodeUnlock(inode);
+                //lc_reportError(__func__, __LINE__, ino, EEXIST);
+                return EEXIST;
+            }
+            lc_removeDir(fs, inode);
         }
         inode->i_flags |= LC_INODE_REMOVED;
         removed = true;
@@ -518,6 +533,7 @@ lc_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
 /* Remove a directory */
 static void
 lc_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name) {
+    struct inode *dir = NULL;
     struct timeval start;
     struct fs *fs;
     int err;
@@ -525,8 +541,16 @@ lc_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name) {
     lc_statsBegin(&start);
     lc_displayEntry(__func__, parent, 0, name);
     fs = lc_getfs(parent, false);
-    err = lc_remove(fs, parent, name, NULL, true);
+    err = lc_remove(fs, parent, name, (void **)&dir, true);
     fuse_reply_err(req, err);
+    if (dir) {
+
+        /* Remove all files from the directory */
+        assert(fs == lc_getGlobalFs(fs->fs_gfs));
+        lc_removeTree(fs, dir);
+        lc_removeDir(fs, dir);
+        lc_inodeUnlock(dir);
+    }
     lc_statsAdd(fs, LC_RMDIR, err, &start);
     lc_unlock(fs);
 }

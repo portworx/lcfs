@@ -87,6 +87,8 @@ out:
             pthread_cancel(flusher);
             pthread_join(flusher, NULL);
         }
+    } else {
+        fuse_session_exit(gfs->gfs_se);
     }
 #ifdef FUSE3
     fuse_session_unmount(fd->fd_se);
