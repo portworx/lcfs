@@ -2,76 +2,76 @@
 
 This file system driver is implemented using fuse low level API.
 
-1. Download this directory
+# Instructions on building LCFS
 
-    ```
-    git clone git@github.com:portworx/px-graph
-    ```
+### Git clone Px-Graph
 
-2. Install fuse library.
+```
+# git clone git@github.com:portworx/px-graph
+```
 
-   a.  Download fuse library from the following link:
-
-   * https://github.com/libfuse/libfuse/releases/download/fuse-2.9.7/fuse-2.9.7.tar.gz
-
-   NOTE: If testing with fuse 3.0 library, download fuse library from the
-   following link:
-
-   * https://github.com/libfuse/libfuse/releases/download/fuse-3.0.0/fuse-3.0.0.tar.gz
-
-   b.  Install tools to build fuse:
+### Install fuse
+Install tools to build fuse:
 
    * **Centos:** 
      `yum install gcc libstdc++-devel gcc-c++ curl-devel libxml2-devel openssl-devel mailcap`
 
    * **Ubuntu:**
      `apt-get install build-essential libcurl4-openssl-dev libxml2-dev mime-support`
+     
+Now dowload and install the fuse library from https://github.com/libfuse/libfuse/releases/download/fuse-2.9.7/fuse-2.9.7.tar.gz
 
-3. Untar it and build/install using following commands:
+> Note: If testing with fuse 3.0 library, download fuse library from https://github.com/libfuse/libfuse/releases/download/fuse-3.0.0/fuse-3.0.0.tar.gz
 
-    ```
-   ./configure
-   make -j8
-   make install
-    ```
+If needed, export PKG_CONFIG_PATH and LD_LIBRARY_PATH.  If the binaries are built inside the official GO container, this won't be necessary.
 
-   If needed, export PKG_CONFIG_PATH and LD_LIBRARY_PATH.  If the binaries are built inside the official GO container, this won't be necessary.
+```
+# export PKG_CONFIG_PATH-/usr/local/lib/pkgconfig
+```
 
-   ```
-   export PKG_CONFIG_PATH-/usr/local/lib/pkgconfig
-   ```
+Install tcmalloc or remove that from the Makefile.
 
-   ​
+On Ubuntu, run 
 
-4. Install tcmalloc or remove that from Makefile.
+```
+# sudo apt-get install libgoogle-perftools-dev
+```
 
-    On Ubuntu, run 
+On CentOS, run
 
-    ```
-   sudo apt-get install libgoogle-perftools-dev
-    ```
+```
+# sudo yum install gperftools
+```
 
-    On CentOS, run
+Now build and install fuse using following commands:
 
-    ```
-   sudo yum install gperftools
-    ```
+```
+# ./configure
+# make -j8
+# make install
+```
 
-5. Build lcfs directory by running make. (cd px-graph/lcfs; make)
+### Build lcfs 
+Now you can build lcfs by running make in the px-graph/lcfs directory.
 
-6. Mount a device/file - "sudo ./lcfs 'device' 'mnt'". Check output of mount
-   command to make sure device is mounted correctly.  It is recommended to use
-   an empty directory as mount point.
 
-   For debugging, options -f or -d could be specified.
+### Test lcfs
+Chose a device or file to start lcfs with.  For example, `/dev/sdb`.  You can start lcfs as follows:
 
-7. Run experiments, and finally unmount - "sudo fusermount -u 'mnt'"
+```
+# sudo ./lcfs /dev/sdb /mnt.
+# mount
+```
 
-8. For displaying stats, run "cstat 'id' [-c]" from 'mnt'/lcfs directory.
+Check the output of the `mount` command to make sure device is mounted correctly.  It is recommended to use an empty directory as mount point.
 
-​       Make sure fuse mount is running in forground mode (-d/-f option).
+> Note: For debugging, options -f or -d could be specified.
 
-​       Normally, stats are displayed whenever a layer is deleted/unmounted.
+Now you can use `/mnt` as a regular file system to test that lcfs is functioning correctly.
 
-11. For recreating the file system, unmount it and zero out the first block
-    (4KB) of the device and remount.
+To unmount lcfs, run:
+```
+# sudo fusermount -u /mnt
+```
+
+To display lcfs stats, run lcfs in forground mode (-d/-f option) and run "cstat 'id' [-c]" from the 'mnt'/lcfs directory.
