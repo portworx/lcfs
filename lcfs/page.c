@@ -489,7 +489,6 @@ lc_mergePage(struct gfs *gfs, struct inode *inode, uint64_t pg,
     assert(poffset < LC_BLOCK_SIZE);
     assert(psize > 0);
     assert(psize <= LC_BLOCK_SIZE);
-    assert(!(inode->i_flags & LC_INODE_SHARED));
     assert((inode->i_flags & LC_INODE_HASHED) || (pg < inode->i_pcount));
 
     /* Check if the block is full of zeros */
