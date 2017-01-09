@@ -1,8 +1,5 @@
-# Building px-graph with fuse v2.9.7
-
-This file system driver is implemented using fuse low level API.
-
-# Instructions on building LCFS
+# Instructions on building LCFS with fuse v2.9.7
+The lcfs file system depends on fuse v2.9.7 or higher.  These instructions walk you through installing fuse and building and testing lcfs as regular filesystem, independant of Docker.
 
 ### Git clone Px-Graph
 
