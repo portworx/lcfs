@@ -1,4 +1,4 @@
-# Installing px-graph on docker 1.13+
+# Installing Px-Graph on docker 1.13+
 
 Follow these instructions to build Px-Graph on your host system and configure Docker to use this graph driver.
 
