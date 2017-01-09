@@ -3,7 +3,7 @@ PX-Graph is a graph driver for Docker and designed to provide a purpose-built co
 
 1. Efficient page cache usage: Current graph drivers that depend on device mapper abuse the page cache by loading multiple copies of the same image layers in memory. This takes away host memory from running applications.
 2. Efficient i-node usage: Current graph drivers exhaust the number of inodes available, thereby causing the underlying filesystems to run out of space.
-3. Efficient cloning: Current graph drivers such as overlay implement a copy-on-write approach, which consumes CPU and time during container image management operations
+3. Efficient cloning: Current graph drivers such as overlay implement a copy-on-write approach, which consumes CPU and takes time during container image management operations
 4. Efficient and correct garbage collection and space management: Current graph drivers routinely end up with orphaned layers and cause the operator to resort to resetting Docker (usually by deleting `/var/lib/docker`).
 
 PX-Graph is built on a new filesystem designed by Portworx, specifically for managing Linux container images. This filesystem is called LCFS and stands for Layer Cloning File System.
