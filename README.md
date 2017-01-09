@@ -12,9 +12,9 @@ LCFS and stands for Layer Cloning File System.
 This file system is provided to Docker by way of the FUSE low level API. 
 
 # Installing the Portworx Graph driver for Docker
-Px-Graph is available as a v2 plugin and requires Docker version 1.13 or highet.  It is available on the public Docker hub and is installed using `docker plugin install portworx/px-graph`.
+Px-Graph is available as a v2 plugin and requires Docker version 1.13 or higher.  It is available on the public Docker hub and is installed using `docker plugin install portworx/px-graph`.
 
-> Currently the v2 interface is not generally available.  There is an [oustanding issue with the v2 interface](https://github.com/docker/docker/issues/28948).  Therefore Portworx provides an alternate way of installing the px-graph plugin.  To use this alternate method, follow [these instructions](https://github.com/portworx/px-graph/tree/master/docker.1.13)
+> Currently the v2 interface is not generally available.  There is an [oustanding issue with the v2 interface](https://github.com/docker/docker/issues/28948).  Therefore Portworx provides an alternate way of installing the px-graph plugin.  To use this alternate method, follow [these instructions](https://github.com/portworx/px-graph/tree/master/v2-install)
 
 ## Design
 Portworx Graphdriver is a custom built file system to meet the needs of a docker graphdriver, similar to AUFS and Overlay graphdrivers.  Unlike AUFS and Overlay, this new graphdriver is a native file system, which means it does not operate on top of another file system, but operate directly on top of block devices.  Thus this file system does not have the inefficiencies of merged file systems.
@@ -184,9 +184,6 @@ When space for a file is allocated contiguously as part of flush, the dirty page
 ## Crash Consistency (TODO)
 
 If the graphdriver is not shutdown normally, the docker database and layers in the graphdriver need to be consistent.  Also each layer needs to be consistent as well.  As the graphdriver manages both docker database and images/containers, those are kept in consistent state by using checkpointing technologies.  Thus this file system does not have the complexity of journaling schemes typically used in file systems to provide crash consistency.
-
-There are changes to this model with Docker V2 plugins with which docker
-database is no longer managed by lcfs graphdriver.
 
 ## Layer Diff (for docker build/commit)
 

@@ -1,10 +1,10 @@
 # Installing lcfs on docker 1.13+
 
-* Build lcfs following instructions in that directory.
+* Build lcfs following instructions in that directory(https://github.com/portworx/px-graph/tree/master/lcfs).
 
 * Stop docker if that is running - sudo service docker stop
 
-* Mount a device as lcfs file system at /var/lib/docker and /lcfs.  Remove those directories if present.
+* Mount a device (or a file) as lcfs file system at /var/lib/docker and /lcfs.  Remove those directories if present.
 
 ```
 sudo rm -fr /var/lib/docker /lcfs
