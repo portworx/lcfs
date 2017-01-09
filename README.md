@@ -1,9 +1,26 @@
-# LCFS -- Portworx Graph driver for Docker
+# About the Portworx Graph driver for Docker
+Px-Graph is a graph driver for Docker and designed to provide a purpose built container image management filesystem.  It is specifically designed to address the following issues:
 
-This file system driver is implemented using fuse low level API. LCFS stands for Layer Cloning File System.
+1. Efficient page cache usage - current graph drivers that depend on device mapper abuse the page cache by loading multiple copies of the same image layers in memory.  This takes away host memory from running applications.
+2. Efficient i-node usage - current graph drivers exhaust the number of inodes available, thereby running the underlying filesystems out of space.
+3. Efficient cloning - current graph drivers like overlay implement a copy-on-write approach, which consumes CPU and time during container image management operations
+4. Efficient and correct garbage collection and space management - current graph drivers routinely end up with orphaned layers and cause the operator to resort to resetting docker (usually by deleting `/var/lib/docker`).
 
-## Introduction
+Px-Graph is built on a new filesystem designed by portworx, specifically for managing Linux container images.  This filesystem is called 
+LCFS and stands for Layer Cloning File System.
 
+This file system is provided to Docker by way of the FUSE low level API. 
+
+# Installing the Portworx Graph driver for Docker
+Px-Graph is available as a v2 plugin on the public Docker hub and is installed using the `docker plugin install portworx/px-graph`.  
+
+Currently the v2 interface is not generally available and therefore Portworx provides two alternate ways of installing the px-graph plugin.
+
+If you are running Docker version 1.12 or earlier, follow [these instructions](https://github.com/portworx/px-graph/tree/master/docker.1.12).
+
+If you are running Docker version 1.13 or higher, follow [these instructions](https://github.com/portworx/px-graph/tree/master/docker.1.13)
+
+## Design
 Portworx Graphdriver is a custom built file system to meet the needs of a docker graphdriver, similar to AUFS and Overlay graphdrivers.  Unlike AUFS and Overlay, this new graphdriver is a native file system, which means it does not operate on top of another file system, but operate directly on top of block devices.  Thus this file system does not have the inefficiencies of merged file systems.
 
 This new file system is a user level file system developed using FUSE in C and does not require any kernel modifications, making it a portable file system.  It is a POSIX compliant file system.  Given the ephemeral (temporary) nature of data stored in a graphdriver, it is implemented without having some of the complexities of a general purpose file system (for example, journal and transactions).  Most file systems in use today are optimized towards persistent data, provide ACID properties for system calls and attempts to work well with random read-write workloads.
