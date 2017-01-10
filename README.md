@@ -115,7 +115,7 @@ Unlike some other graph drivers, atomic rename is supported. Certain operations 
 
 Access and creation times are not tracked.
 
-### Writes
+### `writes`
 
 Writes are returned immediately after copying new data to inode page table.
 Zero blocks written to files are detected. If all data written to a file is
@@ -126,19 +126,19 @@ Sparse files are supported and files do not consume space on disk for sparse reg
 
 Writes which are not page aligned do not trigger reading at the time of write, but deferred until application reads the page again or when the page is written to disk. If the page is filled up with subsequent writes, reading of the page from disk can be completely avoided as a whole page can be written down.
 
-### Fsync
+### `fsync`
 
 Fsync is disabled on all files and layers are made persistent when needed. Syncing dirty pages are usually triggered on last close of a file, with the exception of files in global file system.
 
-### rmdir
+### `rmdir`
 
 rmdir in global file system layer (layer 0) may succeed even when directory is not empty. This helps Docker daemon to delete directories no longer needed without iterating over the directory sub-tree.
 
-### xattrs
+### `xattrs`
 
 It looks like many UNIX commands unnecessarily query or try to remove extended attributes even when the file does not have any extended attributes. When a file system does not have any files with extended attributes, these operations are failed without even looking up and locking the inode. Ideally, the kernel should avoid making these calls when the inode does not have extended attributes (that info could be cached part of previous stat calls).
 
-### ioctls
+### `ioctls`
 
 There is support for a few ioctls for operations like creating/removing/loading/unloading layers. Currently, ioctls are supported only on the layer root directory.
 
