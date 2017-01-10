@@ -11,7 +11,7 @@ Set up GOPATH and get the following packages
 ```
 
 ### Step 2: Create a v2 lcfs graphdriver plugin 
-Make sure lcfs installed and configured as per [these instructions](https://github.com/portworx/px-graph/blob/master/v2-install/README.md#first-install-lcfs).
+> Note: Make sure lcfs installed and configured as per [these instructions](https://github.com/portworx/px-graph/blob/master/lcfs/README.md) before installing Px-Fuse.
 
 Now, you can run the setup script from this directory
 ```
