@@ -31,12 +31,10 @@ Restart the Docker daemon and instruct it to use vfs as the graph driver.  We wi
 ## Step 3 - Install Px-Graph
 Install the Px-Graph driver using the instructions in that [directory](https://github.com/portworx/px-graph/tree/master/plugin/README.md).
 
-
-
 ## Step 4 - Restart Docker to use Px-Graph
 Restart Docker to use Px-Graph with lcfs.  First stop dockerd.  Then run Docker as:
 ```
-# sudo dockerd -s lcfs
+# sudo dockerd -s portworx/px-graph
 ```
 
 Verify docker is running with lcfs by checking the output of command 'docker info'.
