@@ -24,12 +24,12 @@ Portworx Graph Driver is a custom-built file system to meet the needs of a savin
 This new file system is a user-level file system written in C and integrated into Linux and MacOS via Fuse.  Therefore it does not require any kernel modifications, making it a portable file system. It is a POSIX-compliant file system. Given the ephemeral (temporary) nature of data stored in a graph driver, it is implemented without having some of the complexities of a general-purpose file system (for example, journaling). Most file systems in use today are optimized towards persistent data, provide ACID properties for system calls and attempts to work well with random read-write workloads.  This file system is written with container image handling as a specific workload.  These operations involve:
 
 1. Container image creation
-2. Container image cloning and launcing of instances
+2. Container image cloning and launching of instances
 3. Container image memory consumption
 4. Number of inodes reported to the kernel by way of multiple copies of the same image (or layers) running
-5. Container image data management - Actions like deletion, forced image removal nd local system resource usage based on multiple container images being present
+5. Container image data management - Actions like deletion, forced image removal and local system resource usage based on multiple container images being present
 
-A lot of these techniques are implemented using image specific snapshotting techniques that are optimized for page cache consumption, image snap creation time and inode count.  Similar to other graph drivers, this graph driver also creates layers for images and read-write layers on top of those for containers.  Each image will have a base layer, in which files of the image are populated initially. Additional layers are created on top of the base layer and for each additional layer in the image being extracted.  Each layer shares data from the previous layer.  If a layer modifies any data, that data is visible from the layers on top of that layer, but not from the layers below that layer. Also if a container modifies data in an image it is loaded from, that modified data is not visible from any other derived layers on top of that layer.
+A lot of these techniques are implemented using image specific snapshotting techniques that are optimized for page cache consumption, image snap creation time and inode count.  Similar to other graph drivers, this graph driver also creates layers for images and read-write layers on top of those for containers.  Each image will have a base layer, in which files of the image are populated initially. Additional layers are created on top of the base layer and for each additional layer in the image being extracted.  Each layer shares data from the previous layer.  If a layer modifies any data, that data is visible from the layers on top of that layer, but not from the layers below that layer. Also if a container modifies data in an image it is loaded from, that modified data is not visible from any other derived layers on top of that image layer.
 
 A layer in an image is a read-only snapshot sitting on top of the previous layer in the image.  Therefore, these derived layers share common data between each other.  A layer is immutable after it's contents are completely populated.  When any existing data inherited from a previous layer is modified while populating data to a new layer, a branch-on-write (BOW) operation is performed in increments of 4KB blocks.  New data will be written to a newly allocated location on the back-end block storage device, and old data will no longer be accessible from the layer (or any other layer created on top of that subsequently) which modified the data.  Similarly, any files deleted from a layer are not visible from that layer or on any of the layers on top of that layer.
 
@@ -43,7 +43,7 @@ The layers on which new layers are created are read-only after they are populate
 
 Operations within a layer is independent of the total number of layers present in the file system.  Traditional filesystem snapshot implementations are problematic in this operation since snapshots are point-in-time images and snapshots may form a chain.  Therefore, operations on older snapshots may be negatively impacted.  However, LCFS treats each snapshot, regardless of the number of snapshots, as a sibling of the original layer.  This is more meaningful to this container image use case.
 
-Unlike a traditional file system, layers in a graph are deleted in the reverse order those are created. The newest layer is deleted first, and then the one created just before it. A layer in the middle of chain or the base layer cannot be deleted when there is a newer layer on top of that layer still around. This simplifies the overall snapshot design since deleting a snapshot in the middle/beginning of the chain is a lot more complex to get working. For example, each layer easily track space allocated for storing data created/modified by the layer and any such space can be freed without worrying about some other layer sharing any such data.
+Unlike a traditional file system, layers in a graph are deleted in the reverse order those are created. The newest layer is deleted first, and then the one created just before it. A layer in the middle of chain or the base layer cannot be deleted when there is a newer layer on top of that layer still around. This simplifies the overall snapshot design since deleting a snapshot in the middle/beginning of the chain is a lot more complex to get working. For example, each layer can easily track space allocated for storing data created/modified by the layer and any such space can be freed without worrying about some other layer sharing any such data.
 
 Also layers are not for rolling back, thus it does not have to incur some of the complexities of snapshots in a traditional file system. There is also no need to provide any block level differences between any two layers.
 
@@ -77,7 +77,7 @@ There is another directory under which roots of all layers are placed and called
 
 ### File handles
 
-File handles are formed by combining the layer index and the inode number of the file. This is a 64-bit number and is returned to FUSE when files are opened / created. This file handle can be used to locate the same file in subsequent operations like read, readdir, write, truncate, flush, release, etc. The file handle for a shared file, when accessed from different layers, would be different as the layer index part of the file handle would be different. This may turn out to be problem when same file is read from different layers as multiple copies of data may end up in the kernel page cache – in order to alleviate that problem, pages of a shared file in kernel page cache are invalidated on last close of a shared file. Also FUSE is requested to invalidate pages of a shared file on every open (this should be done when a file is closed, but FUSE does not have any controls for doing this as of today). Also the direct-mount option should not be used since it would prevent mmap. Ideally, FUSE should provide an option to bypass pagecache for a file when the file is not mmapped.
+File handles are formed by combining the layer index and the inode number of the file. This is a 64-bit number and is returned to FUSE when files are opened / created. This file handle can be used to locate the same file in subsequent operations like read, readdir, write, truncate, flush, release, etc. The file handle for a shared file, when accessed from different layers, would be different as the layer index part of the file handle would be different. This may turn out to be problem when same file is read from different layers as multiple copies of data may end up in the kernel page cache – in order to alleviate that problem, pages of a shared file in kernel page cache are invalidated on last close of a shared file (this should be done when a file is closed in kernel, but FUSE does not have any knobs for doing this as of today). Also the direct-mount option can not be used since that would prevent mmap. Ideally, FUSE should provide an option to bypass pagecache for a file when the file is not mmapped.
 
 ### Locking
 
@@ -117,10 +117,7 @@ Access and creation times are not tracked.
 
 ### `writes`
 
-Writes are returned immediately after copying new data to inode page table.
-Zero blocks written to files are detected. If all data written to a file is
-zeros, then nothing is written to disk and such files do not consume any disk
-space.
+Writes are returned immediately after copying new data to inode page table.  Zero blocks written to files are detected. If all data written to a file is zeros, then nothing is written to disk and such files do not consume any disk space. If pages of a file with non-zero data are overwritten with zeroes, then corresponding blocks are freed from the file.
 
 Sparse files are supported and files do not consume space on disk for sparse regions.
 
@@ -144,13 +141,13 @@ There is support for a few ioctls for operations like creating/removing/loading/
 
 ## Copying up (BOW, branch-on-write)
 
-When a shared file is modified in a layer, its metadata is copied up completely which includes the inode, whole directory or whole map depending on the type of file, all the extended attributes, etc.). Shared metadata may still be shared in cache, but separate copies are made on disk when dirty inode is flushed to disk.
+When a shared file is modified in a layer, its metadata is copied up completely which includes the inode, whole directory or whole map depending on the type of file, all the extended attributes, etc.). Shared metadata may still be shared in cache, but separate copies are made on disk if dirty inode is flushed to disk.
 
 Initially after a copy up of an inode, user data of file is shared between newly copied up inode and original inode and copy-up of user data happens in units of 4KB as and when user data gets modified in the layer. While copying up a page, if a whole page is modified, then old data does not have to be read-in. New data is written to a new location and old data block is untouched.
 
 In practice, most applications truncate the whole file and write new data to the file, thus individual pages of the files are not copied up.
 
-User data blocks and certain metadata blocks (emap blocks, directory blocks, extended attributes, etc.) are never overwritten.
+User data blocks and certain metadata blocks (emap blocks, directory blocks, extended attributes, etc.) are never overwritten in place.
 
 ## Caching
 
@@ -178,7 +175,7 @@ As every attempt is made to place files contiguously on disk, that benefits in c
 
 ## I/O coalescing
 
-When space for a file is allocated contiguously as part of flush, the dirty pages of the file can be flushed in large chunks reducing the number of I/Os issued to the device. Similarly, space for small files is allocated contiguously and their pages are written out in large chunks.
+When space for a file is allocated contiguously as part of flush, the dirty pages of the file can be flushed in large chunks reducing the number of I/Os issued to the device. Similarly, space for small files is allocated contiguously and their pages are written out in large chunks.  Metadata blocks like inode blocks, directory blocks etc, are are allocated contiguously on disk and written out in chunks.
 
 ## Crash Consistency (TODO)
 
