@@ -23,7 +23,7 @@ These four steps are detailed below.
 ```
 
 ## Step 2 - Start Docker using VFS
-Restart the Docker daemon and instruct it to use vfs as the graph driver.  We will restart docker to use lcfs after in a few steps below.
+Restart the Docker daemon and instruct it to use vfs as the graph driver.  We will restart docker to use lcfs after in step #4.
 ```
 # sudo dockerd -s vfs
 ```
