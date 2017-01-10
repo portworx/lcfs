@@ -53,7 +53,7 @@ make
 
 #Mount lcfs
 mkdir -p /var/lib/docker /lcfs
-$GOPATH/src/github.com/portworx/px-graph/lcfs/lcfs $DEVICE /var/lib/docker /lcfs -f &
+$GOPATH/src/github.com/portworx/px-graph/lcfs/lcfs $DEVICE /var/lib/docker /lcfs &
 sleep 3
 
 #Restart docker
