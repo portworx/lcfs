@@ -19,9 +19,15 @@ PX-Graph is available as a v2 plugin and requires Docker version 1.13 or higher.
 
 ## Design
 
-Portworx Graph Driver is a custom-built file system to meet the needs of a Docker graph driver, similar to AUFS and Overlay graph drivers. Unlike AUFS and Overlay, this new graph driver is a native file system, which means it does not operate on top of another file system, but operates directly on top of block devices. Thus this file system does not have the inefficiencies of merged file systems.
+Portworx Graph Driver is a custom-built file system to meet the needs of a saving, starting and managing Linux container images.  In the context of Docker, it is similar to AUFS and Overlay graph drivers in terms of it's use cases.  Unlike AUFS and Overlay, this new graph driver is a native file system, which means it does not operate on top of another file system, but operates directly on top of block devices. Therefore, this file system does not have the inefficiencies of merged file systems or device-mapper based systems.
 
-This new file system is a user-level file system developed using FUSE in C and does not require any kernel modifications, making it a portable file system. It is a POSIX-compliant file system. Given the ephemeral (temporary) nature of data stored in a graph driver, it is implemented without having some of the complexities of a general-purpose file system (for example, journal and transactions). Most file systems in use today are optimized towards persistent data, provide ACID properties for system calls and attempts to work well with random read-write workloads.
+This new file system is a user-level file system written in C and integrated into Linux and MacOS via Fuse.  Therefore it does not require any kernel modifications, making it a portable file system. It is a POSIX-compliant file system. Given the ephemeral (temporary) nature of data stored in a graph driver, it is implemented without having some of the complexities of a general-purpose file system (for example, journaling). Most file systems in use today are optimized towards persistent data, provide ACID properties for system calls and attempts to work well with random read-write workloads.  This file system is written with container image handling as a specific workload.  These operations involve:
+
+1. Container image creation
+2. Container image cloning and launcing of instances
+3. Container image memory consumption
+4. Number of inodes reported to the kernel by way of multiple copies of the same image (or layers) running
+5. Container image data management - Actions like deletion, forced image removal nd local system resource usage based on multiple container images being present
 
 This file system is not a union file system, but uses snapshot technologies. Similar to other graph drivers, this graph driver also creates layers for images and read-write layers on top of those for containers. Each image will have a base layer, in which files of the image are populated initially. Additional layers are created on top of the base layer for each additional layer in the image being extracted. Each layer shares data from the previous layer. If a layer modifies any data, that data is visible from the layers on top of that layer, but not from the layers below that layer. Also if a layer modifies some data, the original data is not visible from any layers on top of that layer.
 
