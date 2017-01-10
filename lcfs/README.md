@@ -61,6 +61,7 @@ Now you can build lcfs by running make in the px-graph/lcfs directory.
 Chose a device or file to start lcfs with.  For example, `/dev/sdb`.  You can start lcfs as follows:
 
 ```
+# cd px-graph/lcfs
 # sudo ./lcfs /dev/sdb /mnt /mnt2
 # mount
 ```
