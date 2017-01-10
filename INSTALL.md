@@ -11,7 +11,7 @@ These four steps are detailed below.
 
 ##  Step 1 - Install LCFS
 1. git clone the repo `git@github.com:portworx/px-graph.git`
-2. Build lcfs following the instructions in that [directory](https://github.com/portworx/px-graph/tree/master/lcfs).
+2. Build lcfs following the instructions in that [directory](https://github.com/portworx/px-graph/blob/master/lcfs/README.md).
 3. Stop docker - for example, `sudo systemctl stop docker`
 4. Chose a device to provide to lcfs.  lcfs requires a block device (you can also use a file, but this is not recommended due to performance reasons).  In this example, we use `/dev/sdb`.
 5. Remove `/var/lib/docker` and `/lcfs` if they are present.
@@ -29,7 +29,7 @@ Restart the Docker daemon and instruct it to use vfs as the graph driver.  We wi
 ```
 
 ## Step 3 - Install Px-Graph
-Install the Px-Graph driver using the instructions in that [directory](https://github.com/portworx/px-graph/tree/master/plugin).
+Install the Px-Graph driver using the instructions in that [directory](https://github.com/portworx/px-graph/tree/master/plugin/README.md).
 
 
 
