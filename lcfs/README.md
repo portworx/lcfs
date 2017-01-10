@@ -4,7 +4,7 @@ The lcfs file system depends on fuse v2.9.7 or higher.  These instructions walk 
 ### Git clone Px-Graph
 
 ```
-# git clone git@github.com:portworx/px-graph
+# git clone git@github.com:portworx/px-graph.git
 ```
 
 ### Install fuse
