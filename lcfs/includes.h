@@ -209,7 +209,7 @@ void lc_readPages(fuse_req_t req, struct inode *inode, off_t soffset,
                   struct fuse_bufvec *bufv);
 void lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
                    bool release, bool unlock);
-void lc_truncPages(struct inode *inode, off_t size, bool remove);
+void lc_truncateFile(struct inode *inode, off_t size, bool remove);
 void lc_flushDirtyPages(struct gfs *gfs, struct fs *fs);
 void lc_addDirtyInode(struct fs *fs, struct inode *inode);
 void lc_flushDirtyInodeList(struct fs *fs, bool force);

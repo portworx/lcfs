@@ -12,8 +12,6 @@ lc_addEmapExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
         if (ecount > LC_EXTENT_EMAP_MAX) {
             ecount = LC_EXTENT_EMAP_MAX;
         }
-
-        /* XXX Remember last extent added and continue from there */
         lc_addExtent(gfs, fs, extents, page, block, ecount, true);
         page += ecount;
         block += ecount;
@@ -203,7 +201,7 @@ lc_expandEmap(struct gfs *gfs, struct fs *fs, struct inode *inode) {
 /* Create a new emap extent list for the inode, copying emap list of parent */
 void
 lc_copyEmap(struct gfs *gfs, struct fs *fs, struct inode *inode) {
-    struct extent *extent = inode->i_emap;
+    struct extent *extent = inode->i_emap, **extents = &inode->i_emap;
 
     assert(S_ISREG(inode->i_mode));
     assert(inode->i_extentLength == 0);
@@ -211,10 +209,9 @@ lc_copyEmap(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     while (extent) {
         assert(extent->ex_type == LC_EXTENT_EMAP);
         lc_validateExtent(gfs, extent);
-
-        /* XXX Remember last extent added and continue from there */
-        lc_addEmapExtent(gfs, fs, &inode->i_emap, lc_getExtentStart(extent),
+        lc_addEmapExtent(gfs, fs, extents, lc_getExtentStart(extent),
                          lc_getExtentBlock(extent), lc_getExtentCount(extent));
+        extents = &((*extents)->ex_next);
         extent = extent->ex_next;
     }
     inode->i_flags &= ~LC_INODE_SHARED;
@@ -320,6 +317,7 @@ lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
 void
 lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
              void *buf) {
+    struct extent **extents = &inode->i_emap;
     struct emapBlock *bblock = buf;
     uint64_t i, bcount = 0;
     struct emap *emap;
@@ -359,10 +357,9 @@ lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
             }
             assert(emap->e_count > 0);
             //lc_printf("page %ld at block %ld count %d\n", emap->e_off, emap->e_block, emap->e_count);
-
-            /* XXX Remember last extent added and continue from there */
-            lc_addEmapExtent(gfs, fs, &inode->i_emap,
+            lc_addEmapExtent(gfs, fs, extents,
                              emap->e_off, emap->e_block, emap->e_count);
+            extents = &((*extents)->ex_next);
             inode->i_dinode.di_blocks += emap->e_count;
         }
         block = bblock->eb_next;

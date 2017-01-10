@@ -401,7 +401,7 @@ lc_freeInode(struct inode *inode) {
     if (S_ISREG(inode->i_mode)) {
 
         /* Free pages of a regular file */
-        lc_truncPages(inode, 0, false);
+        lc_truncateFile(inode, 0, false);
         assert(inode->i_page == NULL);
         assert(inode->i_emap == NULL);
         assert(inode->i_pcount == 0);
@@ -652,7 +652,7 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs) {
                 assert(lc_inodeDirty(inode));
 
                 /* Truncate pages of a removed inode on umount */
-                lc_truncPages(inode, 0, true);
+                lc_truncateFile(inode, 0, true);
             }
             if (lc_inodeDirty(inode)) {
                 count += lc_flushInode(gfs, fs, inode);

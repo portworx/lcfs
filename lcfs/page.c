@@ -1040,66 +1040,18 @@ lc_truncatePage(struct fs *fs, struct inode *inode,
     }
 }
 
-/* Truncate pages beyond the new size of the file */
-void
-lc_truncPages(struct inode *inode, off_t size, bool remove) {
+/* Remove dirty pages past the new size from the dirty list */
+static void
+lc_invalidatePages(struct gfs *gfs, struct fs *fs, struct inode *inode,
+                   off_t size) {
     uint64_t pg = size / LC_BLOCK_SIZE, lpage, freed, pcount;
     struct dhpage **next, *hpage;
     struct dpage *dpage;
-    struct gfs *gfs;
-    struct fs *fs;
     int64_t i;
 
-    assert(S_ISREG(inode->i_mode));
-
-    /* If nothing to truncate, return */
-    if ((inode->i_emap == NULL) && (inode->i_dpcount == 0) &&
-        (inode->i_extentLength == 0)) {
-        assert(inode->i_page == NULL);
-        assert(!(inode->i_flags & LC_INODE_SHARED));
-        if (remove) {
-            assert(inode->i_dinode.di_blocks == 0);
-            inode->i_private = true;
-        }
-        return;
-    }
-    fs = inode->i_fs;
-    gfs = fs->fs_gfs;
-
-    /* Copy emap list before changing it */
-    if (inode->i_flags & LC_INODE_SHARED) {
-        assert(inode->i_dpcount == 0);
-        assert(inode->i_page == NULL);
-        if (size == 0) {
-
-            /* Return after setting up these if truncating down to 0 */
-            if (remove) {
-                inode->i_dinode.di_blocks = 0;
-                inode->i_extentBlock = 0;
-                inode->i_extentLength = 0;
-                inode->i_flags &= ~LC_INODE_SHARED;
-                inode->i_private = true;
-            }
-            inode->i_emap = NULL;
-            return;
-        }
-        lc_copyEmap(gfs, fs, inode);
-    }
-    assert(!(inode->i_flags & LC_INODE_SHARED));
-
-    /* Free blocks allocated beyond new eof */
-    lc_emapTruncate(gfs, fs, inode, size, pg, remove);
-
-    if (size % LC_BLOCK_SIZE) {
-
-        /* Adjust the last page if it is partially truncated */
-        lc_truncatePage(fs, inode, pg, size % LC_BLOCK_SIZE);
-    }
     if (size && (inode->i_dpcount == 0)) {
         return;
     }
-
-    /* Remove dirty pages past the new size from the dirty list */
     freed = 0;
     if (inode->i_flags & LC_INODE_HASHED) {
         for (i = 0; (i < LC_DHASH_MIN) && inode->i_dpcount; i++) {
@@ -1186,4 +1138,58 @@ lc_truncPages(struct inode *inode, off_t size, bool remove) {
         pcount = __sync_fetch_and_sub(&fs->fs_pcount, freed);
         assert(pcount >= freed);
     }
+}
+
+/* Truncate pages beyond the new size of the file */
+void
+lc_truncateFile(struct inode *inode, off_t size, bool remove) {
+    uint64_t pg = size / LC_BLOCK_SIZE;
+    struct gfs *gfs;
+    struct fs *fs;
+
+    assert(S_ISREG(inode->i_mode));
+
+    /* If nothing to truncate, return */
+    if ((inode->i_emap == NULL) && (inode->i_dpcount == 0) &&
+        (inode->i_extentLength == 0)) {
+        assert(inode->i_page == NULL);
+        assert(!(inode->i_flags & LC_INODE_SHARED));
+        if (remove) {
+            assert(inode->i_dinode.di_blocks == 0);
+            inode->i_private = true;
+        }
+        return;
+    }
+    fs = inode->i_fs;
+    gfs = fs->fs_gfs;
+
+    /* Copy emap list before changing it */
+    if (inode->i_flags & LC_INODE_SHARED) {
+        if (size == 0) {
+
+            /* Return after setting up these if truncating down to 0 */
+            if (remove) {
+                inode->i_dinode.di_blocks = 0;
+                inode->i_extentBlock = 0;
+                inode->i_extentLength = 0;
+                inode->i_flags &= ~LC_INODE_SHARED;
+                inode->i_private = true;
+            }
+            inode->i_emap = NULL;
+            lc_invalidatePages(gfs, fs, inode, size);
+            return;
+        }
+        lc_copyEmap(gfs, fs, inode);
+    }
+    assert(!(inode->i_flags & LC_INODE_SHARED));
+
+    /* Free blocks allocated beyond new eof */
+    lc_emapTruncate(gfs, fs, inode, size, pg, remove);
+
+    if (size % LC_BLOCK_SIZE) {
+
+        /* Adjust the last page if it is partially truncated */
+        lc_truncatePage(fs, inode, pg, size % LC_BLOCK_SIZE);
+    }
+    lc_invalidatePages(gfs, fs, inode, size);
 }

@@ -92,7 +92,7 @@ lc_truncate(struct inode *inode, off_t size) {
     if (size < inode->i_size) {
 
         /* Truncate pages/blocks beyond the new size */
-        lc_truncPages(inode, size, true);
+        lc_truncateFile(inode, size, true);
     }
     assert(!(inode->i_flags & LC_INODE_SHARED));
     inode->i_size = size;

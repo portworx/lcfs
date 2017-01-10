@@ -202,6 +202,12 @@ main(int argc, char *argv[]) {
         exit(EINVAL);
     }
 
+    if (!strcmp(argv[2], argv[3])) {
+        printf("Specify different mount points\n");
+        usage(argv[0]);
+        exit(EINVAL);
+    }
+
     /* Make sure mount points exist */
     if (stat(argv[2], &st) || stat(argv[3], &st)) {
         perror("stat");
