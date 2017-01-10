@@ -51,6 +51,11 @@ Now build and install fuse using following commands:
 ### Build lcfs 
 Now you can build lcfs by running make in the px-graph/lcfs directory.
 
+```
+# cd px-graph/lcfs
+# make
+```
+
 
 ### Test lcfs
 Chose a device or file to start lcfs with.  For example, `/dev/sdb`.  You can start lcfs as follows:
