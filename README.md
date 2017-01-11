@@ -18,11 +18,12 @@ We put together this table to help you understand how PX-Graph is different from
 
 |           | PX-graph | Device Mapper | Overlay | Overlay2 | AUFS |
 |-----------|----------|---------------|---------|----------|------|
-| Feature 1 |          |               |         |          |      |
-| Feature 2 |          |               |         |          |      |
-| Feature 3 |          |               |         |          |      |
-| Feature 4 |          |               |         |          |      |
-| Feature 5 |          |               |         |          |      |
+| Host Page Cache Usage|  Low        |   High            |       Low  |    Low      |   Low   |
+| Host i-node Consumtion | Low         |   Med            |   High      |    High      |   High   |
+| Time to Build an Image |   Low       |  Med             |   High      |    High      |   High   |
+| Time to Launch an Image |  Low        |    Med           |     High    |   High       |  High    |
+| Garbage Collection |    WIP      |   NA            |   NA      |   NA       |  NA    |
+| Kernel Support |    All      |   All            |   All      |   All       |  Some    |
 
 # Installing the Portworx Graph driver for Docker
 PX-Graph is available as a v2 volume plugin and requires Docker version 1.13 or higher. It is available on the public Docker Hub and is installed using `docker plugin install portworx/px-graph`.
