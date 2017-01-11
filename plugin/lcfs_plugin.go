@@ -116,13 +116,16 @@ const (
 // Init initializes the storage driver.
 func (d *Driver) Init(home string, options []string, uidMaps, gidMaps []idtools.IDMap) error {
     logrus.Infof("Init - home %s options %+v", home, options)
-    driver, err := d.init(home, options, nil, nil)
+    lroot := path.Dir(home)
+    lroot = path.Dir(lroot)
+    lroot = path.Join(lroot, "px-graph")
+    driver, err := d.init(lroot, options, nil, nil)
     if err != nil {
         logrus.Errorf("err %v\n", err)
         return err
     }
     d.driver = driver
-    d.home = home
+    d.home = lroot
     d.options = options
     logrus.Infof("Init - basedir %s", d.home)
     if err := idtools.MkdirAllAs(d.home, 0700, 0, 0); err != nil {

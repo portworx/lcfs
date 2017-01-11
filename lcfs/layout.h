@@ -56,7 +56,7 @@
 #define LC_SUPER_INIT      0x00000008  // Init layer
 
 /* Directory name in which layers are created */
-#define LC_LAYER_ROOT_DIR   "lcfs"
+#define LC_LAYER_ROOT_DIR   "px-graph"
 
 /* Directory in which temporary data placed */
 #define LC_LAYER_TMP_DIR    "tmp"

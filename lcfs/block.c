@@ -377,7 +377,7 @@ lc_blockAlloc(struct fs *fs, uint64_t count, bool meta, bool reserve) {
                                   fs->fs_blockMetaCount);
             }
 
-            /* XXX Deal with a fragmented file system */
+            /* Try to make a larger reservation */
             fs->fs_blockMetaCount = (!reserve || count > LC_META_RESERVE) ?
                                     count : LC_META_RESERVE;
             fs->fs_blockMeta = lc_findFreeBlock(gfs, fs,

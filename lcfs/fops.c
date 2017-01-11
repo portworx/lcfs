@@ -1130,7 +1130,7 @@ lc_statfs(fuse_req_t req, fuse_ino_t ino) {
     buf.f_blocks = super->sb_tblocks;
     buf.f_bfree = buf.f_blocks - super->sb_blocks;
     buf.f_bavail = buf.f_bfree;
-    buf.f_files = UINT32_MAX; /* XXX Account 48 bits */
+    buf.f_files = LC_FH_INODE - 1;
     buf.f_ffree = buf.f_files - super->sb_inodes;
     buf.f_favail = buf.f_ffree;
     buf.f_namemax = LC_FILENAME_MAX;

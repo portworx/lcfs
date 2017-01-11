@@ -526,7 +526,7 @@ lc_mount(char *device, struct gfs **gfsp) {
     /* Initialize a file system structure in memory */
     /* XXX Recreate file system after abnormal shutdown for now */
     fs = lc_newFs(gfs, true);
-    lc_icache_init(fs, LC_ICACHE_SIZE_MAX);
+    lc_icache_init(fs, LC_ICACHE_SIZE);
     lc_statsNew(fs);
     fs->fs_root = LC_ROOT_INODE;
     fs->fs_sblock = LC_SUPER_BLOCK;

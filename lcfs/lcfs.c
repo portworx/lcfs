@@ -14,7 +14,7 @@ getfs() {
 /* Display usage */
 static void
 usage(char *prog) {
-    printf("usage: %s <device> <mnt> <mnt2> [-d] [-f]\n", prog);
+    printf("usage: %s <device> <mnt> <mnt2> [-d]\n", prog);
 }
 
 /* Data passed to the duplicate thread */
@@ -33,9 +33,6 @@ struct fuseData {
 
     /* Global file system */
     struct gfs *fd_gfs;
-
-    /* Run in foreground or not */
-    int fd_foreground;
 
     /* Set if running as a thread */
     bool fd_thread;
@@ -70,7 +67,6 @@ lc_serve(void *data) {
 #else
     fuse_session_add_chan(fd->fd_se, fd->fd_ch);
 #endif
-    fuse_daemonize(fd->fd_foreground);
     err = fuse_session_loop_mt(fd->fd_se
 #ifdef FUSE3
     /* XXX Experiment with clone fd argument */
@@ -109,8 +105,8 @@ lc_fuseMount(struct gfs *gfs, char **arg, char *device, int argc,
     struct fuse_session *se;
     int id = thread ? 0 : 1;
     char *mountpoint = NULL;
-    int err, foreground;
     pthread_t dup;
+    int err;
 #ifdef FUSE3
     struct fuse_cmdline_opts opts;
 
@@ -122,7 +118,6 @@ lc_fuseMount(struct gfs *gfs, char **arg, char *device, int argc,
         goto out;
     }
     mountpoint = opts.mountpoint;
-    foreground = opts.foreground;
     if (opts.show_help) {
         fuse_cmdline_help();
         //fuse_lowlevel_help();
@@ -137,7 +132,7 @@ lc_fuseMount(struct gfs *gfs, char **arg, char *device, int argc,
 #else
     struct fuse_chan *ch = NULL;
 
-    err = fuse_parse_cmdline(&args, &mountpoint, NULL, &foreground);
+    err = fuse_parse_cmdline(&args, &mountpoint, NULL, NULL);
     if (err == -1) {
         err = EINVAL;
         goto out;
@@ -165,7 +160,6 @@ lc_fuseMount(struct gfs *gfs, char **arg, char *device, int argc,
     fd[id].fd_gfs = gfs;
     fd[id].fd_se = se;
     fd[id].fd_thread = thread;
-    fd[id].fd_foreground = foreground;
     fd[id].fd_mountpoint = mountpoint;
     if (thread) {
         err = pthread_create(&dup, NULL, lc_serve, &fd[id]);
