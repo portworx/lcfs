@@ -1,23 +1,37 @@
 # About the Portworx Graph Driver for Docker
-PX-Graph is a graph driver for Docker and designed to provide a purpose-built container image management file system. It is specifically designed to address the following issues:
+PX-Graph is a graph driver for Docker that uses a new filesystem built specifically for container image management.  Think of it like this.  Just like CoreOS strips out all the parts of Linux not needed to run containers, PX-Graph strips out all the parts of a file system not needed to manage container images.  This means the file system is lighter-weight, faster, and more efficient.
 
-1. Efficient page cache usage: Current graph drivers that depend on device mapper misuse the page cache by loading multiple copies of the same image layers in memory. This takes away host memory from running applications.
-2. Efficient inode usage: Current graph drivers exhaust the number of inodes available, causing the underlying filesystems to run out of space.
-3. Efficient cloning: Current graph drivers such as overlay implement a copy-on-write approach, which consumes CPU and takes time during container image management operations
-4. Efficient and correct garbage collection and space management: Current graph drivers routinely end up with orphaned layers and cause the operator to resort to resetting Docker (usually by deleting `/var/lib/docker`).
 
-PX-Graph is built on a new filesystem designed by Portworx, specifically for managing Linux container images. This filesystem is called LCFS, which stands for `Layer Cloning File System`.
+PX-Graph uses a new file system called LCFS, which stands for `Layer Cloning File System`. This file system is provided to Docker by way of the FUSE low level API. 
 
-This file system is provided to Docker by way of the FUSE low level API. 
+# What problems does PX-graph solve.
+So how does this help you.  There has been a lot of [discussion](https://integratedcode.us/2016/08/30/storage-drivers-in-docker-a-deep-dive/) recently about the ins and outs of the various Docker Graph Driver options and we won't cover all that here.  In short, PX-Driver solves the four biggest issues Graph Driver users face.
+
+1. Inefficient page cache usage: Current graph drivers that depend on Device Mapper abuse the page cache by loading multiple copies of the same image layers in memory. This takes away host memory from running applications.  That means when you've got a lot of containers running, your performance tanks.
+2. Inefficient i-node usage: Many Graph Drivers exhaust the number of inodes available, thereby causing the underlying filesystems to run out of space. `rm /var/lib/docker` anyone?
+3. Inefficient cloning: Current Graph Drivers such as Overlay implement a copy-on-write approach to layer cloaning, which consumes CPU and takes time during container image management operations.
+4. Inefficient and correct garbage collection and space management: Current graph drivers routinely end up with orphaned layers and cause the operator to resort to resetting Docker (again usually by deleting `/var/lib/docker`).
+
+# How is PX-Graph different from other Graph Drivers?
+
+We put together this table to help you understand how PX-Graph is different from other Graph Driver options. 
+
+|           | PX-graph | Device Mapper | Overlay | Overlay2 | AUFS |
+|-----------|----------|---------------|---------|----------|------|
+| Feature 1 |          |               |         |          |      |
+| Feature 2 |          |               |         |          |      |
+| Feature 3 |          |               |         |          |      |
+| Feature 4 |          |               |         |          |      |
+| Feature 5 |          |               |         |          |      |
 
 # Installing the Portworx Graph driver for Docker
-PX-Graph is available as a v2 plugin and requires Docker version 1.13 or higher. It is available on the public Docker hub and is installed using `docker plugin install portworx/px-graph`.
+PX-Graph is available as a v2 volume plugin and requires Docker version 1.13 or higher. It is available on the public Docker Hub and is installed using `docker plugin install portworx/px-graph`.
 
 > Currently the v2 interface is not generally available. There is an [oustanding issue with the v2 interface](https://github.com/docker/docker/issues/28948). Therefore, Portworx provides an alternate way of installing the PX-Graph plugin.  
 > Follow [these instructions](https://github.com/portworx/px-graph/tree/master/INSTALL.md) to install Px-Graph
 
 
-# Overview
+# Technical overview
 
 Portworx Graph Driver is a custom-built file system to meet the needs of saving, starting and managing Linux container images.  Its use with Docker is similar to the AUFS and Overlay graph drivers.  Unlike AUFS and Overlay, this new graph driver is a native file system, which does not operate on top of another file system, but directly on top of block devices. Therefore, this file system does not have the inefficiencies of merged file systems or device-mapper based systems.
 
@@ -29,9 +43,11 @@ This new file system is a user-level file system written in C and integrated int
 4. Number of inodes reported to the kernel by way of multiple copies of the same image (or layers) running
 5. Container image data management - Actions like deletion, forced image removal and local system resource usage based on multiple container images being present
 
+
 A lot of these techniques are implemented using image-specific snapshotting techniques that are optimized for page cache consumption, snap creation time and inode count.  Similarly to other graph drivers, this graph driver creates layers for images and read-write layers on top of those for containers.  Each image will have a base layer where the files of the image are populated initially. Additional layers are created on top of the base layer for each additional layer in the image being extracted.  Each layer shares data from the previous layer.  If a layer modifies any data, that data is visible from the layers on top of that layer, but not from the layers below it. Also if a container modifies data in an image it is loaded from, that modified data is not visible from any other derived layers on top of that image layer.
 
 A layer in an image is a read-only snapshot sitting on top of the previous layer in the image.  Therefore, these derived layers share common data between each other.  A layer is immutable after its contents are completely populated.  When any existing data inherited from a previous layer is modified while populating data to a new layer, a branch-on-write (BOW) operation is performed in increments of 4KB blocks.  New data will be written to a newly allocated location on the back-end block storage device, and old data will no longer be accessible from the layer that modified the data (or any other layer created on top of that subsequently).  Similarly, any files deleted from a layer are not visible from that layer or on any of the layers on top of that layer.
+
 
 When a read-write layer is created while starting a new container (two such layers for every container), a read-write snapshot is created on top of the image layer and mounted from the container. The container can see all the data from the image layers below the read-write layer and can create new data or modify any existing data as needed. When any data is modified, the existing data is not modified in the image layer... instead a private copy with new data is made available for the read-write layer.
 
@@ -45,7 +61,7 @@ Operations within a layer are independent of the total number of layers present 
 
 Layers in a graph are deleted in reverse of the order of creation. The newest layer is deleted first, and then the one created just before it, etc. A layer in the middle of chain or the base layer cannot be deleted when there is a newer layer on top of it. This simplifies the overall snapshot design since deleting a snapshot in the beginning or middle of the chain requires a more complex implementation. For example, each layer can easily track space allocated for storing data created/modified by the layer and this space can be freed without worrying about other layers sharing the data.
 
-Also layers are not for rolling back, thus it does not have to incur some of the complexities of snapshots in a traditional file system. There is also no need to provide any block level differences between any two layers.
+Also layers are not used for rolling back to a previous snapshots, thus it does not have to incur some of the complexities of snapshots in a traditional file system. There is also no need to provide any block level differences between any two layers.
 
 ## Layout
 
