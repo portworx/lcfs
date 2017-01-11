@@ -20,7 +20,7 @@ DEVICE=/tmp/lcfs-testdevice
 rm $DEVICE 2>/dev/null
 dd if=/dev/zero of=$DEVICE count=60000 bs=4096
 
-$LCFS $DEVICE $MNT $MNT2 -f &
+$LCFS $DEVICE $MNT $MNT2 &
 sleep 10
 cd $MNT
 
@@ -160,7 +160,7 @@ fusermount -u $MNT
 fusermount -u $MNT2
 sleep 10
 
-$LCFS $DEVICE $MNT $MNT2 -f &
+$LCFS $DEVICE $MNT $MNT2 &
 sleep 10
 cd $MNT
 ls -ltRi > /dev/null
@@ -181,7 +181,7 @@ fusermount -u $MNT
 fusermount -u $MNT2
 sleep 10
 
-$LCFS $DEVICE $MNT $MNT2 -f &
+$LCFS $DEVICE $MNT $MNT2 &
 sleep 10
 cd $MNT
 

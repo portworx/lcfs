@@ -20,10 +20,10 @@ We put together this table to help you understand how PX-Graph is different from
 |-----------|----------|---------------|---------|----------|------|
 | Host Page Cache Usage|  Low        |   High            |       Low  |    Low      |   Low   |
 | Host i-node Consumtion | Low         |   Med            |   High      |    High      |   High   |
-| Time to Build an Image |   Low       |  Med             |   High      |    High      |   High   |
+| Time to Build an Image |   Med       |  High            |   Med       |    Low       |   Low    |
 | Time to Launch an Image |  Low        |    Med           |     High    |   High       |  High    |
 | Garbage Collection |    WIP      |   NA            |   NA      |   NA       |  NA    |
-| Kernel Support |    All      |   All            |   All      |   All       |  Some    |
+| Kernel Support |    All      |   All            |   All      |   4.0+      |  Some    |
 
 # Installing the Portworx Graph driver for Docker
 PX-Graph is available as a v2 volume plugin and requires Docker version 1.13 or higher. It is available on the public Docker Hub and is installed using `docker plugin install portworx/px-graph`.

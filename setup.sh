@@ -1,14 +1,22 @@
 #!/bin/bash -x
 
+#Default docker directory
+MNT=/var/lib/docker
+
+#Default plugin directory.  Do not change this without updating config.json.
+MNT2=/lcfs
+
+#Install docker if needed.
+
 #Stop docker
 #systemctl stop docker
 service docker stop
 pkill dockerd
 sleep 3
-fusermount -u /lcfs
-fusermount -u /var/lib/docker
-umount -f /lcfs /var/lib/docker
-rm -fr /var/lib/docker /lcfs
+fusermount -u $MNT2
+fusermount -u $MNT
+umount -f $MNT2 $MNT
+rm -fr $MNT2 $MNT
 
 #Choose a device for lcfs
 export DEVICE=/dev/sdb
@@ -52,8 +60,8 @@ cd $GOPATH/src/github.com/portworx/px-graph/lcfs
 make
 
 #Mount lcfs
-mkdir -p /var/lib/docker /lcfs
-$GOPATH/src/github.com/portworx/px-graph/lcfs/lcfs $DEVICE /var/lib/docker /lcfs &
+mkdir -p $MNT $MNT2
+$GOPATH/src/github.com/portworx/px-graph/lcfs/lcfs $DEVICE $MNT $MNT2 &
 sleep 3
 
 #Restart docker
@@ -71,4 +79,4 @@ sleep 3
 docker info
 
 #pkill dockerd
-#fusermount -u /lcfs
+#fusermount -u $MNT2 $MNT

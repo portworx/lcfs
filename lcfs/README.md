@@ -68,7 +68,7 @@ Chose a device or file to start lcfs with.  For example, `/dev/sdb`.  You can st
 
 Check the output of the `mount` command to make sure device is mounted correctly.  It is recommended to use an empty directory as mount point.
 
-> Note: For debugging, options -f or -d could be specified.
+> Note: For debugging, -d option could be specified.
 
 Now you can use `/mnt` as a regular file system to test that lcfs is functioning correctly.
 
@@ -77,4 +77,4 @@ To unmount lcfs, run:
 # sudo fusermount -u /mnt
 ```
 
-To display lcfs stats, run lcfs in forground mode (-d/-f option) and run "cstat 'id' [-c]" from the 'mnt'/lcfs directory.
+To display lcfs stats, run lcfs in forground mode (-d option) and run "cstat 'id' [-c]" from the 'mnt'/lcfs directory.
