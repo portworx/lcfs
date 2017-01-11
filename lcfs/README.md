@@ -1,5 +1,5 @@
 # Instructions on building LCFS with fuse v2.9.7
-The lcfs file system depends on fuse v2.9.7 or higher.  These instructions walk you through installing fuse and building and testing lcfs as regular filesystem, independant of Docker.
+The lcfs file system depends on fuse v2.9.7 or higher.  These instructions walk you through installing fuse and building and testing lcfs as regular filesystem, independent of Docker.
 
 ### Git clone Px-Graph
 
@@ -26,7 +26,7 @@ If needed, export PKG_CONFIG_PATH and LD_LIBRARY_PATH.  If the binaries are buil
 # export PKG_CONFIG_PATH-/usr/local/lib/pkgconfig
 ```
 
-Install tcmalloc or remove that from the Makefile.
+Install tcmalloc or remove it from the Makefile.
 
 On Ubuntu, run 
 
@@ -40,7 +40,7 @@ On CentOS, run
 # sudo yum install gperftools
 ```
 
-Now build and install fuse using following commands:
+Now build and install fuse using the following commands:
 
 ```
 # ./configure
@@ -58,7 +58,7 @@ Now you can build lcfs by running make in the px-graph/lcfs directory.
 
 
 ### Test lcfs
-Chose a device or file to start lcfs with.  For example, `/dev/sdb`.  You can start lcfs as follows:
+Choose a device or file to start lcfs with.  For example, `/dev/sdb`.  You can start lcfs as follows:
 
 ```
 # cd px-graph/lcfs
@@ -66,9 +66,9 @@ Chose a device or file to start lcfs with.  For example, `/dev/sdb`.  You can st
 # mount
 ```
 
-Check the output of the `mount` command to make sure device is mounted correctly.  It is recommended to use an empty directory as mount point.
+Check the output of the `mount` command to make sure that the device is mounted correctly.  It is recommended to use an empty directory as the mount point.
 
-> Note: For debugging, -d option could be specified.
+> Note: For debugging, the -d option can be specified.
 
 Now you can use `/mnt` as a regular file system to test that lcfs is functioning correctly.
 
@@ -77,4 +77,4 @@ To unmount lcfs, run:
 # sudo fusermount -u /mnt
 ```
 
-To display lcfs stats, run lcfs in forground mode (-d option) and run "cstat 'id' [-c]" from the 'mnt'/lcfs directory.
+To display lcfs stats, run lcfs in foreground mode (-d option) and run "cstat 'id' [-c]" from the 'mnt'/lcfs directory.

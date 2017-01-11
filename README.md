@@ -62,7 +62,7 @@ Operations within a layer are independent of the total number of layers present 
 
 Layers in a graph are deleted in reverse of the order of creation. The newest layer is deleted first, and then the one created just before it, etc. A layer in the middle of chain or the base layer cannot be deleted when there is a newer layer on top of it. This simplifies the overall snapshot design since deleting a snapshot in the beginning or middle of the chain requires a more complex implementation. For example, each layer can easily track space allocated for storing data created/modified by the layer and this space can be freed without worrying about other layers sharing the data.
 
-Also layers are not used for rolling back to a previous snapshots, thus it does not have to incur some of the complexities of snapshots in a traditional file system. There is also no need to provide any block level differences between any two layers.
+Also layers are not used for rolling back to a previous snapshot, thus LCFS does not incur some of the complexities of snapshots in a traditional file system. There is also no need to provide any block-level differences between any two layers.
 
 ## Layout
 
