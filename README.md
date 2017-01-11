@@ -5,11 +5,11 @@ PX-Graph is a graph driver for Docker that uses a new filesystem built specifica
 PX-Graph uses a new file system called LCFS, which stands for `Layer Cloning File System`. This file system is provided to Docker by way of the FUSE low level API. 
 
 # What problems does PX-graph solve.
-So how does this help you.  There has been a lot of [discussion](https://integratedcode.us/2016/08/30/storage-drivers-in-docker-a-deep-dive/) recently about the ins and outs of the various Docker Graph Driver options and we won't cover all that here.  In short, PX-Driver solves the four biggest issues Graph Driver users face.
+So how does this help you?  There has been a lot of [discussion](https://integratedcode.us/2016/08/30/storage-drivers-in-docker-a-deep-dive/) recently about the ins and outs of the various Docker Graph Driver options and we won't cover all that here.  In short, PX-Driver solves the four biggest issues Graph Driver users face.
 
-1. Inefficient page cache usage: Current graph drivers that depend on Device Mapper abuse the page cache by loading multiple copies of the same image layers in memory. This takes away host memory from running applications.  That means when you've got a lot of containers running, your performance tanks.
-2. Inefficient i-node usage: Many Graph Drivers exhaust the number of inodes available, thereby causing the underlying filesystems to run out of space. `rm /var/lib/docker` anyone?
-3. Inefficient cloning: Current Graph Drivers such as Overlay implement a copy-on-write approach to layer cloaning, which consumes CPU and takes time during container image management operations.
+1. Inefficient page cache usage: Current graph drivers that depend on Device Mapper misuse the page cache by loading multiple copies of the same image layers in memory. This takes away host memory from running applications.  That means when you've got a lot of containers running, your performance tanks.
+2. Inefficient inode usage: Many Graph Drivers exhaust the number of inodes available, causing the underlying filesystems to run out of space. `rm /var/lib/docker` anyone?
+3. Inefficient cloning: Current Graph Drivers such as Overlay implement a copy-on-write approach to layer cloning, which consumes CPU and takes time during container image management operations.
 4. Inefficient and correct garbage collection and space management: Current graph drivers routinely end up with orphaned layers and cause the operator to resort to resetting Docker (again usually by deleting `/var/lib/docker`).
 
 # How is PX-Graph different from other Graph Drivers?
@@ -19,7 +19,7 @@ We put together this table to help you understand how PX-Graph is different from
 |           | PX-graph | Device Mapper | Overlay | Overlay2 | AUFS |
 |-----------|----------|---------------|---------|----------|------|
 | Host Page Cache Usage|  Low        |   High            |       Low  |    Low      |   Low   |
-| Host i-node Consumtion | Low         |   Med            |   High      |    High      |   High   |
+| Host inode Consumtion | Low         |   Med            |   High      |    High      |   High   |
 | Time to Build an Image |   Med       |  High            |   Med       |    Low       |   Low    |
 | Time to Launch an Image |  Low        |    Med           |     High    |   High       |  High    |
 | Garbage Collection |    WIP      |   NA            |   NA      |   NA       |  NA    |
