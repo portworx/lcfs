@@ -541,7 +541,7 @@ lc_mount(char *device, struct gfs **gfsp) {
     if ((gfs->gfs_super->sb_magic != LC_SUPER_MAGIC) ||
         (gfs->gfs_super->sb_version != LC_VERSION) ||
         (gfs->gfs_super->sb_flags & LC_SUPER_DIRTY)) {
-        printf("Formating %s, size %ld\n", device, size);
+        printf("Formatting %s, size %ld\n", device, size);
         lc_format(gfs, fs, size);
     } else {
         if (gfs->gfs_super->sb_flags & LC_SUPER_DIRTY) {
