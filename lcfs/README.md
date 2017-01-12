@@ -62,11 +62,11 @@ Choose a device or file to start lcfs with.  For example, `/dev/sdb`.  You can s
 
 ```
 # cd px-graph/lcfs
-# sudo ./lcfs /dev/sdb /mnt /mnt2
+# sudo ./lcfs /dev/sdb /mnt /mnt2 > /dev/null &
 # mount
 ```
 
-Check the output of the `mount` command to make sure that the device is mounted correctly.  It is recommended to use an empty directory as the mount point.
+Check the output of the `mount` command to make sure that the device is mounted correctly.  It is recommended to use empty directories as the mount points.
 
 > Note: For debugging, the -d option can be specified.
 
@@ -74,7 +74,9 @@ Now you can use `/mnt` as a regular file system to test that lcfs is functioning
 
 To unmount lcfs, run:
 ```
-# sudo fusermount -u /mnt
+# sudo fusermount -u /mnt2
 ```
 
-To display lcfs stats, run lcfs in foreground mode (-d option) and run "cstat 'id' [-c]" from the 'mnt'/lcfs directory.
+To display lcfs stats, run "cstat 'id' [-c]" from the 'mnt'/px-graph directory.  Create px-graph directory if that does not exist.  'id' is the name of the layer.  Specifying '.' as id will display stats for all layers.  If -c is specified, existing stats will be cleared.  Normally, stats are displayed whenever a layer is deleted/unmounted.  
+
+For recreating the file system, unmount it and zero out the first block (4KB) of the device and remount the device/file.

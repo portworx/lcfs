@@ -20,8 +20,10 @@ We put together this table to help you understand how PX-Graph is different from
 |-----------|----------|---------------|---------|----------|------|
 | Host Page Cache Usage|  Low        |   High            |       Low  |    Low      |   Low   |
 | Host inode Consumtion | Low         |   Med            |   High      |    High      |   High   |
-| Time to Build an Image |   Med       |  High            |   Med       |    Low       |   Low    |
-| Time to Launch an Image |  Low        |    Med           |     High    |   High       |  High    |
+| Time to Build an Image |   Low       |  High            |   Med       |    Low       |   Low    |
+| Time to Launch an Image |  Low        |    High          |     Med     |   Med        |  Med     |
+| Time to Destroy an Image |  Low        |    Med           |     High    |   High       |  High    |
+| Data Integrity | Yes | Yes | No | No | No |
 | Garbage Collection |    WIP      |   NA            |   NA      |   NA       |  NA    |
 | Kernel Support |    All      |   All            |   All      |   4.0+      |  Some    |
 
