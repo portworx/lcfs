@@ -26,10 +26,5 @@ RUN make
 RUN mv lcfs /tmp/lcfs.bin
 
 WORKDIR /go/src/github.com/portworx/px-graph/plugin
-ENV GOPATH /go:/go/src/github.com/portworx/px-graph/
-RUN go get github.com/Sirupsen/logrus \
-	github.com/docker/docker/daemon/graphdriver \
-	github.com/docker/docker/pkg/archive \
-	github.com/docker/docker/pkg/reexec \
-	github.com/docker/go-plugins-helpers/graphdriver
-RUN go build -o /tmp/lcfs_plugin.bin lcfs_plugin.go
+RUN make
+RUN mv lcfs_plugin /tmp/lcfs_plugin.bin

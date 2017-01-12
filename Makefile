@@ -12,15 +12,13 @@ endif
 
 GR_CONTAINER:=px-graph
 
-TARGETS := gr-docker lcfs-plugin
+TARGETS := gr-docker plugin
 
 all: $(TARGETS)
 
 build: gr-plugin
 
-clean: gr-clean lcfs-plugin-clean
-
-deploy: 
+clean: gr-clean plugin-clean
 
 run : 
 
@@ -42,11 +40,10 @@ gr-clean:
 	-docker rm -vf $(REPO)$(GR_CONTAINER)
 	-docker rmi $(GR_CONTAINER)
 
-lcfs-plugin:
-	@echo "Building lcfs plugin"
+plugin:
 	@cd plugin && make
 
-lcfs-plugin-clean:
+plugin-clean:
 	@cd plugin && make clean
 
 vendor:
