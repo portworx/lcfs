@@ -69,7 +69,7 @@ sudo dockerd -s vfs &
 sleep 3
 
 #Create and enable Px-Graph plugin
-docker plugin install portworx/px-graph
+docker plugin install --grant-all-permissions portworx/px-graph
 docker plugin ls
 
 #Restart docker with Px-Graph

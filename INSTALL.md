@@ -30,7 +30,7 @@ Restart the Docker daemon and instruct it to use vfs as the graph driver.  We wi
 
 ## Step 3 - Install Px-Graph plugin
 ```
-# docker plugin install portworx/px-graph
+# docker plugin install --grant-all-permissions portworx/px-graph
 # docker plugin ls
 ```
 
