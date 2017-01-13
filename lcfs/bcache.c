@@ -507,11 +507,37 @@ lc_getPageNewData(struct fs *fs, uint64_t block) {
     return page;
 }
 
+/* Release any blocks freed, pending in progress writes to complete */
+void
+lc_freeBlocksAfterFlush(struct fs *fs, uint64_t count) {
+    struct extent *extents = NULL;
+
+    pthread_mutex_lock(&fs->fs_plock);
+    assert(fs->fs_wpcount >= count);
+    fs->fs_wpcount -= count;
+
+    /* If no writes are pending and none in progress, then release the
+     * freed blocks for reuse.
+     */
+    if ((fs->fs_wpcount == 0) && (fs->fs_dpcount == 0) &&
+        fs->fs_fdextents) {
+        pthread_mutex_lock(&fs->fs_alock);
+        extents = fs->fs_fdextents;
+        fs->fs_fdextents = NULL;
+        pthread_mutex_unlock(&fs->fs_alock);
+    }
+    pthread_mutex_unlock(&fs->fs_plock);
+    if (extents) {
+        lc_blockFreeExtents(fs, extents,
+                            fs->fs_removed ? 0 :
+                            (LC_EXTENT_EFREE | LC_EXTENT_LAYER));
+    }
+}
+
 /* Flush a cluster of pages */
 void
 lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
                     struct page *head, uint64_t count, bool bfree) {
-    struct extent *extents = NULL;
     uint64_t i, j, bcount = 0;
     struct page *page = head;
     struct iovec *iovec;
@@ -554,26 +580,7 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
 
     /* Check any of the freed blocks can be released to the free pool */
     if (bfree) {
-        pthread_mutex_lock(&fs->fs_plock);
-        assert(fs->fs_wpcount >= count);
-        fs->fs_wpcount -= count;
-
-        /* If no writes are pending and none in progress, then release the
-         * freed blocks for reuse.
-         */
-        if ((fs->fs_wpcount == 0) && (fs->fs_dpcount == 0) &&
-            fs->fs_fdextents) {
-            pthread_mutex_lock(&fs->fs_alock);
-            extents = fs->fs_fdextents;
-            fs->fs_fdextents = NULL;
-            pthread_mutex_unlock(&fs->fs_alock);
-        }
-        pthread_mutex_unlock(&fs->fs_plock);
-        if (extents) {
-            lc_blockFreeExtents(fs, extents,
-                                fs->fs_removed ? 0 :
-                                (LC_EXTENT_EFREE | LC_EXTENT_LAYER));
-        }
+        lc_freeBlocksAfterFlush(fs, count);
     }
 }
 

@@ -70,7 +70,7 @@ lc_newLayer(fuse_req_t req, struct gfs *gfs, const char *name,
     rfs = lc_getfs(LC_ROOT_INODE, false);
 
     /* Do not allow new layers when low on space */
-    if (!lc_hasSpace(gfs, LC_LAYER_MIN_BLOCKS)) {
+    if (!lc_hasSpace(gfs, true)) {
         err = ENOSPC;
         goto out;
     }

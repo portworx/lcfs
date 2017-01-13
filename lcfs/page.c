@@ -995,6 +995,8 @@ out:
     if (tcount) {
         pcount = __sync_fetch_and_sub(&fs->fs_pcount, tcount);
         assert(pcount >= tcount);
+        pcount = __sync_fetch_and_sub(&gfs->gfs_dcount, tcount);
+        assert(pcount >= tcount);
     }
     if (rcount > count) {
 
@@ -1007,7 +1009,7 @@ out:
 
 /* Truncate a dirty page */
 static void
-lc_truncatePage(struct fs *fs, struct inode *inode,
+lc_truncatePage(struct gfs *gfs, struct fs *fs, struct inode *inode,
                 uint64_t pg, uint16_t poffset) {
 
     struct dpage *dpage;
@@ -1026,6 +1028,7 @@ lc_truncatePage(struct fs *fs, struct inode *inode,
         inode->i_dpcount++;
         lc_updateInodePageMarkers(inode, pg);
         __sync_add_and_fetch(&fs->fs_pcount, 1);
+        __sync_add_and_fetch(&gfs->gfs_dcount, 1);
         dpage->dp_poffset = 0;
         dpage->dp_psize = 0;
     } else if ((dpage->dp_poffset + dpage->dp_psize) > poffset) {
@@ -1137,6 +1140,8 @@ lc_invalidatePages(struct gfs *gfs, struct fs *fs, struct inode *inode,
     if (freed) {
         pcount = __sync_fetch_and_sub(&fs->fs_pcount, freed);
         assert(pcount >= freed);
+        pcount = __sync_fetch_and_sub(&gfs->gfs_dcount, freed);
+        assert(pcount >= freed);
     }
 }
 
@@ -1189,7 +1194,7 @@ lc_truncateFile(struct inode *inode, off_t size, bool remove) {
     if (size % LC_BLOCK_SIZE) {
 
         /* Adjust the last page if it is partially truncated */
-        lc_truncatePage(fs, inode, pg, size % LC_BLOCK_SIZE);
+        lc_truncatePage(gfs, fs, inode, pg, size % LC_BLOCK_SIZE);
     }
     lc_invalidatePages(gfs, fs, inode, size);
 }

@@ -71,6 +71,9 @@ struct gfs {
     /* Count of pages in use */
     uint64_t gfs_pcount;
 
+    /* Count of total dirty pages */
+    uint64_t gfs_dcount;
+
     /* Count of file systems in use */
     uint64_t gfs_count;
 

@@ -343,6 +343,10 @@ lc_gfsAlloc(int fd) {
     struct gfs *gfs = lc_malloc(NULL, sizeof(struct gfs), LC_MEMTYPE_GFS);
 
     memset(gfs, 0, sizeof(struct gfs));
+
+    /* XXX Allocate these more dynamically when new layers are created instead
+     * of allocating memory for maximum number of layers supported.
+     */
     gfs->gfs_fs = lc_malloc(NULL, sizeof(struct fs *) * LC_LAYER_MAX,
                             LC_MEMTYPE_GFS);
     memset(gfs->gfs_fs, 0, sizeof(struct fs *) * LC_LAYER_MAX);
@@ -365,6 +369,7 @@ lc_gfsDeinit(struct gfs *gfs) {
     int err;
 
     assert(gfs->gfs_pcount == 0);
+    assert(gfs->gfs_dcount == 0);
     if (gfs->gfs_fd) {
         err = fsync(gfs->gfs_fd);
         assert(err == 0);
@@ -519,8 +524,8 @@ lc_mount(char *device, struct gfs **gfsp) {
         return errno;
     }
     if ((size / LC_BLOCK_SIZE) < LC_MIN_BLOCKS) {
-        printf("Device is too small. Minimum size required is %ld\n",
-               LC_MIN_BLOCKS * LC_BLOCK_SIZE);
+        printf("Device is too small. Minimum size required is %ldMB\n",
+               (LC_MIN_BLOCKS * LC_BLOCK_SIZE) / (1024 * 1024) + 1);
         return EINVAL;
     }
     gfs = lc_gfsAlloc(fd);

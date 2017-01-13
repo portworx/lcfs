@@ -36,7 +36,7 @@ lc_createInode(struct fs *fs, ino_t parent, const char *name, mode_t mode,
     }
 
     /* Do not allow new files when file system does not have much free space */
-    if (!lc_hasSpace(gfs, fs->fs_pcount)) {
+    if (!lc_hasSpace(gfs, false)) {
         lc_reportError(__func__, __LINE__, parent, ENOSPC);
         return ENOSPC;
     }
@@ -1306,6 +1306,7 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
     struct inode *inode;
     struct dpage *dpages;
     size_t size, wsize;
+    struct gfs *gfs;
     struct fs *fs;
     int err = 0;
 
@@ -1313,7 +1314,6 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
     lc_displayEntry(__func__, ino, 0, NULL);
 
     /* Make sure enough memory available before proceeding */
-    /* XXX Take care of threads checking this in parallel */
     lc_waitMemory();
     size = bufv->buf[bufv->idx].size;
     pcount = (size / LC_BLOCK_SIZE) + 2;
@@ -1322,6 +1322,7 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
     memset(dst, 0, wsize);
     dpages = alloca(pcount * sizeof(struct dpage));
     fs = lc_getfs(ino, false);
+    gfs = fs->fs_gfs;
     if (fs->fs_frozen) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
@@ -1333,10 +1334,10 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
     /* Copy in the data before taking the lock */
     pcount = lc_copyPages(fs, off, size, dpages, bufv, dst);
     counted = __sync_add_and_fetch(&fs->fs_pcount, pcount);
+    __sync_add_and_fetch(&gfs->gfs_dcount, pcount);
 
     /* Check if file system has enough space for this write to proceed */
-    /* XXX Take care of threads checking this in parallel */
-    if (!lc_hasSpace(fs->fs_gfs, counted)) {
+    if (!lc_hasSpace(fs->fs_gfs, false)) {
         lc_reportError(__func__, __LINE__, ino, ENOSPC);
         fuse_reply_err(req, ENOSPC);
         err = ENOSPC;
@@ -1365,7 +1366,11 @@ out:
 
     /* Adjust dirty page count if some pages existed before */
     if (counted && (pcount != count)) {
-        __sync_sub_and_fetch(&fs->fs_pcount, pcount - count);
+        count = pcount - count;
+        counted = __sync_fetch_and_sub(&fs->fs_pcount, count);
+        assert(counted >= count);
+        counted = __sync_fetch_and_sub(&gfs->gfs_dcount, count);
+        assert(counted >= count);
     }
 
     /* Release any pages not consumed */

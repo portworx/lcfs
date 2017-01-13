@@ -13,6 +13,9 @@
 /* Number of blocks reserved by a layer from the global pool */
 #define LC_BLOCK_RESERVE    8192
 
+/* Minimum number of blocks attempted to reclaim in one pass */
+#define LC_RECLAIM_BLOCKS   10
+
 /* Initializes the block allocator */
 void
 lc_blockAllocatorInit(struct gfs *gfs, struct fs *fs) {
@@ -29,7 +32,9 @@ lc_blockAllocatorInit(struct gfs *gfs, struct fs *fs) {
 
 /* Reclaim reserved space from all layers */
 static uint64_t
-lc_reclaimSpace(struct gfs *gfs, uint64_t blocks) {
+lc_reclaimSpace(struct gfs *gfs) {
+    uint8_t flags = LC_EXTENT_EFREE | LC_EXTENT_LAYER;
+    struct extent *extent;
     uint64_t count = 0;
     struct fs *fs;
     int i;
@@ -39,9 +44,37 @@ lc_reclaimSpace(struct gfs *gfs, uint64_t blocks) {
         fs = gfs->gfs_fs[i];
 
         /* Locking a layer would fail only when the layer is being deleted */
-        if (fs && (fs->fs_extents || fs->fs_blockInodesCount ||
-                   fs->fs_blockMetaCount) && !lc_tryLock(fs, false)) {
+        if (fs &&
+            (fs->fs_extents || fs->fs_blockInodesCount ||
+             fs->fs_blockMetaCount || fs->fs_fextents ||
+             fs->fs_mextents || fs->fs_dextents) && !lc_tryLock(fs, false)) {
             pthread_mutex_unlock(&gfs->gfs_lock);
+
+            /* Flush dirty pages so that freed blocks can be released */
+            if (fs->fs_dextents) {
+                lc_flushDirtyPages(gfs, fs);
+                lc_freeBlocksAfterFlush(fs, 0);
+            }
+
+            /* Release freed blocks */
+            if (fs->fs_fextents || fs->fs_mextents) {
+                pthread_mutex_lock(&fs->fs_alock);
+                if (fs->fs_fextents) {
+                    extent = fs->fs_fextents;
+                    fs->fs_fextents = NULL;
+                    pthread_mutex_unlock(&fs->fs_alock);
+                    lc_blockFreeExtents(fs, extent, flags);
+                    pthread_mutex_lock(&fs->fs_alock);
+                }
+                if (fs->fs_mextents) {
+                    extent = fs->fs_mextents;
+                    fs->fs_mextents = NULL;
+                    pthread_mutex_unlock(&fs->fs_alock);
+                    lc_blockFreeExtents(fs, extent, flags);
+                } else {
+                    pthread_mutex_unlock(&fs->fs_alock);
+                }
+            }
 
             /* Release any reserved blocks */
             if (fs->fs_extents || fs->fs_blockInodesCount ||
@@ -49,7 +82,7 @@ lc_reclaimSpace(struct gfs *gfs, uint64_t blocks) {
                 count += lc_freeLayerBlocks(gfs, fs, false, false, false);
             }
             lc_unlock(fs);
-            if (count >= blocks) {
+            if (count >= LC_RECLAIM_BLOCKS) {
                 return count;
             }
             pthread_mutex_lock(&gfs->gfs_lock);
@@ -61,17 +94,19 @@ lc_reclaimSpace(struct gfs *gfs, uint64_t blocks) {
 
 /* Check if file system has enough space for the operation to proceed */
 bool
-lc_hasSpace(struct gfs *gfs, uint64_t blocks) {
+lc_hasSpace(struct gfs *gfs, bool layer) {
     while (gfs->gfs_super->sb_tblocks <=
-           (gfs->gfs_super->sb_blocks + gfs->gfs_blocksReserved + blocks)) {
+           (gfs->gfs_super->sb_blocks + gfs->gfs_blocksReserved +
+            gfs->gfs_dcount)) {
 
         /* Try to reclaim reserved space from all layers */
-        if (lc_reclaimSpace(gfs, blocks) == 0) {
+        if (lc_reclaimSpace(gfs) == 0) {
             break;
         }
     }
     return gfs->gfs_super->sb_tblocks >
-           (gfs->gfs_super->sb_blocks + gfs->gfs_blocksReserved + blocks);
+           (gfs->gfs_super->sb_blocks + gfs->gfs_blocksReserved +
+            gfs->gfs_dcount + (layer ? LC_LAYER_MIN_BLOCKS : 0));
 }
 
 /* Add an extent to an extent list tracking space */
@@ -295,6 +330,8 @@ lc_readExtents(struct gfs *gfs, struct fs *fs) {
                   count, gfs->gfs_super->sb_blocks, gfs->gfs_super->sb_tblocks);
         assert((count + gfs->gfs_super->sb_blocks + 1) ==
                gfs->gfs_super->sb_tblocks);
+        gfs->gfs_blocksReserved = (gfs->gfs_super->sb_tblocks *
+                                   LC_RESERVED_BLOCKS) / 100ul;
     }
 }
 
@@ -420,7 +457,8 @@ lc_blockAlloc(struct fs *fs, uint64_t count, bool meta, bool reserve) {
         }
     }
     pthread_mutex_unlock(&fs->fs_alock);
-    assert((block + count) < gfs->gfs_super->sb_tblocks);
+    assert(((block + count) < gfs->gfs_super->sb_tblocks) ||
+           (block == LC_INVALID_BLOCK));
     return block;
 }
 
@@ -576,8 +614,8 @@ lc_replaceMetaBlocks(struct fs *fs, struct extent **extents,
 
 /* Free blocks allocated and freed in a layer */
 void
-lc_processFreedBlocks(struct fs *fs, bool remove) {
-    uint8_t flags = remove ? (LC_EXTENT_EFREE | LC_EXTENT_LAYER) : 0;
+lc_processFreedBlocks(struct fs *fs, bool release) {
+    uint8_t flags = release ? (LC_EXTENT_EFREE | LC_EXTENT_LAYER) : 0;
 
     /* These blocks may or may not be allocated for the layer */
     if (fs->fs_fextents) {
