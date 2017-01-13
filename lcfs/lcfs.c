@@ -15,6 +15,10 @@ getfs() {
 static void
 usage(char *prog) {
     printf("usage: %s <device> <mnt> <mnt2> [-d]\n", prog);
+    printf("\tdevice - device/file\n"
+           "\tmnt    - mount point on host\n"
+           "\tmnt2   - mount point propagated to plugin\n"
+           "\t-d     - display debugging info (optional)\n");
 }
 
 /* Data passed to the duplicate thread */
@@ -45,6 +49,7 @@ static void *
 lc_serve(void *data) {
     struct fuseData *fd = (struct fuseData *)data;
     struct gfs *gfs = fd->fd_gfs;
+    struct fuse_session *se;
     bool fcancel = false;
     pthread_t flusher;
     int err;
@@ -78,10 +83,22 @@ lc_serve(void *data) {
 
 out:
     gfs->gfs_unmounting = true;
-    fuse_session_exit(gfs->gfs_se[fd->fd_thread ?
-                                  LC_LAYER_MOUNT : LC_BASE_MOUNT]);
-    if (!fd->fd_thread) {
-        fuse_remove_signal_handlers(gfs->gfs_se[LC_LAYER_MOUNT]);
+
+    /* Other mount need to exit as well */
+    pthread_mutex_lock(&gfs->gfs_lock);
+    se = gfs->gfs_se[fd->fd_thread ? LC_LAYER_MOUNT : LC_BASE_MOUNT];
+    if (se) {
+        fuse_session_exit(se);
+    }
+    if (fd->fd_thread) {
+        gfs->gfs_se[LC_BASE_MOUNT] = NULL;
+        pthread_mutex_unlock(&gfs->gfs_lock);
+    } else {
+        gfs->gfs_se[LC_LAYER_MOUNT] = NULL;
+        pthread_mutex_unlock(&gfs->gfs_lock);
+        fuse_remove_signal_handlers(fd->fd_se);
+
+        /* Wait for flusher thread to exit */
         if (fcancel) {
             pthread_mutex_lock(&gfs->gfs_lock);
             pthread_cond_broadcast(&gfs->gfs_flusherCond);
@@ -193,7 +210,7 @@ main(int argc, char *argv[]) {
 #ifdef FUSE3
     if (argc < 4) {
 #else
-    if ((argc < 4) || (argc > 6)) {
+    if ((argc < 4) || (argc > 5)) {
 #endif
         usage(argv[0]);
         exit(EINVAL);
@@ -208,6 +225,7 @@ main(int argc, char *argv[]) {
     /* Make sure mount points exist */
     if (stat(argv[2], &st) || stat(argv[3], &st)) {
         perror("stat");
+        printf("Make sure directories %s and %s exist\n", argv[2], argv[3]);
         usage(argv[0]);
         exit(errno);
     }
