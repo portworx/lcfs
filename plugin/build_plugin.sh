@@ -1,5 +1,6 @@
 #!/bin/bash
 
+SUDO=sudo
 # Setup archive directories
 BASE_DIR=../
 PLUGIN_BASE_DIR=$BASE_DIR/plugin/artifacts
@@ -27,16 +28,16 @@ mkdir -p $PLUGIN_BASE_DIR/rootfs
 cp $BASE_DIR/lcfs_plugin.bin lcfs_plugin
 
 # Build the base rootfs image
-docker build -t rootfsimage .
+$SUDO docker build -t rootfsimage .
 # Create a container from the rootfs image
-id=$(docker create rootfsimage)
+id=$($SUDO docker create rootfsimage)
 # Export and untar the container into a rootfs directory
-docker export "$id" | tar -x -C $PLUGIN_BASE_DIR/rootfs
+$SUDO docker export "$id" | tar -x -C $PLUGIN_BASE_DIR/rootfs
 # Create a docker v2 plugin
-docker plugin create $DOCKER_HUB_REPO/$DOCKER_HUB_PXGRAPH_PLUGIN:$DOCKER_HUB_PXGRAPH_TAG $PLUGIN_BASE_DIR
+$SUDO docker plugin create $DOCKER_HUB_REPO/$DOCKER_HUB_PXGRAPH_PLUGIN:$DOCKER_HUB_PXGRAPH_TAG $PLUGIN_BASE_DIR
 # Remove the temporary container
 docker rm -vf "$id"
-docker rmi rootfsimage
+$SUDO docker rmi rootfsimage
 
 # Remove the archive direcgtory
 rm -rf $PLUGIN_BASE_DIR
