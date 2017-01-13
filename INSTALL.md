@@ -18,8 +18,8 @@ These four steps are detailed below.
 6. Start lcfs
 ```
 # sudo rm -fr /var/lib/docker /lcfs
-# sudo mkdir /lcfs /var/lib/docker
-# sudo ./lcfs /dev/sdb /var/lib/docker /lcfs
+# sudo mkdir -p /lcfs /var/lib/docker
+# sudo ./lcfs /dev/sdb /var/lib/docker /lcfs >/dev/null &
 ```
 
 ## Step 2 - Start Docker using VFS

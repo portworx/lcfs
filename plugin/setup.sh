@@ -3,7 +3,7 @@ set -x
 
 make clean
 make
-sudo rm -fr rootfs 2>/dev/null 2>/dev/null
+sudo rm -fr rootfs 2>/dev/null
 
 docker build -t rootfsimage .
 id=$(docker create rootfsimage)
