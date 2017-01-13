@@ -43,6 +43,15 @@ gr-clean:
 plugin:
 	@cd plugin && make
 
+px-graph:
+	@echo "Building px-graph docker plugin..."
+	@cd plugin/ && ./build_plugin.sh
+
+deploy:
+	@echo "Pushing px-graph to dockerhub..."
+	@cd plugin/ && ./push_plugin.sh
+
+
 plugin-clean:
 	@cd plugin && make clean
 
