@@ -12,6 +12,12 @@ endif
 
 GR_CONTAINER:=px-graph
 
+ifdef LCFS_RPM_VERSION
+BUILD_ARGS=--build-arg LCFS_RPM_VER=$(LCFS_RPM_VERSION)
+endif
+
+
+
 TARGETS := gr-docker plugin
 
 all: $(TARGETS)
@@ -29,7 +35,7 @@ submodules:
 # build px-graph plugin in a container (2017.05 only works with docker 1.13)
 gr-plugin:
 	@echo "====================> building px-graph build container $(GR_CONTAINER)"
-	sudo docker build -t $(GR_CONTAINER) -f Dockerfile.build .
+	sudo docker build -t $(GR_CONTAINER) $(BUILD_ARGS) -f Dockerfile.build .
 	sudo docker run --name $(GR_CONTAINER) $(GR_CONTAINER) ls -l /tmp
 	sudo docker cp $(GR_CONTAINER):/tmp/lcfs_plugin.bin .
 	sudo docker cp $(GR_CONTAINER):/tmp/lcfs.bin .
