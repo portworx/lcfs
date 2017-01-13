@@ -696,7 +696,7 @@ lc_destroyInodes(struct fs *fs, bool remove) {
                 inode->i_size) {
                 fuse_lowlevel_notify_inval_inode(
 #ifdef FUSE3
-                                                 gfs->gfs_se,
+                                                 gfs->gfs_se[LC_LAYER_MOUNT],
 #else
                                                  gfs->gfs_ch,
 #endif

@@ -238,7 +238,7 @@ lc_removeLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
     /* Notify VFS about removal of a directory */
     fuse_lowlevel_notify_delete(
 #ifdef FUSE3
-                                gfs->gfs_se,
+                                gfs->gfs_se[LC_LAYER_MOUNT],
 #else
                                 gfs->gfs_ch,
 #endif

@@ -38,8 +38,6 @@ struct fuseData {
     bool fd_thread;
 };
 
-/* Number of mount points device mounted */
-#define LC_MAX_MOUNTS   2
 static struct fuseData fd[LC_MAX_MOUNTS];
 
 /* Serve file system requests */
@@ -47,6 +45,7 @@ static void *
 lc_serve(void *data) {
     struct fuseData *fd = (struct fuseData *)data;
     struct gfs *gfs = fd->fd_gfs;
+    bool fcancel = false;
     pthread_t flusher;
     int err;
 
@@ -61,6 +60,7 @@ lc_serve(void *data) {
             printf("Flusher thread could not be created, err %d\n", err);
             goto out;
         }
+        fcancel = true;
     }
 #ifdef FUSE3
     fuse_session_mount(fd->fd_se, fd->fd_mountpoint);
@@ -77,14 +77,17 @@ lc_serve(void *data) {
 #endif
 
 out:
+    gfs->gfs_unmounting = true;
+    fuse_session_exit(gfs->gfs_se[fd->fd_thread ?
+                                  LC_LAYER_MOUNT : LC_BASE_MOUNT]);
     if (!fd->fd_thread) {
-        fuse_remove_signal_handlers(gfs->gfs_se);
-        if (!err) {
-            pthread_cancel(flusher);
+        fuse_remove_signal_handlers(gfs->gfs_se[LC_LAYER_MOUNT]);
+        if (fcancel) {
+            pthread_mutex_lock(&gfs->gfs_lock);
+            pthread_cond_broadcast(&gfs->gfs_flusherCond);
+            pthread_mutex_unlock(&gfs->gfs_lock);
             pthread_join(flusher, NULL);
         }
-    } else {
-        fuse_session_exit(gfs->gfs_se);
     }
 #ifdef FUSE3
     fuse_session_unmount(fd->fd_se);
@@ -101,9 +104,9 @@ out:
 static int
 lc_fuseMount(struct gfs *gfs, char **arg, char *device, int argc,
              bool thread) {
+    enum lc_mountId id = thread ? LC_BASE_MOUNT : LC_LAYER_MOUNT;
     struct fuse_args args = FUSE_ARGS_INIT(argc, arg);
     struct fuse_session *se;
-    int id = thread ? 0 : 1;
     char *mountpoint = NULL;
     pthread_t dup;
     int err;
@@ -151,12 +154,12 @@ lc_fuseMount(struct gfs *gfs, char **arg, char *device, int argc,
         err = EINVAL;
         goto out;
     }
-    if (id == 1) {
-        gfs->gfs_se = se;
+    gfs->gfs_se[id] = se;
 #ifndef FUSE3
+    if (id == 1) {
         gfs->gfs_ch = ch;
-#endif
     }
+#endif
     fd[id].fd_gfs = gfs;
     fd[id].fd_se = se;
     fd[id].fd_thread = thread;

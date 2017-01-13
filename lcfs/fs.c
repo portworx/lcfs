@@ -352,6 +352,7 @@ lc_gfsAlloc(int fd) {
     memset(gfs->gfs_zPage, 0, LC_BLOCK_SIZE);
     memset(gfs->gfs_roots, 0, sizeof(ino_t) * LC_LAYER_MAX);
     pthread_cond_init(&gfs->gfs_mcond, NULL);
+    pthread_cond_init(&gfs->gfs_flusherCond, NULL);
     pthread_mutex_init(&gfs->gfs_lock, NULL);
     pthread_mutex_init(&gfs->gfs_alock, NULL);
     gfs->gfs_fd = fd;
@@ -376,6 +377,7 @@ lc_gfsDeinit(struct gfs *gfs) {
     lc_free(NULL, gfs->gfs_roots, sizeof(ino_t) * LC_LAYER_MAX,
             LC_MEMTYPE_GFS);
     pthread_cond_destroy(&gfs->gfs_mcond);
+    pthread_cond_destroy(&gfs->gfs_flusherCond);
     pthread_mutex_destroy(&gfs->gfs_lock);
     pthread_mutex_destroy(&gfs->gfs_alock);
 }
@@ -659,8 +661,7 @@ lc_unmount(struct gfs *gfs) {
     struct fs *fs;
     int i;
 
-    lc_printf("lc_unmount: gfs_scount %d gfs_pcount %ld\n",
-               gfs->gfs_scount, gfs->gfs_pcount);
+    assert(gfs->gfs_unmounting);
 
     /* Flush dirty data before destroying file systems since layers may be out
      * of order in the file system table and parent layers should not be

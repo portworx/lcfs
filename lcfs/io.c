@@ -35,7 +35,7 @@ lc_writeBlocks(struct gfs *gfs, struct fs *fs,
     //lc_printf("lc_writeBlocks: Writing %d block %ld\n", iovcnt, block);
     assert(block < gfs->gfs_super->sb_tblocks);
     count = pwritev(gfs->gfs_fd, iov, iovcnt, block * LC_BLOCK_SIZE);
-    assert(count != -1);
+    assert(count == (iovcnt * LC_BLOCK_SIZE));
     __sync_add_and_fetch(&gfs->gfs_writes, 1);
     __sync_add_and_fetch(&fs->fs_writes, 1);
 }

@@ -40,6 +40,9 @@ static_assert(LC_PAGE_MAX >= LC_PCACHE_SIZE, "LC_PAGE_MAX <= LC_PCACHE_SIZE");
  */
 #define LC_MAX_LAYER_DIRTYPAGES 524288
 
+/* Minimum Number of pages in a list before a page is attempted to be freed */
+#define LC_CACHE_LIST_MAX        20
+
 /* Maximum number of pages checked in a hash list for picking one for freeing
  */
 #define LC_CACHE_PURGE_CHECK_MAX 10
@@ -48,6 +51,9 @@ static_assert(LC_PAGE_MAX >= LC_PCACHE_SIZE, "LC_PAGE_MAX <= LC_PCACHE_SIZE");
  * hash scheme for dirty pages.
  */
 #define LC_DHASH_MIN            1024
+
+/* Time in seconds background flusher is woken up */
+#define LC_FLUSH_INTERVAL       10
 
 /* Page cache header */
 struct pcache {

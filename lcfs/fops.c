@@ -942,9 +942,19 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
             /* Invalidate pages in kernel page cache if multiple layers are
              * reading shared data from parent layer.
              */
-            *inval = reg && (inode->i_size > 0) &&
+            *inval = reg && (inode->i_size > 0);
+#if 0
+            /* If a single container wants data in kernel page cache, avoid
+             * invalidation using these checks.
+             *
+             * Such pages may stay in kernel page cache even when new
+             * containers are created.
+             *
+             * XXX Figure out how to enable this for docker builds.
+             */
                     (fs->fs_readOnly || fs->fs_next || fs->fs_prev ||
                      (fs->fs_super->sb_flags & LC_SUPER_INIT));
+#endif
         }
         return;
     }
@@ -1015,7 +1025,7 @@ lc_release(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
          */
         fuse_lowlevel_notify_inval_inode(
 #ifdef FUSE3
-                                         gfs->gfs_se,
+                                         gfs->gfs_se[LC_LAYER_MOUNT],
 #else
                                          gfs->gfs_ch,
 #endif

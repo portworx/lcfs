@@ -19,7 +19,7 @@ We put together this table to help you understand how PX-Graph is different from
 |           | PX-graph | Device Mapper | Overlay | Overlay2 | AUFS |
 |-----------|----------|---------------|---------|----------|------|
 | Host Page Cache Usage|  Low        |   High            |       Low  |    Low      |   Low   |
-| Host inode Consumtion | Low         |   Med            |   High      |    High      |   High   |
+| Host inode Consumtion | Low         |   Med            |   High      |    Low      |   High   |
 | Time to Build an Image |   Low       |  High            |   Med       |    Low       |   Low    |
 | Time to Launch an Image |  Low        |    High          |     Med     |   Med        |  Med     |
 | Time to Destroy an Image |  Low        |    Med           |     High    |   High       |  High    |

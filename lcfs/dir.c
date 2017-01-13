@@ -508,7 +508,7 @@ lc_removeTree(struct fs *fs, struct inode *dir) {
             if (S_ISREG(dirent->di_mode)) {
                 fuse_lowlevel_notify_inval_inode(
 #ifdef FUSE3
-                                                 gfs->gfs_se,
+                                                 gfs->gfs_se[LC_LAYER_MOUNT],
 #else
                                                  gfs->gfs_ch,
 #endif

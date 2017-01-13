@@ -4,6 +4,15 @@
 /* Maximum number of layers */
 #define LC_LAYER_MAX  65535ull
 
+/* Sessions for the mount points */
+enum lc_mountId {
+    LC_BASE_MOUNT = 0,  /* Mount for base file system */
+
+    LC_LAYER_MOUNT = 1, /* Mount for layer management */
+
+    LC_MAX_MOUNTS = 2, /* Number of mount points device mounted at */
+};
+
 /* Global file system */
 struct gfs {
 
@@ -31,11 +40,14 @@ struct gfs {
     /* Lock protecting global list of file system chain */
     pthread_mutex_t gfs_lock;
 
+    /* background flusher */
+    pthread_t gfs_flusher;
+
     /* Zero page */
     char *gfs_zPage;
 
-    /* fuse session */
-    struct fuse_session *gfs_se;
+    /* fuse sessions */
+    struct fuse_session *gfs_se[LC_MAX_MOUNTS];
 #ifndef FUSE3
     /* fuse channel */
     struct fuse_chan *gfs_ch;
@@ -52,6 +64,9 @@ struct gfs {
 
     /* condition on threads wait on low memory */
     pthread_cond_t gfs_mcond;
+
+    /* Condition variable flusher is waiting on */
+    pthread_cond_t gfs_flusherCond;
 
     /* Count of pages in use */
     uint64_t gfs_pcount;
@@ -88,6 +103,9 @@ struct gfs {
 
     /* Layer from pages being purged */
     int gfs_tpIndex;
+
+    /* Set when unmount in progress */
+    bool gfs_unmounting;
 
     /* Pages being purged */
     bool gfs_tpurging;
