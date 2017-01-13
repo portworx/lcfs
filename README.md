@@ -1,8 +1,12 @@
-# About the Portworx Graph Driver for Docker
-PX-Graph is a graph driver for Docker that uses a new filesystem built specifically for container image management.  Think of it like this.  Just like CoreOS strips out all the parts of Linux not needed to run containers, PX-Graph strips out all the parts of a file system not needed to manage container images.  This means the file system is lighter-weight, faster, and more efficient.
+# About the LCFS Storage Driver for Docker
+Layer Cloning FileSystem (LCFS) is a new filesystem purpose-built to be a Docker [storage driver](https://docs.docker.com/engine/userguide/storagedriver/selectadriver/). All Docker images are constructed of “layers” using storage drivers (fma graph drivers) like AUFS, OverlayFS, and Device Mapper. By designing the LCFS filesystem for containers, the aim is to improve the container CI/CD and production experience. 
 
+As a design principle, LCFS focuses on “layers” as the first class citizen. From this initial release, the future direction is to provide cluster-level operations, enhance container statistics, and pave the way towards content integrity of container images.
 
-PX-Graph uses a new file system called LCFS, which stands for `Layer Cloning File System`. This file system is provided to Docker by way of the FUSE low level API. 
+- cluster operations: where image pulls can be cooperatively satisfied by images across a group of servers instead of being isolated to a single server, as it is today. 
+- statistics: answering what are the most popoular layers, etc.
+- content-integrity: ensuring container content has not been altered. [see OCI scope](https://www.opencontainers.org/about/oci-scope-table)
+
 
 # What problems does PX-graph solve.
 So how does this help you?  There has been a lot of [discussion](https://integratedcode.us/2016/08/30/storage-drivers-in-docker-a-deep-dive/) recently about the ins and outs of the various Docker Graph Driver options and we won't cover all that here.  In short, PX-Driver solves the four biggest issues Graph Driver users face.
