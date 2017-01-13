@@ -36,9 +36,9 @@ $SUDO docker export "$id" | tar -x -C $PLUGIN_BASE_DIR/rootfs
 # Create a docker v2 plugin
 $SUDO docker plugin create $DOCKER_HUB_REPO/$DOCKER_HUB_PXGRAPH_PLUGIN:$DOCKER_HUB_PXGRAPH_TAG $PLUGIN_BASE_DIR
 # Remove the temporary container
-docker rm -vf "$id"
+$SUDO docker rm -vf "$id"
 $SUDO docker rmi rootfsimage
 
 # Remove the archive direcgtory
-rm -rf $PLUGIN_BASE_DIR
+$SUDO rm -rf $PLUGIN_BASE_DIR
 
