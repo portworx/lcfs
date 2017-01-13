@@ -1,24 +1,23 @@
-#!/bin/bash
-set -x
+#!/bin/bash -x
 
 MNT=/tmp/lcfs-testmountpoint
-MNT2=/tmp/lcfs-testmountpoint2
+MNT2=/lcfs
 LCFS=$PWD/lcfs
 XATTR=$PWD/testxattr
 CSTAT=$PWD/cstat
 
-fusermount -u $MNT 2>/dev/null
 fusermount -u $MNT2 2>/dev/null
+fusermount -u $MNT 2>/dev/null
 umount -f $MNT 2>/dev/null
 umount -f $MNT2 2>/dev/null
-fusermount -u $MNT 2>/dev/null
 fusermount -u $MNT2 2>/dev/null
+fusermount -u $MNT 2>/dev/null
 rm -fr $MNT $MNT2 2>/dev/null
 mkdir $MNT $MNT2
 
 DEVICE=/tmp/lcfs-testdevice
 rm $DEVICE 2>/dev/null
-dd if=/dev/zero of=$DEVICE count=60000 bs=4096
+dd if=/dev/zero of=$DEVICE count=80000 bs=4096
 
 $LCFS $DEVICE $MNT $MNT2 &
 sleep 10
@@ -120,25 +119,30 @@ rm file
 
 cd -
 
-mkdir $MNT/lcfs
 service docker stop
-../plugin/lcfs_plugin &
-dockerd -s lcfs -g $MNT 2>/dev/null &
+dockerd -s vfs -g $MNT >/dev/null &
+sleep 3
+docker plugin install --grant-all-permissions portworx/px-graph
+docker plugin ls
+pkill dockerd
+sleep 3
+sudo dockerd --experimental -s portworx/px-graph -g $MNT >/dev/null &
 sleep 10
 docker run hello-world
 
-cd $MNT/lcfs
+cd $MNT/px-graph
 $CSTAT .
 cd -
 
 docker ps --all --format {{.ID}} | xargs docker rm
 docker rmi hello-world
-cat /var/run/docker.pid | xargs kill
+pkill dockerd
 sleep 10
 service docker start
 
-rmdir $MNT/lcfs
-mkdir $MNT/lcfs/dir
+rmdir $MNT/px-graph
+mkdir $MNT/px-graph/dir
+touch $MNT/px-graph/file
 
 df -k $MNT
 df -i $MNT
@@ -156,8 +160,8 @@ done
 set -x
 cd -
 
-fusermount -u $MNT
 fusermount -u $MNT2
+fusermount -u $MNT
 sleep 10
 
 $LCFS $DEVICE $MNT $MNT2 &
@@ -177,8 +181,8 @@ set -x
 rmdir dir
 cd -
 
-fusermount -u $MNT
 fusermount -u $MNT2
+fusermount -u $MNT
 sleep 10
 
 $LCFS $DEVICE $MNT $MNT2 &
@@ -193,10 +197,9 @@ cd -
 
 df -k $MNT
 df -i $MNT
-fusermount -u $MNT
 fusermount -u $MNT2
+fusermount -u $MNT
 sleep 10
 
 rm -fr $MNT $MNT2 $DEVICE
-pkill lcfs_plugin
 wait
