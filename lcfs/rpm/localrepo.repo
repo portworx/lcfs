@@ -1,0 +1,5 @@
+[localrepo]
+name=Portworx Local Repository
+baseurl=ftp://yum.portworx.com/pub/localrepo
+gpgcheck=0
+enabled=1

@@ -10,20 +10,26 @@ MAINTAINER Michael Vilain <michael@portworx.com>
 # tools to build libfuse for lcfs
 RUN apt-get update && \
  	apt-get install -y build-essential util-linux libcurl4-openssl-dev \
- 			libxml2-dev mime-support libgoogle-perftools-dev
+ 			libxml2-dev mime-support libgoogle-perftools-dev liblzma-dev rpm file alien sudo
 #ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
 
 ADD . /go/src/github.com/portworx/px-graph
 
-WORKDIR /go/src/github.com/portworx/px-graph/lcfs
+WORKDIR /go/src/github.com/portworx/px-graph
 RUN wget -q https://github.com/libfuse/libfuse/releases/download/fuse-2.9.7/fuse-2.9.7.tar.gz
 RUN tar -xzf fuse-2.9.7.tar.gz
 WORKDIR fuse-2.9.7
 RUN ./configure && make -j8 && make install
 
 WORKDIR /go/src/github.com/portworx/px-graph/lcfs
-RUN make
+RUN make STATIC=y
 RUN mv lcfs /tmp/lcfs.bin
+
+RUN make clean
+RUN make STATIC=y rpm
+RUN mkdir /tmp/pkgs
+RUN mv rpm/lcfs/RPMS/x86_64/*.deb /tmp/pkgs
+RUN mv rpm/lcfs/RPMS/x86_64/*.rpm /tmp/pkgs
 
 WORKDIR /go/src/github.com/portworx/px-graph/plugin
 RUN make
