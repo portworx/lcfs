@@ -521,11 +521,13 @@ lc_mount(char *device, struct gfs **gfsp) {
     size = lseek(fd, 0, SEEK_END);
     if (size == -1) {
         perror("lseek");
+        close(fd);
         return errno;
     }
     if ((size / LC_BLOCK_SIZE) < LC_MIN_BLOCKS) {
         printf("Device is too small. Minimum size required is %ldMB\n",
                (LC_MIN_BLOCKS * LC_BLOCK_SIZE) / (1024 * 1024) + 1);
+        close(fd);
         return EINVAL;
     }
     gfs = lc_gfsAlloc(fd);
@@ -553,6 +555,8 @@ lc_mount(char *device, struct gfs **gfsp) {
     } else {
         if (gfs->gfs_super->sb_flags & LC_SUPER_DIRTY) {
             printf("Filesystem is dirty\n");
+            assert(!(gfs->gfs_super->sb_flags & LC_SUPER_DIRTY));
+            close(fd);
             return EIO;
         }
         assert(size == (gfs->gfs_super->sb_tblocks * LC_BLOCK_SIZE));

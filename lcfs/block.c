@@ -430,6 +430,7 @@ lc_blockAlloc(struct fs *fs, uint64_t count, bool meta, bool reserve) {
                                                     false, true);
                 if (fs->fs_blockMeta == LC_INVALID_BLOCK) {
                     fs->fs_blockMetaCount = 0;
+                    pthread_mutex_unlock(&fs->fs_alock);
                     return LC_INVALID_BLOCK;
                 }
             }
