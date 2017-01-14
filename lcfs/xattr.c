@@ -409,8 +409,10 @@ lc_xattrFlushBlocks(struct gfs *gfs, struct fs *fs,
         count--;
         lc_addPageBlockHash(gfs, fs, page, block + count);
         xblock = (struct xblock *)page->p_data;
+        xblock->xb_magic = LC_XATTR_MAGIC;
         xblock->xb_next = (page == fpage) ? LC_INVALID_BLOCK :
                                             block + count + 1;
+        lc_updateCRC(xblock, &xblock->xb_crc);
         page = page->p_dnext;
     }
     assert(count == 0);
@@ -517,6 +519,8 @@ lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
     while (block != LC_INVALID_BLOCK) {
         lc_addSpaceExtent(gfs, fs, &inode->i_xattrExtents, block, 1, false);
         lc_readBlock(gfs, fs, block, xblock);
+        lc_verifyBlock(xblock, &xblock->xb_crc);
+        assert(xblock->xb_magic == LC_XATTR_MAGIC);
         xbuf = (char *)&xblock->xb_attr[0];
         remain = LC_BLOCK_SIZE - sizeof(struct xblock);
 

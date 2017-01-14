@@ -37,6 +37,10 @@ sudo apt-get install -y wget
 sudo apt-get install -y libgoogle-perftools-dev
 #sudo yum install gperftools
 
+#Install zlib
+sudo apt-get install -y zlib1g-dev
+#sudo yum install install zlib-devel
+
 WDIR=/tmp/lcfs
 rm -fr $WDIR
 mkdir -p $WDIR

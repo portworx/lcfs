@@ -1,7 +1,9 @@
 # lcfs Makefile -- 201701.06MeV
 CC=gcc
 CFLAGS=-g -Wall -D_FILE_OFFSET_BITS=64 -I/usr/include/fuse -I/usr/local/include/fuse
-LDFLAGS=-ltcmalloc -pthread -lprofiler -lfuse
+LDFLAGS=-lz -ltcmalloc -pthread -lprofiler -lfuse
+#CFLAGS=-g -Wall $ -D_FILE_OFFSET_BITS=64 -I/usr/local/include/fuse3
+#LDFLAGS=-lz -ltcmalloc -pthread -L/usr/local/lib -lfuse3
 
 ifdef STATIC
 LCFSSTATICLIBS="libtcmalloc_and_profiler.a libfuse.a libunwind.a"
@@ -19,11 +21,9 @@ LCFS_LZMA_LIBS=-llzma
 endif     # test LCFS_LZMA_LIBS
 endif  # test CHECK_LZMA_LIBS
 
-LDFLAGS=-pthread $(LCFS_STATIC_LIBS) -lstdc++ -lm -ldl $(LCFS_LZMA_LIBS)
+LDFLAGS=-lz -pthread $(LCFS_STATIC_LIBS) -lstdc++ -lm -ldl $(LCFS_LZMA_LIBS)
 endif  # STATIC
 
-#CFLAGS=-g -Wall $ -D_FILE_OFFSET_BITS=64 -I/usr/local/include/fuse3
-#LDFLAGS=-ltcmalloc -pthread -L/usr/local/lib -lfuse3
 OBJ=lcfs.o memory.o fops.o super.o io.o extent.o block.o fs.o inode.o dir.o emap.o bcache.o page.o xattr.o layer.o stats.o
 
 all: lcfs cstat

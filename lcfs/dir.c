@@ -304,6 +304,8 @@ lc_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf) {
     while (block != LC_INVALID_BLOCK) {
         lc_addSpaceExtent(gfs, fs, &dir->i_emapDirExtents, block, 1, false);
         lc_readBlock(gfs, fs, block, dblock);
+        lc_verifyBlock(dblock, &dblock->db_crc);
+        assert(dblock->db_magic == LC_DIR_MAGIC);
         dbuf = (char *)&dblock->db_dirent[0];
         remain = LC_BLOCK_SIZE - sizeof(struct dblock);
 
@@ -344,8 +346,10 @@ lc_dirFlushBlocks(struct gfs *gfs, struct fs *fs,
         count--;
         lc_addPageBlockHash(gfs, fs, page, block + count);
         dblock = (struct dblock *)page->p_data;
+        dblock->db_magic = LC_DIR_MAGIC;
         dblock->db_next = (page == fpage) ? LC_INVALID_BLOCK :
                                             block + count + 1;
+        lc_updateCRC(dblock, &dblock->db_crc);
         page = page->p_dnext;
     }
     assert(count == 0);

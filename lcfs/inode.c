@@ -316,6 +316,8 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
         if (read) {
             //lc_printf("Reading inode table from block %ld\n", block);
             lc_readBlock(gfs, fs, block, buf);
+            lc_verifyBlock(buf, &buf->ib_crc);
+            assert(buf->ib_magic == LC_INODE_MAGIC);
         } else {
             read = true;
         }
@@ -376,6 +378,8 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
                 iblock = buf->ib_next;
                 //lc_printf("Reading inode table from block %ld, moving to %ld\n", iblock, block);
                 lc_readBlock(gfs, fs, iblock, buf);
+                lc_verifyBlock(buf, &buf->ib_crc);
+                assert(buf->ib_magic == LC_INODE_MAGIC);
                 lc_freeLayerMetaBlocks(fs, iblock, 1);
                 read = false;
                 continue;

@@ -223,7 +223,7 @@ lc_flushEmapBlocks(struct gfs *gfs, struct fs *fs,
                    struct page *fpage, uint64_t pcount) {
     uint64_t count = pcount, block;
     struct page *page = fpage;
-    struct emapBlock *bblock;
+    struct emapBlock *eblock;
 
     block = lc_blockAllocExact(fs, pcount, true, true);
 
@@ -231,9 +231,11 @@ lc_flushEmapBlocks(struct gfs *gfs, struct fs *fs,
     while (page) {
         count--;
         lc_addPageBlockHash(gfs, fs, page, block + count);
-        bblock = (struct emapBlock *)page->p_data;
-        bblock->eb_next = (page == fpage) ?
+        eblock = (struct emapBlock *)page->p_data;
+        eblock->eb_magic = LC_EMAP_MAGIC;
+        eblock->eb_next = (page == fpage) ?
                           LC_INVALID_BLOCK : block + count + 1;
+        lc_updateCRC(eblock, &eblock->eb_crc);
         page = page->p_dnext;
     }
     assert(count == 0);
@@ -245,7 +247,7 @@ lc_flushEmapBlocks(struct gfs *gfs, struct fs *fs,
 void
 lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     uint64_t bcount = 0, pcount = 0, block = LC_INVALID_BLOCK;
-    struct emapBlock *bblock = NULL;
+    struct emapBlock *eblock = NULL;
     int count = LC_EMAP_BLOCK;
     struct page *page = NULL;
     struct extent *extent;
@@ -279,15 +281,15 @@ lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     /* Add emap blocks with emap entries */
     while (extent) {
         if (count >= LC_EMAP_BLOCK) {
-            if (bblock) {
-                page = lc_getPageNoBlock(gfs, fs, (char *)bblock, page);
+            if (eblock) {
+                page = lc_getPageNoBlock(gfs, fs, (char *)eblock, page);
             }
-            lc_mallocBlockAligned(fs->fs_rfs, (void **)&bblock,
+            lc_mallocBlockAligned(fs->fs_rfs, (void **)&eblock,
                                   LC_MEMTYPE_DATA);
             pcount++;
             count = 0;
         }
-        emap = &bblock->eb_emap[count++];
+        emap = &eblock->eb_emap[count++];
         emap->e_off = lc_getExtentStart(extent);
         emap->e_block = lc_getExtentBlock(extent);
         emap->e_count = lc_getExtentCount(extent);
@@ -296,11 +298,11 @@ lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         extent = extent->ex_next;
     }
     assert(inode->i_dinode.di_blocks == bcount);
-    if (bblock) {
+    if (eblock) {
         if (count < LC_EMAP_BLOCK) {
-            bblock->eb_emap[count].e_block = 0;
+            eblock->eb_emap[count].e_block = 0;
         }
-        page = lc_getPageNoBlock(gfs, fs, (char *)bblock, page);
+        page = lc_getPageNoBlock(gfs, fs, (char *)eblock, page);
     }
     if (pcount) {
         block = lc_flushEmapBlocks(gfs, fs, page, pcount);
@@ -318,7 +320,7 @@ void
 lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
              void *buf) {
     struct extent **extents = &inode->i_emap;
-    struct emapBlock *bblock = buf;
+    struct emapBlock *eblock = buf;
     uint64_t i, bcount = 0;
     struct emap *emap;
     uint64_t block;
@@ -347,11 +349,13 @@ lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
     /* Read emap blocks */
     while (block != LC_INVALID_BLOCK) {
         lc_addSpaceExtent(gfs, fs, &inode->i_emapDirExtents, block, 1, false);
-        lc_readBlock(gfs, fs, block, bblock);
+        lc_readBlock(gfs, fs, block, eblock);
+        lc_verifyBlock(eblock, &eblock->eb_crc);
+        assert(eblock->eb_magic == LC_EMAP_MAGIC);
 
         /* Process emap entries from the emap block */
         for (i = 0; i < LC_EMAP_BLOCK; i++) {
-            emap = &bblock->eb_emap[i];
+            emap = &eblock->eb_emap[i];
             if (emap->e_block == 0) {
                 break;
             }
@@ -362,7 +366,7 @@ lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
             extents = &((*extents)->ex_next);
             inode->i_dinode.di_blocks += emap->e_count;
         }
-        block = bblock->eb_next;
+        block = eblock->eb_next;
     }
     assert(inode->i_dinode.di_blocks == bcount);
 }

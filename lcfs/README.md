@@ -39,13 +39,27 @@ Now build and install fuse using the following commands:
 On Ubuntu, run 
 
 ```
-# sudo apt-get install libgoogle-perftools-dev
+# sudo apt-get install -y libgoogle-perftools-dev
 ```
 
 On CentOS, run
 
 ```
 # sudo yum install gperftools
+```
+
+### Install zlib
+
+On Ubuntu, run
+
+```
+# sudo apt-get install -y zlib1g-dev
+```
+
+On CentOS, run
+
+```
+# sudo yum install zlib-devel
 ```
 
 ### Build lcfs 
@@ -79,4 +93,4 @@ To unmount lcfs, run:
 
 To display lcfs stats, run "cstat 'id' [-c]" from the 'mnt'/px-graph directory.  Create px-graph directory if that does not exist.  'id' is the name of the layer.  Specifying '.' as id will display stats for all layers.  If -c is specified, existing stats will be cleared.  Normally, stats are displayed whenever a layer is deleted/unmounted.  
 
-For recreating the file system, unmount it and zero out the first block (4KB) of the device and remount the device/file.
+For recreating the file system, unmount it and zero out the first block (4KB) of the device/file and remount the device/file.

@@ -65,6 +65,5 @@ main() {
     assert(size == -1);
     err = setxattr(TESTFILE, "attr3", "val", 3, 0);
     assert(err == 0);
-    rmdir(TESTFILE);
     return 0;
 }

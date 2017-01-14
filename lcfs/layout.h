@@ -28,6 +28,9 @@
 /* Starting inode number for allocation */
 #define LC_START_INODE LC_ROOT_INODE
 
+/* Maximum number of blocks supported */
+#define LC_MAX_BLOCKS       (LC_INVALID_BLOCK - 1)
+
 /* Minimum size of a device for creating a file system */
 #define LC_MIN_BLOCKS       10000ul
 
@@ -39,6 +42,12 @@
 
 /* Mask for extracting inode numbder from file handle */
 #define LC_FH_INODE     0x0000FFFFFFFFFFFFul
+
+/* Magic number stored in inode blocks */
+#define LC_INODE_MAGIC 0x104BAFE8
+
+/* Magic number stored in extent blocks */
+#define LC_EXTENT_MAGIC 0xCBA35732
 
 /* Magic number stored in emap blocks */
 #define LC_EMAP_MAGIC  0x6452FABC

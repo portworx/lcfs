@@ -227,6 +227,8 @@ lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page, bool read) {
     /* Free a page if this hash list accumulated more than a certain number of
      * pages.  This is a cheap LRU scheme for better performance compared to a
      * global LRU scheme.
+     *
+     * XXX Implement a global LRU scheme with with multiple lists/locks.
      */
     if ((fpage == NULL) && (pcache[hash].pc_pcount > LC_CACHE_LIST_MAX)) {
         cpage = pcache[hash].pc_head;
@@ -675,6 +677,7 @@ lc_purgeTreePages(struct gfs *gfs, struct fs *fs, bool force) {
         while (page) {
 
             /* Free pages if not in use currently */
+            /* XXX Account page hit account while choosing pages for purging */
             if (page->p_refCount == 0) {
                 *prev = page->p_cnext;
                 page->p_cnext = NULL;
@@ -712,10 +715,12 @@ lc_purgePages(struct gfs *gfs, bool force) {
         pthread_mutex_lock(&gfs->gfs_lock);
 
         /* Wait for page purging to complete and memory to become available */
-        if (gfs->gfs_tpurging) {
+        while (gfs->gfs_tpurging) {
             pthread_cond_wait(&gfs->gfs_mcond, &gfs->gfs_lock);
-            pthread_mutex_unlock(&gfs->gfs_lock);
-            return;
+            if (lc_checkMemoryAvailable()) {
+                pthread_mutex_unlock(&gfs->gfs_lock);
+                return;
+            }
         }
     } else {
 
@@ -751,6 +756,10 @@ lc_purgePages(struct gfs *gfs, bool force) {
          */
         if (fs && !lc_tryLock(fs, false)) {
             pthread_mutex_unlock(&gfs->gfs_lock);
+
+            /* XXX split purge and flush operations, so that they can happen in
+             * parallel
+             */
 
             /* Flush dirty pages first */
             if (fs->fs_pcount) {

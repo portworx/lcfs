@@ -28,6 +28,7 @@
 #include <sys/time.h>
 #include <sys/xattr.h>
 #include <pthread.h>
+#include <zlib.h>
 #include <assert.h>
 #include <linux/ioctl.h>
 
@@ -64,6 +65,8 @@ void lc_readBlock(struct gfs *gfs, struct fs *fs, off_t block, void *dbuf);
 void lc_writeBlock(struct gfs *gfs, struct fs *fs, void *buf, off_t block);
 void lc_writeBlocks(struct gfs *gfs, struct fs *fs,
                     struct iovec *iov, int iovcnt, off_t block);
+void lc_updateCRC(void *buf, uint32_t *crc);
+void lc_verifyBlock(void *buf, uint32_t *crc);
 
 void lc_addExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
                   uint64_t start, uint64_t block, uint64_t count, bool sort);
@@ -95,6 +98,7 @@ void lc_replaceMetaBlocks(struct fs *fs, struct extent **extents,
 void lc_readExtents(struct gfs *gfs, struct fs *fs);
 void lc_displayAllocStats(struct fs *fs);
 
+bool lc_superValid(struct super *super);
 void lc_superRead(struct gfs *gfs, struct fs *fs, uint64_t block);
 void lc_superWrite(struct gfs *gfs, struct fs *fs);
 void lc_superInit(struct super *super, uint64_t root, size_t size,

@@ -769,6 +769,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
     char *pdata;
     int64_t i;
 
+    /* XXX Avoid holding inode lock exclusive in this function */
     assert(S_ISREG(inode->i_mode));
 
     /* If inode does not have any pages, skip most of the work */

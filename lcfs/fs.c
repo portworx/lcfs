@@ -63,8 +63,10 @@ lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs) {
         count--;
         lc_addPageBlockHash(gfs, fs, page, block + count);
         iblock = (struct iblock *)page->p_data;
+        iblock->ib_magic = LC_INODE_MAGIC;
         iblock->ib_next = (page == fpage) ?
                           fs->fs_super->sb_inodeBlock : block + count + 1;
+        lc_updateCRC(iblock, &iblock->ib_crc);
         page = page->p_dnext;
     }
     assert(count == 0);
@@ -401,6 +403,7 @@ lc_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
     lc_statsNew(fs);
     fs->fs_sblock = block;
     lc_superRead(gfs, fs, block);
+    assert(lc_superValid(fs->fs_super));
     if (fs->fs_super->sb_flags & LC_SUPER_RDWR) {
         fs->fs_readOnly = false;
     }
@@ -530,10 +533,16 @@ lc_mount(char *device, struct gfs **gfsp) {
         close(fd);
         return EINVAL;
     }
+    if ((size / LC_BLOCK_SIZE) >= LC_MAX_BLOCKS) {
+        printf("Device is too big. Maximum size supported is %ldMB\n",
+               (LC_MAX_BLOCKS * LC_BLOCK_SIZE) / (1024 * 1024));
+        close(fd);
+        return EINVAL;
+    }
+
     gfs = lc_gfsAlloc(fd);
 
     /* Initialize a file system structure in memory */
-    /* XXX Recreate file system after abnormal shutdown for now */
     fs = lc_newFs(gfs, true);
     lc_icache_init(fs, LC_ICACHE_SIZE);
     lc_statsNew(fs);
@@ -547,9 +556,10 @@ lc_mount(char *device, struct gfs **gfsp) {
     /* Try to find a valid superblock, if not found, format the device */
     lc_superRead(gfs, fs, fs->fs_sblock);
     gfs->gfs_super = fs->fs_super;
-    if ((gfs->gfs_super->sb_magic != LC_SUPER_MAGIC) ||
-        (gfs->gfs_super->sb_version != LC_VERSION) ||
+    if (!lc_superValid(gfs->gfs_super) ||
         (gfs->gfs_super->sb_flags & LC_SUPER_DIRTY)) {
+
+        /* XXX Recreate file system after abnormal shutdown for now */
         printf("Formatting %s, size %ld\n", device, size);
         lc_format(gfs, fs, size);
     } else {

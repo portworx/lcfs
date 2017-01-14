@@ -211,8 +211,10 @@ lc_flushExtentPages(struct gfs *gfs, struct fs *fs, struct page *fpage,
         count--;
         lc_addPageBlockHash(gfs, fs, page, block + count);
         eblock = (struct dextentBlock *)page->p_data;
+        eblock->de_magic = LC_EXTENT_MAGIC;
         eblock->de_next = (page == fpage) ?
                           LC_INVALID_BLOCK : block + count + 1;
+        lc_updateCRC(eblock, &eblock->de_crc);
         page = page->p_dnext;
     }
     assert(count == 0);
@@ -308,6 +310,8 @@ lc_readExtents(struct gfs *gfs, struct fs *fs) {
         //lc_printf("Reading extents from block %ld\n", block);
         lc_addSpaceExtent(gfs, rfs, &fs->fs_dextents, block, 1, false);
         lc_readBlock(gfs, fs, block, eblock);
+        lc_verifyBlock(eblock, &eblock->de_crc);
+        assert(eblock->de_magic == LC_EXTENT_MAGIC);
 
         /* Process extents in the block */
         for (i = 0; i < LC_EXTENT_BLOCK; i++) {

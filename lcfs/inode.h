@@ -29,6 +29,9 @@ struct icache {
 #define LC_DIRCACHE_MIN  32
 
 /* Size of the directory hash table */
+/* XXX Use a hash size proportional to the size of the directory.
+ * Rehash as the directory grows.
+ */
 #define LC_DIRCACHE_SIZE 512
 
 /* Number of characters included from the name for calculating hash */

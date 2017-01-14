@@ -18,7 +18,8 @@ All UNIX file types are supported. For symbolic links, the target name is stored
 
 All inodes in a layer can be reached from the superblock of the layer. Every inode block is tracked in blocks linked from the superblock. Inodes are not stored in any particular order on disk. Inodes have their number within the inode.
 
-All metadata (superblocks, inodes, directories, emap, extended attributes, etc.) are always cached in memory (although this may change in the future). They are read from disk when file system is mounted and written out when file system is unmounted.
+All metadata (superblocks, inodes, directories, emap, extended attributes, etc.) are always cached in memory (although this may change in the future). They are read from disk when file system is mounted and written out when file system is unmounted.  Metadata blocks keep track of their checksums and those are validated when read in.
+
 The root directory of the file system has inode number 2 and cannot be removed. Anything created under the tmp directory in root directory is considered temporary.
 
 ### Layer root directory
