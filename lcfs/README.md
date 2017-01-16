@@ -38,13 +38,13 @@ Install the pre-requisite packages for fuse.
 On Ubuntu, run
 
 ```
-# apt-get install build-essential libcurl4-openssl-dev libxml2-dev mime-support
+# sudo apt-get install build-essential libcurl4-openssl-dev libxml2-dev mime-support
 ```
 
 On CentOS, run
 
 ```
-# yum install gcc libstdc++-devel gcc-c++ curl-devel libxml2-devel openssl-devel mailcap
+# sudo yum install gcc libstdc++-devel gcc-c++ curl-devel libxml2-devel openssl-devel mailcap
 ```
      
 Now dowload and install the fuse library from https://github.com/libfuse/libfuse/releases/download/fuse-2.9.7/fuse-2.9.7.tar.gz
