@@ -1,7 +1,13 @@
 # lcfs Makefile -- 201701.06MeV
 CC=gcc
-CFLAGS=-g -Wall -D_FILE_OFFSET_BITS=64 -I/usr/include/fuse -I/usr/local/include/fuse
-LDFLAGS=-lz -ltcmalloc -pthread -lprofiler -lfuse
+UNAME=$(shell uname)
+ifeq ($(UNAME),Linux)
+	CFLAGS=-g -Wall $ -D_FILE_OFFSET_BITS=64 -I/usr/include/fuse -I/usr/local/include/fuse
+	LDFLAGS=-ltcmalloc -pthread -lprofiler -lfuse -lz
+else
+	CFLAGS=-g -Wno-format $ -D_FILE_OFFSET_BITS=64 -I/usr/local/include/osxfuse/fuse -I/usr/local/include/osxfuse
+	LDFLAGS=-ltcmalloc -lprofiler -losxfuse -lz
+endif
 #CFLAGS=-g -Wall $ -D_FILE_OFFSET_BITS=64 -I/usr/local/include/fuse3
 #LDFLAGS=-lz -ltcmalloc -pthread -L/usr/local/lib -lfuse3
 

@@ -24,16 +24,25 @@
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
+#ifdef __APPLE__
+#include <sys/sysctl.h>
+#else
 #include <sys/sysinfo.h>
+#endif
 #include <sys/time.h>
 #include <sys/xattr.h>
 #include <pthread.h>
 #include <zlib.h>
 #include <assert.h>
-#include <linux/ioctl.h>
+#include <sys/ioctl.h>
 
 #ifdef LC_PROFILING
 #include <gperftools/profiler.h>
+#endif
+
+#ifdef __APPLE__
+#include <mach/clock.h>
+#include <mach/mach.h>
 #endif
 
 #include "lcfs.h"
@@ -45,6 +54,10 @@
 #include "page.h"
 #include "stats.h"
 #include "inlines.h"
+
+#ifdef __APPLE__
+#include "apple.h"
+#endif
 
 struct gfs *getfs();
 

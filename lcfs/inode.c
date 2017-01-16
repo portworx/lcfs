@@ -46,9 +46,15 @@ lc_copyStat(struct stat *st, struct inode *inode) {
     st->st_blocks = dinode->di_blocks;
 
     /* atime is not tracked */
+#ifdef __APPLE__
+    st->st_atimespec = dinode->di_mtime;
+    st->st_mtimespec = dinode->di_mtime;
+    st->st_ctimespec = dinode->di_ctime;
+#else
     st->st_atim = dinode->di_mtime;
     st->st_mtim = dinode->di_mtime;
     st->st_ctim = dinode->di_ctime;
+#endif
 }
 
 /* Initialize a disk inode */
@@ -196,7 +202,17 @@ lc_updateInodeTimes(struct inode *inode, bool mtime, bool ctime) {
     struct timespec tv;
 
     assert(mtime || ctime);
+#ifdef __APPLE__
+    clock_serv_t cclock;
+    mach_timespec_t mach_ts;
+    host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
+    clock_get_time(cclock, &mach_ts);
+    mach_port_deallocate(mach_task_self(), cclock);
+    tv.tv_sec = mach_ts.tv_sec;
+    tv.tv_nsec = mach_ts.tv_nsec;
+#else
     clock_gettime(CLOCK_REALTIME, &tv);
+#endif
     if (mtime) {
         inode->i_dinode.di_mtime = tv;
     }
