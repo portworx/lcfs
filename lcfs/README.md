@@ -96,7 +96,7 @@ You can start lcfs as follows:
 ```
 # cd px-graph/lcfs
 # mkdir -p /mnt1 /mnt2
-# sudo ./lcfs /dev/sdb /mnt1 /mnt2 > /dev/null &
+# sudo lcfs /dev/sdb /mnt1 /mnt2 > /dev/null &
 # mount
 ```
 
