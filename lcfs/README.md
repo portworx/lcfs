@@ -71,7 +71,7 @@ Now that the pre-requisite packages are installed, we can build and install lcfs
 Now you can build lcfs by running make in the px-graph/lcfs directory.
 
 ```
-# cd lcfs/lcfs
+# cd px-graph/lcfs
 # make
 ```
 
@@ -85,7 +85,7 @@ LCFS stores it's data on a phsyical device, for example `/dev/sdb`.  It then dep
 You can start lcfs as follows:
 
 ```
-# cd lcfs/lcfs
+# cd px-graph/lcfs
 # mkdir -p /mnt1 /mnt2
 # sudo ./lcfs /dev/sdb /mnt1 /mnt2 > /dev/null &
 # mount
