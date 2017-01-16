@@ -75,6 +75,8 @@ Now you can build lcfs by running make in the px-graph/lcfs directory.
 # make
 ```
 
+At this point, LCFS is available for use by the LCFS graph driver plugin.  You can return to the [plugin install instructions](https://github.com/portworx/lcfs/blob/master/INSTALL.md#step-1---install-lcfs), or test LCFS locally on your system by following the instructions below.
+
 ### Test lcfs
 LCFS stores it's data on a phsyical device, for example `/dev/sdb`.  It then deploys two mount points to the host.  The first mount point is used for `/var/lib/docker` and the second mount point is used for storing the layers of a container.  Therefore, when starting LCFS directly, you provide 3 parameters:
 
