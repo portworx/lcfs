@@ -118,7 +118,7 @@ func (d *Driver) Init(home string, options []string, uidMaps, gidMaps []idtools.
     logrus.Infof("Init - home %s options %+v", home, options)
     lroot := path.Dir(home)
     lroot = path.Dir(lroot)
-    lroot = path.Join(lroot, "px-graph")
+    lroot = path.Join(lroot, "lcfs")
     driver, err := d.init(lroot, options, nil, nil)
     if err != nil {
         logrus.Errorf("err %v\n", err)

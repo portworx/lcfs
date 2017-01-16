@@ -37,7 +37,7 @@ clean:
 
 
 PLUGIN_BASE_DIR=artifacts
-DOCKER_HUB_PXGRAPH_PLUGIN=px-graph
+DOCKER_HUB_PXGRAPH_PLUGIN=lcfs
 DOCKER_HUB_PXGRAPH_TAG=latest
 
 # assume top-level Makefile built lcfs_plugin.bin
@@ -55,7 +55,6 @@ else
 	@echo "====================> creating plugin $(DOCKER_HUB_REPO)/$(DOCKER_HUB_PXGRAPH_PLUGIN):$(DOCKER_HUB_PXGRAPH_TAG)"
 	docker plugin create $(DOCKER_HUB_REPO)/$(DOCKER_HUB_PXGRAPH_PLUGIN):$(DOCKER_HUB_PXGRAPH_TAG) $(PLUGIN_BASE_DIR)
 endif
-	docker plugin create $(DOCKER_HUB_REPO)/$(DOCKER_HUB_PXGRAPH_PLUGIN):$(DOCKER_HUB_PXGRAPH_TAG) $(PLUGIN_BASE_DIR)
 	docker rm -vf rootfsimage
 	docker rmi rootfsimage
 	rm -rf $(PLUGIN_BASE_DIR)
