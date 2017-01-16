@@ -15,13 +15,11 @@ getfs() {
 /* Display usage */
 static void
 usage(char *prog) {
-    printf("usage: %s <device> <mnt> <mnt2> [-d]\n", prog);
-    printf("\tdevice - device/file\n"
-           "\tmnt    - mount point on host\n"
-           "\tmnt2   - mount point propagated to plugin\n"
-           "\t-d     - display debugging info (optional)\n");
-    printf("%s\n", Build);
-    printf("%s\n", Release);
+    fprintf(stderr, "usage: %s <device> <mnt> <mnt2> [-d]\n", prog);
+    fprintf(stderr, "\tdevice - device/file\n"
+                    "\tmnt    - mount point on host\n"
+                    "\tmnt2   - mount point propagated to plugin\n"
+                    "\t-d     - display debugging info (optional)\n");
 }
 
 /* Data passed to the duplicate thread */
@@ -59,13 +57,14 @@ lc_serve(void *data) {
 
     if (!fd->fd_thread) {
         if (fuse_set_signal_handlers(fd->fd_se) == -1) {
-            printf("Error setting signal handlers\n");
+            fprintf(stderr, "Error setting signal handlers\n");
             err = EPERM;
             goto out;
         }
         err = pthread_create(&flusher, NULL, lc_flusher, NULL);
         if (err) {
-            printf("Flusher thread could not be created, err %d\n", err);
+            fprintf(stderr,
+                   "Flusher thread could not be created, err %d\n", err);
             goto out;
         }
         fcancel = true;
@@ -220,7 +219,7 @@ main(int argc, char *argv[]) {
     }
 
     if (!strcmp(argv[2], argv[3])) {
-        printf("Specify different mount points\n");
+        fprintf(stderr, "Specify different mount points\n");
         usage(argv[0]);
         exit(EINVAL);
     }
@@ -228,15 +227,19 @@ main(int argc, char *argv[]) {
     /* Make sure mount points exist */
     if (stat(argv[2], &st) || stat(argv[3], &st)) {
         perror("stat");
-        printf("Make sure directories %s and %s exist\n", argv[2], argv[3]);
+        fprintf(stderr,
+                "Make sure directories %s and %s exist\n", argv[2], argv[3]);
         usage(argv[0]);
         exit(errno);
+    }
+    if (argc == 5) {
+        printf("%s %s\n", Build, Release);
     }
 
     /* XXX Block signals around lc_mount/lc_unmount calls */
     err = lc_mount(argv[1], &gfs);
     if (err) {
-        printf("Mounting %s failed, err %d\n", argv[1], err);
+        fprintf(stderr, "Mounting %s failed, err %d\n", argv[1], err);
         exit(err);
     }
 
