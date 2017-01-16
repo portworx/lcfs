@@ -20,10 +20,8 @@ Now dowload and install the fuse library from https://github.com/libfuse/libfuse
 
 > Note: If testing with fuse 3.0 library, download fuse library from https://github.com/libfuse/libfuse/releases/download/fuse-3.0.0/fuse-3.0.0.tar.gz
 
-If needed, export PKG_CONFIG_PATH and LD_LIBRARY_PATH.  If the binaries are built inside the official GO container, this won't be necessary.
-
 ```
-# export PKG_CONFIG_PATH-/usr/local/lib/pkgconfig
+# export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
 ```
 
 Now build and install fuse using the following commands:
