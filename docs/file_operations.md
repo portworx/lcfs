@@ -1,3 +1,5 @@
+# File Operations and Handles 
+
 ## File operations
 
 All file operations take the shared lock on the layer containing the files that they want to operate on. They can then proceed after taking locks on the files involved in the operation in the appropriate mode. For reading shared data, no lock on any inode is needed.
@@ -28,3 +30,12 @@ Many UNIX commands unnecessarily query or try to remove extended attributes even
 ### `ioctls`
 
 There is support for a few ioctls for operations like creating/removing/loading/unloading layers. Currently, ioctls are supported only on the layer root directory.
+
+## File Handles
+
+File handles are formed by combining the layer index and the inode number of the file. This is a 64-bit number and is returned to FUSE when files are opened or created. This file handle is used to locate the file in subsequent operations such as read, readdir, write, truncate, flush, release, etc. 
+
+The file handle for a shared file, when accessed from different layers, will differ because the layer index part of the file handle is different. This may turn out to be a problem when the same file is read from different layers because multiple copies of data may end up in the kernel page cache. To alleviate this problem, pages of a shared file in the kernel page cache are invalidated on its last close (this should be done when a file is closed in kernel, but FUSE does not have any knobs for doing this as of today). Also the direct-mount option cannot be used since that would prevent mmap. Ideally, FUSE should provide an option to bypass the page cache for a file if the file is not mmapped.
+
+## Locking Files
+Each inode has a read-write lock. Operations that can be run in shared mode (read, readdir, getattr, etc.), take the lock in shared mode, while other operations which modify the inode hold it in exclusive mode. This lock is not taken once a layer is frozen (meaning, a new layer is created on top of that layer and no more changes are allowed in the layer).
