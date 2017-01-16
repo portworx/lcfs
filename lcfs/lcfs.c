@@ -1,4 +1,5 @@
 #include "includes.h"
+#include "version/version.h"
 
 static struct gfs *gfs;
 extern struct fuse_lowlevel_ops lc_ll_oper;
@@ -19,6 +20,8 @@ usage(char *prog) {
            "\tmnt    - mount point on host\n"
            "\tmnt2   - mount point propagated to plugin\n"
            "\t-d     - display debugging info (optional)\n");
+    printf("%s\n", Build);
+    printf("%s\n", Release);
 }
 
 /* Data passed to the duplicate thread */

@@ -1,5 +1,6 @@
 #include "includes.h"
 #include <sys/ioctl.h>
+#include "version/version.h"
 
 /* Display usage and exit */
 static void
@@ -7,6 +8,8 @@ usage(char *name) {
     printf("usage: %s <id> [-c]\n", name);
     printf("Specify . as id for displaying stats for all layers\n");
     printf("Run this command from the layer root directory\n");
+    printf("%s\n", Build);
+    printf("%s\n", Release);
     exit(EINVAL);
 }
 

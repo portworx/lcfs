@@ -28,14 +28,17 @@ OBJ=lcfs.o memory.o fops.o super.o io.o extent.o block.o fs.o inode.o dir.o emap
 
 all: lcfs cstat
 
-lcfs: $(OBJ)
-	$(CC) $^ -o $@ $(CFLAGS) $(LDFLAGS)
+lcfs: version $(OBJ)
+	$(CC) $(OBJ) -o $@ $(CFLAGS) $(LDFLAGS)
 
-cstat: cstat.o
-	$(CC) $^ -o $@ $(CFLAGS) $(LDFLAGS)
+cstat: version cstat.o
+	$(CC) cstat.o -o $@ $(CFLAGS) $(LDFLAGS)
+
+version:
+	@(mkdir -p version && cd version && ../version_gen.sh)
 
 clean:
-	rm -fr *.o lcfs cstat testxattr
+	rm -fr *.o lcfs cstat testxattr version
 
 testxattr: testxattr.o
 	$(CC) $^ -o $@ $(CFLAGS) $(LDFLAGS)
@@ -46,4 +49,4 @@ test: lcfs testxattr
 rpm:
 	@cd rpm && ./buildrpm.sh
 
-.PHONY: rpm
+.PHONY: rpm version clean
