@@ -1,21 +1,20 @@
-# Installing Px-Graph on docker 1.13+
+# Installing LCFS on docker 1.13+
 
-To install Px-Graph, there are four actions you must perform:
+To install LCFS, there are four actions you must perform:
 
 1. Install LCFS onto your system at `/var/lib/docker` and `/lcfs`.
-2. Start Docker using VFS as a graph driver.  This is needed to install Px-Graph as a graph driver in Docker's configuration files at `/var/lib/docker`.
-3. Install the Px-Graph plugin.
-4. Now you can restart Docker to use Px-Graph
+2. Start Docker using VFS as a graph driver.  This is needed to install the LCFS plugin as a graph driver in Docker's configuration files at `/var/lib/docker`.
+3. Install the LCFS plugin.
+4. Now you can restart Docker to use the LCFS plugin.
 
 These four steps are detailed below.
 
 ##  Step 1 - Install LCFS
-1. git clone the repo `git@github.com:portworx/px-graph.git`
-2. Build lcfs following the instructions in that [directory](https://github.com/portworx/px-graph/blob/master/lcfs/README.md).
-3. Stop docker - for example, `sudo systemctl stop docker`
-4. Chose a device to provide to lcfs.  lcfs requires a block device (you can also use a file, but this is not recommended due to performance reasons).  In this example, we use `/dev/sdb`.
-5. Remove `/var/lib/docker` and `/lcfs` if they are present.
-6. Start lcfs
+1. Build and install lcfs following the instructions in that [directory](https://github.com/portworx/px-graph/blob/master/lcfs/README.md).
+2. Stop docker - for example, `sudo systemctl stop docker`
+3. Chose a device to provide to lcfs.  lcfs requires a block device (you can also use a file, but this is not recommended due to performance reasons).  In this example, we use `/dev/sdb`.
+4. Remove `/var/lib/docker` and `/lcfs` if they are present.
+5. Start lcfs
 ```
 # sudo rm -fr /var/lib/docker /lcfs
 # sudo mkdir -p /lcfs /var/lib/docker
@@ -28,7 +27,7 @@ Restart the Docker daemon and instruct it to use vfs as the graph driver.  We wi
 # sudo dockerd -s vfs
 ```
 
-## Step 3 - Install Px-Graph plugin
+## Step 3 - Install the LCFS plugin
 ```
 # docker plugin install --grant-all-permissions portworx/lcfs
 # docker plugin ls
@@ -36,8 +35,8 @@ Restart the Docker daemon and instruct it to use vfs as the graph driver.  We wi
 
 Make sure plugin is installed and enabled.
 
-## Step 4 - Restart Docker to use Px-Graph
-Restart Docker to use Px-Graph with lcfs.  First stop dockerd.  Then run Docker as:
+## Step 4 - Restart Docker to use LCFS
+Restart Docker to use LCFS.  First stop dockerd.  Then run Docker as:
 ```
 # sudo dockerd -s portworx/lcfs
 ```
