@@ -71,7 +71,7 @@ Now that the pre-requisite packages are installed, we can build and install lcfs
 Now you can build lcfs by running make in the px-graph/lcfs directory.
 
 ```
-# cd px-graph/lcfs
+# cd lcfs/lcfs
 # make
 ```
 
