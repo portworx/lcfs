@@ -26,35 +26,3 @@ The root directory of the file system has inode number 2 and cannot be removed. 
 
 There is another directory in which the roots of all layers are placed, called the “layer root directory.” This directory cannot be removed once created. It is for internal use and creating files in this directory is not allowed.
 
-### File handles
-
-File handles are formed by combining the layer index and the inode number of the file. This is a 64-bit number and is returned to FUSE when files are opened or created. This file handle is used to locate the file in subsequent operations such as read, readdir, write, truncate, flush, release, etc. The file handle for a shared file, when accessed from different layers, will differ because the layer index part of the file handle is different. This may turn out to be a problem when the same file is read from different layers because multiple copies of data may end up in the kernel page cache. To alleviate this problem, pages of a shared file in the kernel page cache are invalidated on its last close (this should be done when a file is closed in kernel, but FUSE does not have any knobs for doing this as of today). Also the direct-mount option cannot be used since that would prevent mmap. Ideally, FUSE should provide an option to bypass the page cache for a file if the file is not mmapped.
-
-### Locking
-
-Each layer has a read-write lock, which is taken in shared mode while reading or writing to the layer (all file operations). This lock is taken in exclusive mode while unmounting the root layer or while deleting any other layer.
-
-Each inode has a read-write lock. Operations that can be run in shared mode (read, readdir, getattr, etc.), take the lock in shared mode, while other operations which modify the inode hold it in exclusive mode. This lock is not taken once a layer is frozen (meaning, a new layer is created on top of that layer and no more changes are allowed in the layer).
-
-### Layers
-
-New layers are added after locking the parent layer in shared mode, if there is a parent layer. The newly created layer will be linked to the parent layer. All the layers taken on a parent layer are linked together as well.
-
-A layer with no parent layer forms a base layer. The base layer for any layer can be reached by traversing its parent layers. All layers with the same base layer form a “tree of layers”.
-
-A layer is removed after locking it in exclusive mode. This ensures that all operations on the layer are drained. A shared lock on the base layer is also held during the operation.
-
-The root layer is locked in shared mode while creating or deleting layers. The root layer is locked exclusively while unmounting the file system.
-
-### Space management/reclamation
-
-Each layer allocates space in chunks of a few blocks, then files within the layer consume space from those chunks. This eliminates many of the complexities associated with space management faced by file systems that are not designed to
-support layers efficiently.
-
-The global pool does not have to be locked down for allocations happening concurrently in different layers of the file system. Another advantage is that space allocated in layers will not be fragmented.
-
-Every layer keeps track of space allocated within the layer and all this space is returned to the global pool when the layer is deleted. Any unused space in reserved chunks is also returned (this happens as part of sync and unmount as well).
-
-As for shared space between layers, a layer will free space in the global pool only if the space was originally allocated in that layer, not if the space was inherited from a previous layer.
-
-There should be a minimum size for the device to be formatted/mounted as a file system. Operations like writes, file creations and creating new layers are failed when file system free space goes below a certain threshold.
