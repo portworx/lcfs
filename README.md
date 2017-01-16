@@ -36,7 +36,12 @@ The Layer Cloning Filesystem (LCFS) is licensed under the Apache License, Veriso
 # Contributing
 Want to collaborate and add? Here are instructions to [get started contributing code](https://github.com/portworx/px-graph/blob/master/contributing.md). 
 
-# Getting started
-Follow [these instructions](https://github.com/portworx/px-graph/tree/master/INSTALL.md) to install and configure lcfs.
+# Installing LCFS
+The LCFS storage driver is available as a Docker v2 plugin and requires Docker version 1.13 or higher. It is available on the public Docker Hub and is installed using `docker plugin install --grant-all-permissions portworx/lcfs`.
 
-The LCFS storage driver is available as a Docker v2 plugin and requires Docker version 1.13 or higher. It is available on the public Docker Hub and is installed using `docker plugin install --grant-all-permissions portworx/px-graph`.
+### Building the LCFS plugin from source
+You can run the [setup script](https://github.com/portworx/px-graph/tree/master/setup.sh) available in this directory to install the LCFS plugin.
+
+## Building the LCFS plugin from source manually
+Follow [these instructions](https://github.com/portworx/px-graph/tree/master/INSTALL.md) to install and configure lcfs manually.
+
