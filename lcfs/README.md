@@ -1,35 +1,10 @@
 # Instructions on building LCFS with fuse v2.9.7
 The lcfs file system depends on fuse v2.9.7.  These instructions walk you through installing fuse and building and testing lcfs as regular filesystem, independent of Docker.
 
-### Install fuse
-Install tools to build fuse:
+### Install pre-requisite packages
+LCFS requires `tcmalloc`, `zlib` and `fuse`.
 
-   * **Centos:** 
-     `yum install gcc libstdc++-devel gcc-c++ curl-devel libxml2-devel openssl-devel mailcap`
-
-   * **Ubuntu:**
-     `apt-get install build-essential libcurl4-openssl-dev libxml2-dev mime-support`
-     
-Now dowload and install the fuse library from https://github.com/libfuse/libfuse/releases/download/fuse-2.9.7/fuse-2.9.7.tar.gz
-
-> Note: If testing with fuse 3.0 library, download fuse library from https://github.com/libfuse/libfuse/releases/download/fuse-3.0.0/fuse-3.0.0.tar.gz
-
-### Git clone Px-Graph
-
-```
-# git clone git@github.com:portworx/px-graph.git
-# export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
-```
-
-Now build and install fuse using the following commands:
-
-```
-# ./configure
-# make -j8
-# make install
-```
-
-### Install tcmalloc
+#### Install tcmalloc
 
 On Ubuntu, run 
 
@@ -43,7 +18,7 @@ On CentOS, run
 # sudo yum install gperftools
 ```
 
-### Install zlib
+#### Install zlib
 
 On Ubuntu, run
 
@@ -57,20 +32,49 @@ On CentOS, run
 # sudo yum install zlib-devel
 ```
 
+#### Install fuse
+Install tools to build fuse:
+
+   * **Centos:** 
+     `yum install gcc libstdc++-devel gcc-c++ curl-devel libxml2-devel openssl-devel mailcap`
+
+   * **Ubuntu:**
+     `apt-get install build-essential libcurl4-openssl-dev libxml2-dev mime-support`
+     
+Now dowload and install the fuse library from https://github.com/libfuse/libfuse/releases/download/fuse-2.9.7/fuse-2.9.7.tar.gz
+
+> Note: If testing with fuse 3.0 library, download fuse library from https://github.com/libfuse/libfuse/releases/download/fuse-3.0.0/fuse-3.0.0.tar.gz
+
+
+Now build and install fuse using the following commands:
+
+```
+# ./configure
+# make && make install
+```
+
+### Build and install LCFS
+
+Now that the pre-requisite packages are installed, we can build and install lcfs.
+
+```
+# git clone git@github.com:portworx/lcfs.git
+# export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
+```
+
 ### Build lcfs 
 Now you can build lcfs by running make in the px-graph/lcfs directory.
 
 ```
-# cd px-graph/lcfs
+# cd lcfs/lcfs
 # make
 ```
-
 
 ### Test lcfs
 Choose a device or file to start lcfs with.  For example, `/dev/sdb`.  You can start lcfs as follows:
 
 ```
-# cd px-graph/lcfs
+# cd lcfs/lcfs
 # sudo ./lcfs /dev/sdb /mnt /mnt2 > /dev/null &
 # mount
 ```
