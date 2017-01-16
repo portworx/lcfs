@@ -1,6 +1,6 @@
 #!/bin/bash -x
 
-# A script to configure docker with portworx/px-graph storage driver on Ubuntu
+# A script to configure docker with portworx/lcfs storage driver on Ubuntu
 
 #Default docker directory
 MNT=/var/lib/docker
@@ -59,31 +59,31 @@ rm -fr fuse-2.9.7*
 cd $WDIR
 
 # Build lcfs
-git clone git@github.com:portworx/px-graph
-cd px-graph/lcfs
+git clone git@github.com:portworx/lcfs
+cd lcfs/lcfs
 make
 
-#Mount lcfs
+# Mount lcfs
 sudo mkdir -p $MNT $MNT2
-sudo $WDIR/px-graph/lcfs/lcfs $DEVICE $MNT $MNT2 &
+sudo $WDIR/lcfs/lcfs/lcfs $DEVICE $MNT $MNT2 &
 sleep 3
 
-#Restart docker
+# Restart docker
 sudo dockerd -s vfs &
 sleep 3
 
-#Create and enable Px-Graph plugin
-docker plugin install --grant-all-permissions portworx/px-graph
+# Create and enable lcfs plugin
+docker plugin install --grant-all-permissions portworx/lcfs
 docker plugin ls
 
-#Restart docker with Px-Graph
+# Restart docker with lcfs
 sudo pkill dockerd
 sleep 3
-sudo dockerd -s portworx/px-graph &
+sudo dockerd -s portworx/lcfs &
 sleep 3
 docker info
 
 rm -fr $WDIR
 
-#pkill dockerd
-#fusermount -u $MNT2 $MNT
+# pkill dockerd
+# fusermount -u $MNT2 $MNT
