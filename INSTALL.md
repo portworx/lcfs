@@ -42,4 +42,4 @@ Restart Docker to use Px-Graph with lcfs.  First stop dockerd.  Then run Docker 
 # sudo dockerd -s portworx/lcfs
 ```
 
-Verify docker is running with portworx/px-graph storage driver by checking the output of command 'docker info'.
+Verify docker is running with portworx/lcfs storage driver by checking the output of command 'docker info'.

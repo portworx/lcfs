@@ -63,7 +63,7 @@ Extract the fuse tarball and build and install fuse using the following commands
 Now that the pre-requisite packages are installed, we can build and install lcfs.
 
 ```
-# git clone git@github.com:portworx/lcfs.git
+# git clone git@github.com:portworx/px-graph.git
 # export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
 ```
 
