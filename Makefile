@@ -1,5 +1,5 @@
 # Makefile for px-graph
-# Maintainer Michael Vilain <michael@portworx.com> [201701.13]
+# Maintainer Michael Vilain <michael@portworx.com> [201701.16]
 # assumes make is run as root or account running it is part of Docker group
 
 .PHONY : gr-build gr-clean
@@ -10,7 +10,7 @@ ifdef LCFS_RPM_VERSION
 BUILD_ARGS=--build-arg LCFS_RPM_VER=$(LCFS_RPM_VERSION)
 endif
 
-TARGETS := gr-docker plugin
+TARGETS := gr-plugin
 
 all: $(TARGETS)
 
