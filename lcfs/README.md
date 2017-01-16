@@ -1,12 +1,6 @@
 # Instructions on building LCFS with fuse v2.9.7
 The lcfs file system depends on fuse v2.9.7.  These instructions walk you through installing fuse and building and testing lcfs as regular filesystem, independent of Docker.
 
-### Git clone Px-Graph
-
-```
-# git clone git@github.com:portworx/px-graph.git
-```
-
 ### Install fuse
 Install tools to build fuse:
 
@@ -20,7 +14,10 @@ Now dowload and install the fuse library from https://github.com/libfuse/libfuse
 
 > Note: If testing with fuse 3.0 library, download fuse library from https://github.com/libfuse/libfuse/releases/download/fuse-3.0.0/fuse-3.0.0.tar.gz
 
+### Git clone Px-Graph
+
 ```
+# git clone git@github.com:portworx/px-graph.git
 # export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
 ```
 
