@@ -77,6 +77,7 @@ Now you can build lcfs by running make in the px-graph/lcfs directory.
 
 ### Test lcfs
 LCFS stores it's data on a phsyical device, for example `/dev/sdb`.  It then deploys two mount points to the host.  The first mount point is used for `/var/lib/docker` and the second mount point is used for storing the layers of a container.  Therefore, when starting LCFS directly, you provide 3 parameters:
+
 1. A device to use
 2. The first mountpoint (which is used for `/var/lib/docker`.
 3. The third mountpoint (which is used for storing container layers).
@@ -85,7 +86,7 @@ You can start lcfs as follows:
 
 ```
 # cd lcfs/lcfs
-# mkdir -p /mnt1 && mkdir -p /mnt2
+# mkdir -p /mnt1 /mnt2
 # sudo ./lcfs /dev/sdb /mnt1 /mnt2 > /dev/null &
 # mount
 ```
