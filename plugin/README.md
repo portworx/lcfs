@@ -3,4 +3,4 @@ The graphdriver plugin implements the Docker V2 plugin interface so that Docker 
 
 Just run [plugin/setup.sh](https://github.com/portworx/lcfs/edit/master/plugin/README.md) to build and install the LCFS plugin.
 
-** Note that you must have followed the steps to install the LCFS file system at /lcfs prior to running this script.
+** Note that you must have followed the steps to install the LCFS file system at /lcfs prior to running this script.**
