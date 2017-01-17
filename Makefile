@@ -17,6 +17,7 @@ all: $(TARGETS)
 build: gr-plugin
 
 clean: gr-clean plugin-clean
+	rm -rf lcfs.bin lcfs_plugin.bin
 
 run :
 
