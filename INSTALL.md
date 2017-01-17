@@ -9,8 +9,8 @@ To install LCFS, there are four actions you must perform:
 
 These four steps are detailed below.
 
-##  Step 1 - Install LCFS
-1. Build and install LCFS following the instructions in [that directory](https://github.com/portworx/px-graph/blob/master/lcfs/README.md).
+##  Step 1 - Install LCFS file system
+1. Build and install LCFS file system following the instructions in [that directory](https://github.com/portworx/px-graph/blob/master/lcfs/README.md).
 2. Stop docker - for example, `sudo systemctl stop docker`
 3. Chose a device to provide to lcfs.  lcfs requires a block device (you can also use a file, but this is not recommended due to performance reasons).  In this example, we use `/dev/sdb`.
 4. Remove `/var/lib/docker` and `/lcfs` if they are present.
@@ -28,12 +28,15 @@ Restart the Docker daemon and instruct it to use vfs as the graph driver.  We wi
 ```
 
 ## Step 3 - Build and install the LCFS plugin
-1. Build asnd install the LCFS plugin following the instructions in that [directory](https://github.com/portworx/px-graph/blob/master/plugin/README.md)
-2. Now install the LCFS plugin with Docker
+We have built and pushed the LCFS plugin to Docker Hub for your
+use. You can install it by running the following command.
+
 ```
 # docker plugin install --grant-all-permissions portworx/lcfs
-# docker plugin ls
 ```
+
+If you want to build the LCFS plugin manually you can run the
+following [script](plugin/setup.sh)
 
 Make sure plugin is installed and enabled.
 

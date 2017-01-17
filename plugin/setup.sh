@@ -9,8 +9,8 @@ docker build -t rootfsimage .
 id=$(docker create rootfsimage)
 mkdir rootfs
 docker export "$id" | tar -x -C rootfs/
-sudo docker plugin create portworx/px-graph .
-docker plugin enable portworx/px-graph
+sudo docker plugin create portworx/lcfs .
+docker plugin enable portworx/lcfs
 
 sudo rm -fr rootfs/
 docker rm -vf "$id"
