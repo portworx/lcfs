@@ -13,7 +13,7 @@ Set up GOPATH and checkout this directory under GOPATH.
 Now, you can run the setup script from this directory
 ```
 # cd $GOPATH/src/github.com/portworx/lcfs/plugin
-# make
+# make lcfs
 ```
 
 At this point, Docker will be available to use LCFS as a graph driver.
