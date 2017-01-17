@@ -56,6 +56,17 @@ If you are running in systemd, you will need to edit your unit file, for example
 
 Verify docker is running with portworx/lcfs storage driver by checking the output of command 'docker info'.
 
+## Resetting LCFS
+If for any reason you need to reset the LCFS file system, stop docker and do this (assuming your LCFS device is /dev/sdb):
+
+
+```
+# rm -rf /var/lib/docker
+# rm -rf /lcfs
+# dd if=/dev/zero of=/dev/sdb count=1 bs=4k
+```
+
+You can now restart LCFS and docker as per the previous steps.
 
 ## Uninstalling LCFS
 To uninstall the LCFS plugin, run the following commands
