@@ -10,13 +10,9 @@ The future direction is to provide cluster-level operations, enhance container s
 This LCFS driver is an open source project, and we welcome feedback and collaboration. At this point in time, the driver is at the experimental phase. 
 
 # Installing LCFS
-The LCFS storage driver is available as a Docker v2 plugin and requires Docker version 1.13 or higher. It is available on the public Docker Hub and is installed using `docker plugin install --grant-all-permissions portworx/lcfs`.
+Installing LCFS involves installing the LCFS file system and then the LCFS v2 graph driver plugin.
 
-### Building the LCFS plugin from source
-You can run the [setup script](https://github.com/portworx/px-graph/tree/master/setup.sh) available in this directory to install the LCFS plugin.
-
-## Building the LCFS plugin from source manually
-Follow [these instructions](https://github.com/portworx/px-graph/tree/master/INSTALL.md) to install and configure lcfs manually.
+Follow [these instructions](https://github.com/portworx/lcfs/edit/master/install.md) to install the LCFS plugin.
 
 # Design Principles 
 Today, running containers on the same server is often limited by side-effects that come from mapping container behavior over generic filesystems. The approach impacts the entire lifecycle: building, launching, reading data, and exiting containers. 
