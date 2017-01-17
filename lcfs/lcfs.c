@@ -15,11 +15,46 @@ getfs() {
 /* Display usage */
 static void
 usage(char *prog) {
-    fprintf(stderr, "usage: %s <device> <mnt> <mnt2> [-d]\n", prog);
+    fprintf(stderr, "usage: %s <device> <mnt> <mnt2> [-f] [-d]\n", prog);
     fprintf(stderr, "\tdevice - device/file\n"
                     "\tmnt    - mount point on host\n"
                     "\tmnt2   - mount point propagated to plugin\n"
+                    "\t-f     - run foreground (optional)\n"
                     "\t-d     - display debugging info (optional)\n");
+}
+
+/* Daemonize if run in background mode */
+static int
+lc_daemonize(int *waiter) {
+    char completed = 1;
+    int err, nullfd;
+
+    err = setsid();
+    if (err == -1) {
+        perror("setsid");
+        goto out;
+    }
+    err = 0;
+
+    (void) chdir("/");
+    nullfd = open("/dev/null", O_RDWR, 0);
+    if (nullfd == -1) {
+        perror("open");
+        err = -1;
+        goto out;
+    }
+    (void) dup2(nullfd, 0);
+    (void) dup2(nullfd, 1);
+    (void) dup2(nullfd, 2);
+    if (nullfd > 2) {
+        close(nullfd);
+    }
+    write(waiter[1], &completed, sizeof(completed));
+    close(waiter[0]);
+    close(waiter[1]);
+
+out:
+    return err;
 }
 
 /* Data passed to the duplicate thread */
@@ -39,6 +74,9 @@ struct fuseData {
     /* Global file system */
     struct gfs *fd_gfs;
 
+    /* pipe to communicate with parent */
+    int *fd_waiter;
+
     /* Set if running as a thread */
     bool fd_thread;
 };
@@ -53,7 +91,7 @@ lc_serve(void *data) {
     struct fuse_session *se;
     bool fcancel = false;
     pthread_t flusher;
-    int err;
+    int err, count;
 
     if (!fd->fd_thread) {
         if (fuse_set_signal_handlers(fd->fd_se) == -1) {
@@ -74,6 +112,12 @@ lc_serve(void *data) {
 #else
     fuse_session_add_chan(fd->fd_se, fd->fd_ch);
 #endif
+
+    /* Daemonize if running in background */
+    count = __sync_add_and_fetch(&gfs->gfs_mcount, 1);
+    if ((count == LC_MAX_MOUNTS) && fd->fd_waiter) {
+        lc_daemonize(fd->fd_waiter);
+    }
     err = fuse_session_loop_mt(fd->fd_se
 #ifdef FUSE3
     /* XXX Experiment with clone fd argument */
@@ -122,7 +166,7 @@ out:
 /* Mount a device at the specified mount point */
 static int
 lc_fuseMount(struct gfs *gfs, char **arg, char *device, int argc,
-             bool thread) {
+             int *waiter, bool thread) {
     enum lc_mountId id = thread ? LC_BASE_MOUNT : LC_LAYER_MOUNT;
     struct fuse_args args = FUSE_ARGS_INIT(argc, arg);
     struct fuse_session *se;
@@ -181,6 +225,7 @@ lc_fuseMount(struct gfs *gfs, char **arg, char *device, int argc,
 #endif
     fd[id].fd_gfs = gfs;
     fd[id].fd_se = se;
+    fd[id].fd_waiter = waiter;
     fd[id].fd_thread = thread;
     fd[id].fd_mountpoint = mountpoint;
     if (thread) {
@@ -205,14 +250,15 @@ out:
 /* Mount the specified device and start serving requests */
 int
 main(int argc, char *argv[]) {
-    char *arg[argc + 1];
-    int i, err = -1;
+    char *arg[argc + 1], completed;
+    int i, err = -1, waiter[2];
+    bool daemon = argc == 4;
     struct stat st;
 
 #ifdef FUSE3
     if (argc < 4) {
 #else
-    if ((argc < 4) || (argc > 5)) {
+    if ((argc < 4) || (argc > 6)) {
 #endif
         usage(argv[0]);
         exit(EINVAL);
@@ -232,7 +278,7 @@ main(int argc, char *argv[]) {
         usage(argv[0]);
         exit(errno);
     }
-    if (argc == 5) {
+    if (!daemon) {
         printf("%s %s\n", Build, Release);
     }
 
@@ -258,11 +304,35 @@ main(int argc, char *argv[]) {
         arg[i] = argv[i];
     }
 
+    /* Fork a new process if run in background mode */
+    if (daemon) {
+        err = pipe(waiter);
+        if (err) {
+            perror("pipe");
+            exit(errno);
+        }
+
+        switch (fork()) {
+        case -1:
+            perror("fork");
+            exit(errno);
+
+        case 0:
+            break;
+
+        default:
+
+            /* Wait for the mount to complete */
+            read(waiter[0], &completed, sizeof(completed));
+            exit(0);
+        }
+    }
+
     /* Mount the device at given mount points */
-    err = lc_fuseMount(gfs, arg, argv[1], argc, true);
+    err = lc_fuseMount(gfs, arg, argv[1], argc, daemon ? waiter : NULL, true);
     if (!err) {
         arg[1] = argv[3];
-        lc_fuseMount(gfs, arg, argv[1], argc, false);
+        lc_fuseMount(gfs, arg, argv[1], argc, daemon ? waiter : NULL, false);
     }
     lc_free(NULL, arg[3], LC_SIZEOF_MOUNTARGS, LC_MEMTYPE_GFS);
     lc_free(NULL, gfs, sizeof(struct gfs), LC_MEMTYPE_GFS);

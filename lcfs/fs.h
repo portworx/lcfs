@@ -107,6 +107,9 @@ struct gfs {
     /* Layer from pages being purged */
     int gfs_tpIndex;
 
+    /* Number of mounts */
+    uint8_t gfs_mcount;
+
     /* Set when unmount in progress */
     bool gfs_unmounting;
 
