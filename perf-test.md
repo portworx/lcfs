@@ -1,17 +1,19 @@
 # Testing the graph driver
-This document describes how the LCFS graph driver's performance is benchmarked against other graph drivers.  The test suite is hosted at the github.com/portworx/px-test repository.
+This document describes how the LCFS graph driver's performance is benchmarked against other graph drivers.  The test suite is hosted at the github.com/portworx/graph-test repository.
 
 
 ## Building the test tool
-Checkout px-test repository and build the test suite
+Checkout the graph-test repository and build the test suite
 
 ```
 # mkdir -p $GOPATH/src/github.com/portworx/
 # cd $GOPATH/src/github.com/portworx/
-# git clone git@github.com:/portworx/px-test
+# git clone git@github.com:/portworx/graph-test
 # cd px-test/graphctl/
 # go build
 ```
+
+You will need to customize the test suite to use your specific devices for running the test.
 
 ## Running the tests
 The following tests can be run with Docker using any graph driver.  To compare the results, run these tests with different graph drivers.
