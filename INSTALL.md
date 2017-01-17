@@ -31,7 +31,7 @@ Restart the Docker daemon and instruct it to use vfs as the graph driver.  We wi
 We have built and pushed the LCFS plugin to Docker Hub for your use. You can install it by running the following command.
 
 ```
-# docker plugin install --grant-all-permissions portworx/lcfs
+# sudo docker plugin install --grant-all-permissions portworx/lcfs
 ```
 
 If you want to build the LCFS plugin manually you can run the following [script](plugin/setup.sh)
@@ -39,7 +39,7 @@ If you want to build the LCFS plugin manually you can run the following [script]
 Make sure plugin is installed and enabled.
 
 ```
-# docker plugin ls
+# sudo docker plugin ls
 ```
 
 ## Step 4 - Restart Docker to use LCFS
@@ -49,3 +49,13 @@ Restart Docker to use LCFS.  First stop dockerd.  Then run Docker as:
 ```
 
 Verify docker is running with portworx/lcfs storage driver by checking the output of command 'docker info'.
+
+
+## Uninstalling LCFS
+To uninstall the LCFS plugin, run the following commands
+
+```
+# sudo docker plugin disable portworx/lcfs
+# sudo docker plugin rm portworx/lcfs
+```
+
