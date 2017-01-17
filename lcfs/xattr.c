@@ -8,6 +8,8 @@ lc_xattrLink(struct inode *inode, const char *name, int len,
     struct xattr *xattr = lc_malloc(fs, sizeof(struct xattr),
                                     LC_MEMTYPE_XATTR);
 
+    assert(size < LC_BLOCK_SIZE);
+    assert(len < LC_BLOCK_SIZE);
     xattr->x_name = lc_malloc(fs, len + 1, LC_MEMTYPE_XATTRNAME);
     memcpy(xattr->x_name, name, len);
     xattr->x_name[len] = 0;

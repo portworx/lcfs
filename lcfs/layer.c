@@ -2,7 +2,7 @@
 
 /* Given a layer name, find its root inode */
 ino_t
-lc_getRootIno(struct fs *fs, const char *name, struct inode *pdir) {
+lc_getRootIno(struct fs *fs, const char *name, struct inode *pdir, bool err) {
     ino_t parent = fs->fs_gfs->gfs_layerRoot;
     struct inode *dir = pdir ? pdir : fs->fs_gfs->gfs_layerRootInode;
     ino_t root;
@@ -16,7 +16,9 @@ lc_getRootIno(struct fs *fs, const char *name, struct inode *pdir) {
         lc_inodeUnlock(dir);
     }
     if (root == LC_INVALID_INODE) {
-        lc_reportError(__func__, __LINE__, parent, ENOENT);
+        if (err) {
+            lc_reportError(__func__, __LINE__, parent, ENOENT);
+        }
     } else {
         root = lc_setHandle(lc_getIndex(fs, parent, root), root);
     }
@@ -82,7 +84,7 @@ lc_newLayer(fuse_req_t req, struct gfs *gfs, const char *name,
     /* Find parent root inode */
     lc_inodeLock(pdir, true);
     if (!base) {
-        pinum = lc_getRootIno(rfs, pname, pdir);
+        pinum = lc_getRootIno(rfs, pname, pdir, true);
         if (pinum == LC_INVALID_INODE) {
             lc_inodeUnlock(pdir);
             err = ENOENT;
@@ -280,7 +282,7 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
         lc_unlock(rfs);
         return;
     }
-    root = lc_getRootIno(rfs, name, NULL);
+    root = lc_getRootIno(rfs, name, NULL, cmd != LAYER_STAT);
     err = (root == LC_INVALID_INODE) ? ENOENT : 0;
     switch (cmd) {
     case LAYER_MOUNT:

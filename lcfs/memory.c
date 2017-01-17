@@ -183,9 +183,10 @@ lc_free(struct fs *fs, void *ptr, size_t size, enum lc_memTypes type) {
 
 /* Check for memory leak */
 void
-lc_checkMemStats(struct fs *fs) {
+lc_checkMemStats(struct fs *fs, bool unmount) {
     enum lc_memTypes i;
 
+    assert(!unmount || (lc_mem.m_totalMemory == 0));
     if (!memStatsEnabled) {
         return;
     }

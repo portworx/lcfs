@@ -5,11 +5,11 @@
 /* Display usage and exit */
 static void
 usage(char *name) {
-    printf("usage: %s <id> [-c]\n", name);
-    printf("Specify . as id for displaying stats for all layers\n");
-    printf("Run this command from the layer root directory\n");
-    printf("%s\n", Build);
-    printf("%s\n", Release);
+    fprintf(stderr, "usage: %s <id> [-c]\n", name);
+    fprintf(stderr, "\t id    - layer name\n");
+    fprintf(stderr, "\t [-c]  - clear stats (optional)\n");
+    fprintf(stderr, "Specify . as id for displaying stats for all layers\n");
+    fprintf(stderr, "Run this command from the layer root directory\n");
     exit(EINVAL);
 }
 
@@ -32,6 +32,7 @@ main(int argc, char *argv[]) {
         perror("open");
         exit(errno);
     }
+    printf("%s %s\n", Build, Release);
     err = ioctl(fd, _IOW(0, argc == 2 ? LAYER_STAT : CLEAR_STAT, name),
                 argv[1]);
     if (err) {

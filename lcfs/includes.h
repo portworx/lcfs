@@ -57,7 +57,7 @@ bool lc_checkMemoryAvailable(void);
 void lc_waitMemory(void);
 void lc_memUpdateTotal(struct fs *fs, size_t size);
 void lc_memTransferCount(struct fs *fs, uint64_t count);
-void lc_checkMemStats(struct fs *fs);
+void lc_checkMemStats(struct fs *fs, bool unmount);
 void lc_displayGlobalMemStats();
 void lc_displayMemStats(struct fs *fs);
 

@@ -134,7 +134,7 @@ lc_freeLayer(struct fs *fs, bool remove) {
     if (fs != lc_getGlobalFs(gfs)) {
         lc_free(fs, fs->fs_super, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
         lc_displayMemStats(fs);
-        lc_checkMemStats(fs);
+        lc_checkMemStats(fs, false);
         lc_displayFtypeStats(fs);
         lc_free(NULL, fs, sizeof(struct fs), LC_MEMTYPE_GFS);
     }
@@ -649,7 +649,7 @@ lc_umountSync(struct gfs *gfs) {
     lc_free(fs, fs->fs_super, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
     gfs->gfs_fs[0] = NULL;
     lc_displayMemStats(fs);
-    lc_checkMemStats(fs);
+    lc_checkMemStats(fs, true);
     lc_free(NULL, fs, sizeof(struct fs), LC_MEMTYPE_GFS);
 }
 

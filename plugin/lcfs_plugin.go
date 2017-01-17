@@ -132,7 +132,9 @@ func (d *Driver) Init(home string, options []string, uidMaps, gidMaps []idtools.
         logrus.Errorf("err %v\n", err)
         return err
     }
-    return nil
+
+    // Issue an ioctl to make sure lcfs is mounted
+    return d.ioctl(LayerStat, "", ".")
 }
 
 // Issue ioctl for various operations

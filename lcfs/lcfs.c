@@ -90,8 +90,8 @@ lc_serve(void *data) {
     struct gfs *gfs = fd->fd_gfs;
     struct fuse_session *se;
     bool fcancel = false;
+    int err = 0, count;
     pthread_t flusher;
-    int err, count;
 
     if (!fd->fd_thread) {
         if (fuse_set_signal_handlers(fd->fd_se) == -1) {
@@ -116,14 +116,20 @@ lc_serve(void *data) {
     /* Daemonize if running in background */
     count = __sync_add_and_fetch(&gfs->gfs_mcount, 1);
     if ((count == LC_MAX_MOUNTS) && fd->fd_waiter) {
-        lc_daemonize(fd->fd_waiter);
+        err = lc_daemonize(fd->fd_waiter);
+        if (err) {
+            fprintf(stderr, "Failed to daemonize\n");
+        }
     }
-    err = fuse_session_loop_mt(fd->fd_se
+    if (!err) {
+        err = fuse_session_loop_mt(fd->fd_se
 #ifdef FUSE3
     /* XXX Experiment with clone fd argument */
-                               , 0);
+                                   , 0);
+    }
 #else
-                               );
+                                   );
+    }
     fuse_session_remove_chan(fd->fd_ch);
 #endif
 
