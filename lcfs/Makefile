@@ -38,7 +38,7 @@ version:
 	@(mkdir -p version && cd version && ../version_gen.sh)
 
 clean:
-	rm -fr *.o lcfs cstat testxattr version
+	rm -fr *.o lcfs cstat testxattr
 
 testxattr: testxattr.o
 	$(CC) $^ -o $@ $(CFLAGS) $(LDFLAGS)
