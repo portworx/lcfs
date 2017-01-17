@@ -48,6 +48,8 @@ Restart Docker to use LCFS.  First stop dockerd.  Then run Docker as:
 # sudo dockerd -s portworx/lcfs
 ```
 
+If you are running in systemd, you will need to edit your unit file, for example `/lib/systemd/system/docker.service`.
+
 Verify docker is running with portworx/lcfs storage driver by checking the output of command 'docker info'.
 
 
