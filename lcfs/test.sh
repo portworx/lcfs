@@ -122,15 +122,15 @@ cd -
 service docker stop
 dockerd -s vfs -g $MNT >/dev/null &
 sleep 3
-docker plugin install --grant-all-permissions portworx/px-graph
+docker plugin install --grant-all-permissions portworx/lcfs
 docker plugin ls
 pkill dockerd
 sleep 3
-sudo dockerd --experimental -s portworx/px-graph -g $MNT >/dev/null &
+sudo dockerd --experimental -s portworx/lcfs -g $MNT >/dev/null &
 sleep 10
 docker run hello-world
 
-cd $MNT/px-graph
+cd $MNT/lcfs
 $CSTAT .
 cd -
 
@@ -140,9 +140,9 @@ pkill dockerd
 sleep 10
 service docker start
 
-rmdir $MNT/px-graph
-mkdir $MNT/px-graph/dir
-touch $MNT/px-graph/file
+rmdir $MNT/lcfs
+mkdir $MNT/lcfs/dir
+touch $MNT/lcfs/file
 
 df -k $MNT
 df -i $MNT

@@ -762,6 +762,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
               bool release, bool unlock) {
     uint64_t count = 0, bcount, start, end = 0, pstart = -1, zcount = 0;
     uint64_t lpage, pcount = 0, tcount = 0, rcount = 0, bstart = -1;
+    uint64_t eblock = LC_INVALID_BLOCK, elength = 0, dblocks = 0;
     struct page *page, *dpage = NULL, *tpage = NULL;
     uint64_t fcount = 0, block = LC_INVALID_BLOCK;
     struct extent *extents = NULL, *extent, *tmp;
@@ -827,37 +828,18 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
     /* Check if file has a single extent */
     if (single) {
         assert(inode->i_page[0].dp_data);
-
-        /* Free any old blocks present */
-        if (inode->i_extentLength) {
-            lc_freeLayerDataBlocks(fs, inode->i_extentBlock,
-                                   inode->i_extentLength, inode->i_private);
-        } else if (inode->i_emap) {
-
-            /* Traverse the extent list and free every extent */
-            extent = inode->i_emap;
-            while (extent) {
-                assert(extent->ex_type == LC_EXTENT_EMAP);
-                lc_validateExtent(gfs, extent);
-                lc_addSpaceExtent(gfs, fs, &extents, lc_getExtentBlock(extent),
-                                  lc_getExtentCount(extent), false);
-                tmp = extent;
-                extent = extent->ex_next;
-                lc_free(fs, tmp, sizeof(struct extent), LC_MEMTYPE_EXTENT);
-            }
-            inode->i_emap = NULL;
-        }
-        inode->i_extentBlock = block;
-        inode->i_extentLength = bcount;
-        inode->i_dinode.di_blocks = bcount;
+        eblock = block;
+        elength = bcount;
+        dblocks = bcount;
     } else if (inode->i_extentLength && (start == inode->i_extentLength) &&
                ((inode->i_extentBlock + inode->i_extentLength) == block) &&
                (bcount == rcount) && ((start + bcount - 1) == end)) {
 
         /* If previous extent is extended, keep the single extent layout */
         single = true;
-        inode->i_extentLength += bcount;
-        inode->i_dinode.di_blocks += bcount;
+        eblock = inode->i_extentBlock;
+        elength = inode->i_extentLength + bcount;
+        dblocks = inode->i_dinode.di_blocks + bcount;
     } else if (inode->i_extentLength) {
 
         /* Expand from a single direct extent to an extent list */
@@ -946,6 +928,34 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
 
         /* Insert last extent */
         lc_inodeEmapUpdate(gfs, fs, inode, pstart, bstart, pcount, &extents);
+    }
+    if (single) {
+
+        /* Free any old blocks present */
+        if (inode->i_extentLength) {
+            if (inode->i_extentBlock != eblock) {
+                lc_freeLayerDataBlocks(fs, inode->i_extentBlock,
+                                       inode->i_extentLength,
+                                       inode->i_private);
+            }
+        } else if (inode->i_emap) {
+
+            /* Traverse the extent list and free every extent */
+            extent = inode->i_emap;
+            while (extent) {
+                assert(extent->ex_type == LC_EXTENT_EMAP);
+                lc_validateExtent(gfs, extent);
+                lc_addSpaceExtent(gfs, fs, &extents, lc_getExtentBlock(extent),
+                                  lc_getExtentCount(extent), false);
+                tmp = extent;
+                extent = extent->ex_next;
+                lc_free(fs, tmp, sizeof(struct extent), LC_MEMTYPE_EXTENT);
+            }
+            inode->i_emap = NULL;
+        }
+        inode->i_extentBlock = eblock;
+        inode->i_extentLength = elength;
+        inode->i_dinode.di_blocks = dblocks;
     }
     assert(bcount == (tcount + fcount));
     assert(inode->i_dpcount == 0);
