@@ -1,8 +1,8 @@
-# Instructions on building LCFS with fuse v2.9.7
-The lcfs file system depends on fuse v2.9.7.  These instructions walk you through installing fuse and building and testing lcfs as regular filesystem, independent of Docker.
+# Instructions on building the LCFS file syste with fuse v2.9.7
+The LCFS file system depends on fuse v2.9.7.  These instructions walk you through installing fuse and building and testing lcfs as regular filesystem, independent of Docker.
 
 ### Install pre-requisite packages
-LCFS requires `tcmalloc`, `zlib` and `fuse`.
+Building this file system requires `tcmalloc`, `zlib` and `fuse`.
 
 #### Install tcmalloc
 
@@ -58,7 +58,7 @@ Extract the fuse tarball and build and install fuse using the following commands
 # make && make install
 ```
 
-### Build and install LCFS
+### Build and install the LCFS file system
 
 Now that the pre-requisite packages are installed, we can build and install lcfs.
 
@@ -67,15 +67,15 @@ Now that the pre-requisite packages are installed, we can build and install lcfs
 # export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
 ```
 
-### Build lcfs 
-Now you can build lcfs by running make in the px-graph/lcfs directory.
+### Build the lcfs file system
+You can now build the lcfs file system by running make in the lcfs/lcfs directory.
 
 ```
 # cd lcfs/lcfs
 # make
 ```
 
-### Install lcfs
+### Install the lcfs binary
 Install lcfs at /usr/sbin
 
 ```
@@ -84,7 +84,7 @@ Install lcfs at /usr/sbin
 
 At this point, LCFS is available for use by the LCFS graph driver plugin.  You can return to the [plugin install instructions](https://github.com/portworx/lcfs/blob/master/INSTALL.md#step-1---install-lcfs), or test LCFS locally on your system by following the instructions below.
 
-### Test lcfs
+### Test lcfs (Optional)
 LCFS stores it's data on a phsyical device, for example `/dev/sdb`.  It then deploys two mount points to the host.  The first mount point is used for `/var/lib/docker` and the second mount point is used for storing the layers of a container.  Therefore, when starting LCFS directly, you provide 3 parameters:
 
 1. A device to use
