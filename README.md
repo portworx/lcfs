@@ -12,7 +12,7 @@ This LCFS driver is an open source project, and we welcome feedback and collabor
 # Installing LCFS
 Installing LCFS involves installing the LCFS file system and then the LCFS v2 graph driver plugin.
 
-Follow [these instructions](https://github.com/portworx/lcfs/edit/master/install.md) to install the LCFS plugin.
+Follow [these instructions](INSTALL.md) to install the LCFS plugin.
 
 # Design Principles 
 Today, running containers on the same server is often limited by side-effects that come from mapping container behavior over generic filesystems. The approach impacts the entire lifecycle: building, launching, reading data, and exiting containers. 
