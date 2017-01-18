@@ -700,11 +700,12 @@ lc_addPages(struct inode *inode, off_t off, size_t size,
 /* Read specified pages of a file */
 void
 lc_readPages(fuse_req_t req, struct inode *inode, off_t soffset,
-             off_t endoffset, struct page **pages, struct fuse_bufvec *bufv) {
+             off_t endoffset, uint64_t asize, struct page **pages,
+             struct fuse_bufvec *bufv) {
     uint64_t block, pg = soffset / LC_BLOCK_SIZE, pcount = 0, i = 0;
+    size_t psize, rsize = endoffset - soffset;
     struct extent *extent = inode->i_emap;
-    off_t poffset, off = soffset, roff = 0;
-    size_t psize, rsize = endoffset - off;
+    off_t poffset, off = soffset;
     struct fs *fs = inode->i_fs;
     struct gfs *gfs = fs->fs_gfs;
     struct page *page = NULL;
@@ -748,9 +749,11 @@ lc_readPages(fuse_req_t req, struct inode *inode, off_t soffset,
         bufv->buf[i].size = psize;
         i++;
         pg++;
-        roff += psize;
+        off += psize;
         rsize -= psize;
     }
+    assert(i <= asize);
+    assert(pcount <= asize);
     bufv->count = i;
     fuse_reply_data(req, bufv, FUSE_BUF_SPLICE_MOVE);
     lc_releaseReadPages(fs->fs_gfs, fs, pages, pcount);

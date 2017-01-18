@@ -829,7 +829,12 @@ lc_openInode(struct fs *fs, fuse_ino_t ino, struct fuse_file_info *fi) {
     fi->fh = (uint64_t)inode;
 
     /* Do not invalidate kernel page cache */
-    fi->keep_cache = true;
+    fi->keep_cache = 1;
+
+    /* XXX Cannot enable direct_io as that would break mmap. Need a new fuse
+     * option for direct io for files which are not memory mapped.
+     */
+    //fi->direct_io = 1;
     return 0;
 }
 
@@ -904,7 +909,7 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     if (endoffset > fsize) {
         endoffset = fsize;
     }
-    lc_readPages(req, inode, off, endoffset, pages, bufv);
+    lc_readPages(req, inode, off, endoffset, pcount, pages, bufv);
     lc_inodeUnlock(inode);
 
 out:

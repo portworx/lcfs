@@ -210,7 +210,7 @@ uint64_t lc_copyPages(struct fs *fs, off_t off, size_t size,
 uint64_t lc_addPages(struct inode *inode, off_t off, size_t size,
                      struct dpage *dpages, uint64_t pcount);
 void lc_readPages(fuse_req_t req, struct inode *inode, off_t soffset,
-                  off_t endoffset, struct page **pages,
+                  off_t endoffset, uint64_t asize, struct page **pages,
                   struct fuse_bufvec *bufv);
 void lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
                    bool release, bool unlock);

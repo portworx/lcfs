@@ -119,7 +119,6 @@ lc_updateExtent(struct fs *fs, struct extent *extent, struct extent **prev,
     uint64_t block;
     bool release;
 
-    assert(ecount >= freed);
     assert(start >= estart);
     assert((start + freed) <= (estart + ecount));
     if (estart == start) {
@@ -165,9 +164,8 @@ lc_removeExtent(struct fs *fs, struct extent **extents, uint64_t start,
         if (start < estart) {
             break;
         }
-        if ((start >= estart) &&
-            (start < (estart + lc_getExtentCount(extent)))) {
-            ecount = lc_getExtentCount(extent);
+        ecount = lc_getExtentCount(extent);
+        if (start < (estart + ecount)) {
             freed = (estart + ecount) - start;
             if (freed > count) {
                 freed = count;
