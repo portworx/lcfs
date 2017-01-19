@@ -4,3 +4,6 @@ version
 cstat
 lcfs
 testxattr
+tags
+TAGS
+cscope.*
