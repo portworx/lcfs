@@ -60,15 +60,13 @@ lc_addDirtyPage(struct fs *fs, struct dhpage **dhpage, uint64_t page,
     hpage->dh_page.dp_data = data;
     hpage->dh_page.dp_poffset = poffset;
     hpage->dh_page.dp_psize = psize;
-    while (next) {
 
-        /* Keep the list sorted */
-        if (page > next->dh_pg) {
-            break;
-        }
+    /* Keep the list sorted */
+    while (next && (page < next->dh_pg)) {
         prev = &next->dh_next;
         next = next->dh_next;
     }
+    assert((next == NULL) || (next->dh_pg != page));
     hpage->dh_next = next;
     *prev = hpage;
 }
@@ -253,7 +251,7 @@ static void
 lc_fillPage(struct gfs *gfs, struct inode *inode, struct dpage *dpage,
             uint64_t pg, struct extent **extents) {
     uint16_t poffset, psize, dsize, eof;
-    struct page *bpage;
+    struct page *bpage = NULL;
     char *data, *pdata;
     uint64_t block;
 
@@ -286,9 +284,12 @@ lc_fillPage(struct gfs *gfs, struct inode *inode, struct dpage *dpage,
             memset(pdata, 0, poffset);
         }
         dpage->dp_poffset = 0;
+        dpage->dp_psize += poffset;
     }
-    if ((poffset + psize) != LC_BLOCK_SIZE) {
-        dsize = LC_BLOCK_SIZE - (poffset + psize);
+    dsize = poffset + psize;
+    if (dsize != LC_BLOCK_SIZE) {
+        dsize = LC_BLOCK_SIZE - dsize;
+        dpage->dp_psize += dsize;
         if (data) {
             eof = (pg == (inode->i_size / LC_BLOCK_SIZE)) ?
                   (inode->i_size % LC_BLOCK_SIZE) : 0;
@@ -306,9 +307,9 @@ lc_fillPage(struct gfs *gfs, struct inode *inode, struct dpage *dpage,
         } else {
             memset(&pdata[(poffset + psize)], 0, dsize);
         }
-        dpage->dp_psize = LC_BLOCK_SIZE;
     }
-    if (data) {
+    assert(dpage->dp_psize == LC_BLOCK_SIZE);
+    if (bpage) {
         lc_releasePage(inode->i_fs->fs_gfs, inode->i_fs, bpage, true);
     }
 }
@@ -407,15 +408,17 @@ lc_inodeAllocPages(struct inode *inode) {
 
         /* Move all dirty pages to the hash table */
         if (inode->i_pcount) {
-            assert(inode->i_fpage < inode->i_pcount);
-            assert(inode->i_lpage < inode->i_pcount);
-            for (i = inode->i_fpage; i <= inode->i_lpage; i++) {
-                page = lc_findDirtyPage(inode, i);
-                if (page->dp_data == NULL) {
-                    continue;
+            if (inode->i_dpcount) {
+                assert(inode->i_fpage < inode->i_pcount);
+                assert(inode->i_lpage < inode->i_pcount);
+                for (i = inode->i_fpage; i <= inode->i_lpage; i++) {
+                    page = lc_findDirtyPage(inode, i);
+                    if (page->dp_data == NULL) {
+                        continue;
+                    }
+                    lc_addDirtyPage(fs, dhpage, i, page->dp_data,
+                                    page->dp_poffset, page->dp_psize);
                 }
-                lc_addDirtyPage(fs, dhpage, i, page->dp_data,
-                                page->dp_poffset, page->dp_psize);
             }
             lc_free(fs, inode->i_page, inode->i_pcount * sizeof(struct dpage),
                     LC_MEMTYPE_DPAGEHASH);
@@ -559,7 +562,7 @@ lc_mergePage(struct gfs *gfs, struct inode *inode, uint64_t pg,
      */
     if (((dpage->dp_poffset != 0) || (dpage->dp_psize != LC_BLOCK_SIZE)) &&
         ((poffset != dpage->dp_poffset) ||
-         ((poffset + psize) != (dpage->dp_poffset + dpage->dp_psize)))) {
+         ((poffset + psize) > (dpage->dp_poffset + dpage->dp_psize)))) {
         fill = false;
         dsize = 0;
         if (poffset < dpage->dp_poffset) {
@@ -632,7 +635,7 @@ lc_copyPages(struct fs *fs, off_t off, size_t size, struct dpage *dpages,
     }
 
     /* Read data from fuse */
-    wsize = fuse_buf_copy(dst, bufv, FUSE_BUF_SPLICE_NONBLOCK);
+    wsize = fuse_buf_copy(dst, bufv, FUSE_BUF_SPLICE_MOVE);
     assert(wsize == size);
     return pcount;
 }
@@ -642,7 +645,7 @@ uint64_t
 lc_addPages(struct inode *inode, off_t off, size_t size,
             struct dpage *dpages, uint64_t pcount) {
     uint64_t page = off / LC_BLOCK_SIZE, count = 0;
-    struct extent *extent;
+    struct extent *extent = inode->i_emap;
     struct fs *fs = inode->i_fs;
     struct gfs *gfs = fs->fs_gfs;
     off_t endoffset = off + size;
@@ -660,7 +663,8 @@ lc_addPages(struct inode *inode, off_t off, size_t size,
     if ((inode->i_dinode.di_blocks == 0) && (inode->i_dpcount == 0)) {
         while (count < pcount) {
             dpage = &dpages[count];
-            if (memcmp(dpage->dp_data, gfs->gfs_zPage, dpage->dp_psize)) {
+            if (memcmp(&dpage->dp_data[dpage->dp_poffset], gfs->gfs_zPage,
+                       dpage->dp_psize)) {
                 break;
             }
             count++;
@@ -671,8 +675,6 @@ lc_addPages(struct inode *inode, off_t off, size_t size,
         count = 0;
     }
 
-    extent = inode->i_emap;
-    lc_inodeAllocPages(inode);
     if (inode->i_dpcount == 0) {
 
         /* Initialize first and last page markers when the first dirty page
@@ -680,6 +682,7 @@ lc_addPages(struct inode *inode, off_t off, size_t size,
          */
         lc_initInodePageMarkers(inode);
     }
+    lc_inodeAllocPages(inode);
 
     /* Link the dirty pages to the inode, merging with any existing ones */
     while (count < pcount) {
@@ -714,6 +717,7 @@ lc_readPages(fuse_req_t req, struct inode *inode, off_t soffset,
     /* XXX Issue a single read if pages are not present in cache */
     assert(S_ISREG(inode->i_mode));
     while (rsize) {
+        assert(pg == (off / LC_BLOCK_SIZE));
         if (off == soffset) {
             poffset = soffset % LC_BLOCK_SIZE;
             psize = LC_BLOCK_SIZE - poffset;
@@ -724,6 +728,7 @@ lc_readPages(fuse_req_t req, struct inode *inode, off_t soffset,
         if (psize > rsize) {
             psize = rsize;
         }
+        assert((off + psize) <= inode->i_size);
 
         /* Check if a dirty page exists */
         data = lc_getDirtyPage(gfs, inode, pg, &extent);

@@ -397,19 +397,17 @@ lc_getPage(struct fs *fs, uint64_t block, bool read) {
 retry:
     lhash = lc_pcLockHash(fs, hash);
     page = pcache[hash].pc_head;
-    while (page) {
-
-        /* If a page is found, increment reference count */
-        if (page->p_block == block) {
-            page->p_refCount++;
-            hit = true;
-            break;
-        }
+    while (page && (page->p_block != block)) {
         page = page->p_cnext;
     }
+    hit = (page != NULL);
+    if (hit) {
 
-    /* If page is not found, instantiate one */
-    if ((page == NULL) && new) {
+        /* If a page is found, increment reference count */
+        page->p_refCount++;
+    } else if (new) {
+
+        /* If page is not found, instantiate one */
         page = new;
         new = NULL;
         page->p_block = block;
@@ -425,16 +423,18 @@ retry:
         new = lc_newPage(gfs, fs);
         assert(!new->p_dvalid);
         goto retry;
-    } else if (page->p_lindex != fs->fs_gindex) {
-
-        /* If a page is shared by many layers, untag it */
-        page->p_lindex = 0;
     }
 
     /* If raced with another thread, free the unused page */
     if (new) {
         new->p_refCount = 0;
         lc_freePage(gfs, fs, new);
+    }
+
+    if (page->p_lindex != fs->fs_gindex) {
+
+        /* If a page is shared by many layers, untag it */
+        page->p_lindex = 0;
     }
 
     /* If page is missing data, read from disk */
@@ -802,7 +802,7 @@ lc_flusher(void *data) {
     struct timeval now;
     uint64_t i, count;
     struct fs *fs;
-    time_t sec;
+    time_t recent;
 
     while (!gfs->gfs_unmounting) {
         pthread_mutex_lock(&gfs->gfs_lock);
@@ -816,7 +816,7 @@ lc_flusher(void *data) {
             continue;
         }
         gettimeofday(&now, NULL);
-        sec = now.tv_sec - 60;
+        recent = now.tv_sec - LC_PURGE_TIME;
         count = 0;
 
         pthread_mutex_lock(&gfs->gfs_lock);
@@ -825,14 +825,14 @@ lc_flusher(void *data) {
 
             /* Process layers which are inactive for some time */
             if ((fs == NULL) || !fs->fs_readOnly || fs->fs_child ||
-                (fs->fs_atime >= sec)) {
+                (fs->fs_atime >= recent)) {
                 continue;
             }
 
             /* If shared lock is not available, the layer is being deleted */
             if (!lc_tryLock(fs, false)) {
                 pthread_mutex_unlock(&gfs->gfs_lock);
-                if ((fs->fs_child == NULL) && (fs->fs_atime < sec)) {
+                if ((fs->fs_child == NULL) && (fs->fs_atime < recent)) {
                     count += lc_purgeTreePages(gfs, fs->fs_rfs, true);
                 }
                 lc_unlock(fs);

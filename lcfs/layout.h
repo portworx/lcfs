@@ -17,7 +17,7 @@
 #define LC_ROOT_INODE  2
 
 /* Invalid block */
-#define LC_INVALID_BLOCK    0x0000FFFFFFFFFFFF
+#define LC_INVALID_BLOCK    0x0000FFFFFFFFFFFFul
 
 /* Invalid inode */
 #define LC_INVALID_INODE   -1
@@ -37,7 +37,7 @@
 /* Minimum free space for allowing creation of new layers */
 #define LC_LAYER_MIN_BLOCKS 10000ul
 
-/* Number of bytes in file handle for storing layer index */
+/* Number of bits shifted in the file handle to extract the layer index */
 #define LC_FH_LAYER     48ul
 
 /* Mask for extracting inode numbder from file handle */

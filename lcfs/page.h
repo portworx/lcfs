@@ -55,6 +55,9 @@ static_assert(LC_PAGE_MAX >= LC_PCACHE_SIZE, "LC_PAGE_MAX <= LC_PCACHE_SIZE");
 /* Time in seconds background flusher is woken up */
 #define LC_FLUSH_INTERVAL       10
 
+/* Idle time after which pages of a layer are purged */
+#define LC_PURGE_TIME           60
+
 /* Page cache header */
 struct pcache {
     /* Page hash chains */

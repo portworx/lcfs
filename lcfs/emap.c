@@ -26,32 +26,24 @@ lc_inodeEmapExtentLookup(struct gfs *gfs, struct inode *inode, uint64_t page,
     struct extent *extent = extents ? *extents : inode->i_emap;
 
     /* Continue searching from last extent if there is one, otherwise from the
-     * beginning.
+     * beginning. Extent list is sorted, so stop when a later page is found.
      */
-    while (extent) {
+    while (extent &&
+           (page >= (lc_getExtentStart(extent) + lc_getExtentCount(extent)))) {
         assert(extent->ex_type == LC_EXTENT_EMAP);
         lc_validateExtent(gfs, extent);
-
-        /* Extent list is sorted, so stop when a later page is found */
-        if (page < lc_getExtentStart(extent)) {
-            if (extents) {
-                *extents = extent;
-                extents = NULL;
-            }
-            break;
-        }
-        if ((page >= lc_getExtentStart(extent)) &&
-            (page < (lc_getExtentStart(extent) + lc_getExtentCount(extent)))) {
-            if (extents) {
-                *extents = extent;
-            }
-            return lc_getExtentBlock(extent) + (page -
-                                                lc_getExtentStart(extent));
-        }
         extent = extent->ex_next;
     }
+
+    /* Save the current extent for a future lookup */
     if (extents) {
-        *extents = NULL;
+        *extents = extent;
+    }
+
+    /* If the page is part of the extent, return the block */
+    if (extent && (page >= lc_getExtentStart(extent)) &&
+        (page < (lc_getExtentStart(extent) + lc_getExtentCount(extent)))) {
+        return lc_getExtentBlock(extent) + (page - lc_getExtentStart(extent));
     }
     return LC_PAGE_HOLE;
 }
