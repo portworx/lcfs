@@ -322,15 +322,23 @@ out:
 static void
 lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
             int to_set, struct fuse_file_info *fi) {
-    bool ctime = false, mtime = false, flush = false;
+    bool ctime = false, mtime = false, flush = false, change;
+    int err = 0, flags = 0, new_set;
     struct inode *inode, *handle;
-    int err = 0, flags = 0;
     struct timeval start;
     struct stat stbuf;
     struct fs *fs;
 
-    lc_statsBegin(&start);
     lc_displayEntry(__func__, ino, 0, NULL);
+    lc_statsBegin(&start);
+    change = (to_set &
+              (FUSE_SET_ATTR_MODE | FUSE_SET_ATTR_UID | FUSE_SET_ATTR_GID |
+               FUSE_SET_ATTR_SIZE | FUSE_SET_ATTR_MTIME |
+               FUSE_SET_ATTR_MTIME_NOW
+#ifdef FUSE3
+               | FUSE_SET_ATTR_CTIME
+#endif
+               ));
     fs = lc_getfs(ino, false);
     if (fs->fs_frozen) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
@@ -339,7 +347,25 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
         goto out;
     }
     handle = fi ? (struct inode *)fi->fh : NULL;
-    inode = lc_getInode(fs, ino, handle, true, true);
+
+    /* Check if uid/gid is really being changed */
+    if (change && !(to_set & ~(FUSE_SET_ATTR_UID | FUSE_SET_ATTR_GID))) {
+        new_set = to_set;
+        inode = lc_getInode(fs, ino, handle, false, false);
+        if ((to_set & FUSE_SET_ATTR_UID) &&
+            (inode->i_dinode.di_uid == attr->st_uid)) {
+            new_set &= ~FUSE_SET_ATTR_UID;
+        }
+        if ((to_set & FUSE_SET_ATTR_GID) &&
+            (inode->i_dinode.di_gid == attr->st_gid)) {
+            new_set &= ~FUSE_SET_ATTR_GID;
+        }
+        if (new_set == 0) {
+            goto reply;
+        }
+        lc_inodeUnlock(inode);
+    }
+    inode = lc_getInode(fs, ino, handle, change, change);
     if (inode == NULL) {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
@@ -397,6 +423,8 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
         lc_updateInodeTimes(inode, mtime, ctime);
     }
     lc_markInodeDirty(inode, flags);
+
+reply:
     lc_copyStat(&stbuf, inode);
     lc_inodeUnlock(inode);
     stbuf.st_ino = lc_setHandle(fs->fs_gindex, stbuf.st_ino);
@@ -523,8 +551,10 @@ lc_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
     /* Free pages and blocks after responding */
     if (inode) {
         assert(inode->i_ocount == 0);
-        flush = inode->i_private && inode->i_dinode.di_blocks;
-        lc_truncate(inode, 0);
+        if (inode->i_flags & LC_INODE_EMAPDIRTY) {
+            flush = inode->i_private && inode->i_dinode.di_blocks;
+            lc_truncate(inode, 0);
+        }
         lc_inodeUnlock(inode);
     }
     lc_statsAdd(fs, LC_UNLINK, err, &start);
@@ -804,7 +834,7 @@ lc_openInode(struct fs *fs, fuse_ino_t ino, struct fuse_file_info *fi) {
     trunc = modify && (fi->flags & O_TRUNC);
 
     /* Clone the inode if opened for modification */
-    inode = lc_getInode(fs, ino, NULL, modify, trunc);
+    inode = lc_getInode(fs, ino, NULL, trunc, trunc);
     if (inode == NULL) {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
         return ENOENT;
@@ -985,7 +1015,8 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
     }
 
     /* Truncate a removed file on last close */
-    if (reg && (inode->i_ocount == 0) && (inode->i_flags & LC_INODE_REMOVED)) {
+    if (reg && (inode->i_ocount == 0) && (inode->i_flags & LC_INODE_REMOVED) &&
+        (inode->i_flags & LC_INODE_EMAPDIRTY)) {
         lc_truncate(inode, 0);
     }
 
