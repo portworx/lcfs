@@ -767,6 +767,7 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino, bool exclusive) {
                 inode->i_flags |= LC_INODE_SHARED;
                 flags |= LC_INODE_EMAPDIRTY;
             }
+            flags |= LC_INODE_NOTRUNC;
         } else {
 
             /* A file with no blocks is not sharing anything with parent */

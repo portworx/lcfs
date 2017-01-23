@@ -86,9 +86,15 @@ lc_createInode(struct fs *fs, ino_t parent, const char *name, mode_t mode,
 
 /* Modify size of a file to the specified size */
 static void
-lc_truncate(struct inode *inode, off_t size) {
+lc_truncate(struct inode *inode, off_t size, bool force) {
     assert(S_ISREG(inode->i_mode));
 
+    /* Do not truncate a file if it was pulled from parent, but no data was
+     * modified in it.  This file may be still in use.
+     */
+    if (!force && (inode->i_flags & LC_INODE_NOTRUNC)) {
+        return;
+    }
     if (size < inode->i_size) {
 
         /* Truncate pages/blocks beyond the new size */
@@ -171,7 +177,7 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
                     *inodep = inode;
                     unlock = false;
                 } else {
-                    lc_truncate(inode, 0);
+                    lc_truncate(inode, 0, true);
                 }
             }
             inode->i_flags |= LC_INODE_REMOVED;
@@ -396,7 +402,7 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
     if (to_set & FUSE_SET_ATTR_SIZE) {
         flush = (attr->st_size < inode->i_size) &&
                 inode->i_private && inode->i_dinode.di_blocks;
-        lc_truncate(inode, attr->st_size);
+        lc_truncate(inode, attr->st_size, true);
         flags = LC_INODE_EMAPDIRTY;
         mtime = true;
         ctime = true;
@@ -551,10 +557,8 @@ lc_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
     /* Free pages and blocks after responding */
     if (inode) {
         assert(inode->i_ocount == 0);
-        if (inode->i_flags & LC_INODE_EMAPDIRTY) {
-            flush = inode->i_private && inode->i_dinode.di_blocks;
-            lc_truncate(inode, 0);
-        }
+        flush = inode->i_private && inode->i_dinode.di_blocks;
+        lc_truncate(inode, 0, false);
         lc_inodeUnlock(inode);
     }
     lc_statsAdd(fs, LC_UNLINK, err, &start);
@@ -854,7 +858,7 @@ lc_openInode(struct fs *fs, fuse_ino_t ino, struct fuse_file_info *fi) {
 
             /* Truncate the file as requested */
             if (S_ISREG(inode->i_mode)) {
-                lc_truncate(inode, 0);
+                lc_truncate(inode, 0, true);
             }
             inode->i_ocount++;
         } else {
@@ -937,6 +941,7 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     if (off >= fsize) {
         lc_inodeUnlock(inode);
         fuse_reply_buf(req, NULL, 0);
+        assert(!(inode->i_flags & LC_INODE_REMOVED));
         goto out;
     }
 
@@ -1015,9 +1020,8 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
     }
 
     /* Truncate a removed file on last close */
-    if (reg && (inode->i_ocount == 0) && (inode->i_flags & LC_INODE_REMOVED) &&
-        (inode->i_flags & LC_INODE_EMAPDIRTY)) {
-        lc_truncate(inode, 0);
+    if (reg && (inode->i_ocount == 0) && (inode->i_flags & LC_INODE_REMOVED)) {
+        lc_truncate(inode, 0, false);
     }
 
     /* Flush dirty pages of a file on last close */
@@ -1230,7 +1234,11 @@ lc_listxattr(fuse_req_t req, fuse_ino_t ino, size_t size) {
     /* If the file system does not have any extended attributes, return */
     if (!gfs->gfs_xattr_enabled) {
         //lc_reportError(__func__, __LINE__, ino, ENODATA);
-        fuse_reply_err(req, ENODATA);
+        if (size == 0) {
+            fuse_reply_xattr(req, 0);
+        } else {
+            fuse_reply_err(req, ENODATA);
+        }
         return;
     }
     lc_xattrList(req, ino, size);

@@ -127,15 +127,16 @@ struct ixattr {
     uint32_t xd_xsize;
 } __attribute__((packed));
 
-#define LC_INODE_DIRTY          0x01  /* Inode is dirty */
-#define LC_INODE_EMAPDIRTY      0x02  /* Dirty pages and Emap */
-#define LC_INODE_DIRDIRTY       0x04  /* Dirty directory */
-#define LC_INODE_XATTRDIRTY     0x08  /* Dirty extended attributes */
-#define LC_INODE_REMOVED        0x10  /* File is removed */
-#define LC_INODE_SHARED         0x20  /* Sharing emap/directory with parent */
-#define LC_INODE_TMP            0x40  /* Created under /tmp */
-#define LC_INODE_HASHED         0x80  /* Hashed directory */
-#define LC_INODE_DHASHED        0x80  /* Dirty pages in a hash table */
+#define LC_INODE_DIRTY          0x001  /* Inode is dirty */
+#define LC_INODE_EMAPDIRTY      0x002  /* Dirty pages and Emap */
+#define LC_INODE_DIRDIRTY       0x004  /* Dirty directory */
+#define LC_INODE_XATTRDIRTY     0x008  /* Dirty extended attributes */
+#define LC_INODE_REMOVED        0x010  /* File is removed */
+#define LC_INODE_SHARED         0x020  /* Sharing emap/directory with parent */
+#define LC_INODE_TMP            0x040  /* Created under /tmp */
+#define LC_INODE_HASHED         0x080  /* Hashed directory */
+#define LC_INODE_DHASHED        0x080  /* Dirty pages in a hash table */
+#define LC_INODE_NOTRUNC        0x100  /* Do not truncate this file */
 
 /* Inode structure */
 struct inode {
@@ -217,6 +218,11 @@ static inline void
 lc_markInodeDirty(struct inode *inode, uint32_t flags) {
     assert(!(flags & LC_INODE_DIRDIRTY) || S_ISDIR(inode->i_dinode.di_mode));
     assert(!(flags & LC_INODE_EMAPDIRTY) || S_ISREG(inode->i_dinode.di_mode));
+
+    /* Reset notrunc flag when data modified in a layer */
+    if (flags & LC_INODE_EMAPDIRTY) {
+        inode->i_flags &= ~LC_INODE_NOTRUNC;
+    }
     inode->i_flags |= flags | LC_INODE_DIRTY;
 }
 
