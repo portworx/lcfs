@@ -117,11 +117,17 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
     struct inode *inode;
 
     assert(S_ISDIR(dir->i_mode));
-    inode = lc_getInode(fs, ino, NULL, true, true);
+
+    /* Need to remove the inode only if it is copied to this layer */
+    inode = lc_lookupInode(fs, lc_getInodeHandle(ino));
     if (inode == NULL) {
-        lc_reportError(__func__, __LINE__, ino, ESTALE);
-        return ESTALE;
+        if (fs->fs_parent == NULL) {
+            lc_reportError(__func__, __LINE__, ino, ESTALE);
+            return ESTALE;
+        }
+        return 0;
     }
+    lc_inodeLock(inode, true);
     assert(inode->i_nlink);
     if (rmdir) {
         assert(inode->i_parent == dir->i_ino);

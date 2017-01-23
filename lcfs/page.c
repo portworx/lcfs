@@ -561,7 +561,7 @@ lc_mergePage(struct gfs *gfs, struct inode *inode, uint64_t pg,
      * data.
      */
     if (((dpage->dp_poffset != 0) || (dpage->dp_psize != LC_BLOCK_SIZE)) &&
-        ((poffset != dpage->dp_poffset) ||
+        ((poffset < dpage->dp_poffset) ||
          ((poffset + psize) > (dpage->dp_poffset + dpage->dp_psize)))) {
         fill = false;
         dsize = 0;
@@ -789,7 +789,10 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
            (inode->i_extentLength == inode->i_dinode.di_blocks) ||
            inode->i_emap);
     lpage = (inode->i_size + LC_BLOCK_SIZE - 1) / LC_BLOCK_SIZE;
-    assert((inode->i_flags & LC_INODE_HASHED) || (lpage < inode->i_pcount));
+    if (!(inode->i_flags & LC_INODE_HASHED) && (inode->i_pcount < lpage)) {
+        assert(inode->i_pcount > inode->i_dpcount);
+        lpage = inode->i_pcount - 1;
+    }
     bcount = inode->i_dpcount;
     start = inode->i_fpage;
     end = inode->i_lpage;

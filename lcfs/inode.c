@@ -177,7 +177,7 @@ lc_lookupInodeCache(struct fs *fs, ino_t ino, int hash) {
 }
 
 /* Lookup an inode in the hash list */
-static struct inode *
+struct inode *
 lc_lookupInode(struct fs *fs, ino_t ino) {
     struct gfs *gfs = fs->fs_gfs;
 

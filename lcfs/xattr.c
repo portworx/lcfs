@@ -235,20 +235,20 @@ lc_xattrList(fuse_req_t req, ino_t ino, size_t size) {
         goto out;
     }
 
+    /* If checking the total size of attribute names, provide that info */
+    xsize = inode->i_xattrData ? inode->i_xsize : 0;
+    if (size == 0) {
+        lc_inodeUnlock(inode);
+        fuse_reply_xattr(req, xsize);
+        goto out;
+    }
+
     /* If inode does not have any extended attributes, return early */
     if (inode->i_xattrData == NULL) {
         lc_inodeUnlock(inode);
         fuse_reply_err(req, ENODATA);
         lc_reportError(__func__, __LINE__, ino, ENODATA);
         err = ENODATA;
-        goto out;
-    }
-
-    /* If checking the total size of attribute names, provide that info */
-    xsize = inode->i_xsize;
-    if (size == 0) {
-        lc_inodeUnlock(inode);
-        fuse_reply_xattr(req, xsize);
         goto out;
     }
 
