@@ -37,7 +37,7 @@ The below table compares lcfs to aufs on a `docker pull` and a `docker build` of
 
 | test                             | LCFS      | AUFS      | %age difference |
 |----------------------------------|-----------|-----------|-----------------|
-| docker pull busybox              | 0m13.643s | 0m15.522s | ~15%            |
+| docker pull gourao/fio           | 0m13.643s | 0m15.522s | ~15%            |
 | docker pull mysql                | 0m8.953s  | 0m10.286s | ~15%            |
 | docker build <ComplexDockerfile> | 3m17.994s | 8m36.224s | ~62%            |
 
