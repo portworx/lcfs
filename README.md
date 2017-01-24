@@ -31,7 +31,15 @@ Additional performance considerations:
 * **space management**: a lot can be done to improve garbage collection and space management, automatically removing orphaned layers. We should do this. 
 
 ## Measured Performance
-The current experimental release of LCFS is shown  against several of the top storage drivers. The tests used to generate these results are here. 
+The current experimental release of LCFS is shown against several of the top storage drivers.
+
+The below table compares lcfs to aufs on a `docker pull` and a `docker build` of a few images on an Ubuntu 14.04 system with a single SATA disk:
+
+| test                             | LCFS      | AUFS      | %age difference |
+|----------------------------------|-----------|-----------|-----------------|
+| docker pull busybox              | 0m13.643s | 0m15.522s | ~15%            |
+| docker pull mysql                | 0m8.953s  | 0m10.286s | ~15%            |
+| docker build <ComplexDockerfile> | 3m17.994s | 8m36.224s | ~62%            |
 
 **Create / Destroy**: The diagram below depicts the time to [create](https://docs.docker.com/engine/reference/run/) and [destroy](https://docs.docker.com/engine/reference/commandline/rm/) 100 Apache/Fedora containers. The cumulative time measured: LCFS at 44 seconds, Overlay at 237 sec, Overlay2 at 245 sec, and Device Mapper at 556 sec. 
 ![alt text](http://i.imgur.com/JSUeqLc.png "create and destroy times")
