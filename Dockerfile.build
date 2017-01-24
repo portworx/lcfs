@@ -1,5 +1,5 @@
 # vim:set ft=dockerfile ts=4:
-# px-graph build Docker file [201701.06MeV]
+# lcfs build Docker file [201701.06MeV]
 # NOTE: this dockerfile does NOT create a runnable container
 # it builds the lcfs and docker plugin binaries which will be copied out
 # and run in it's own container with a private version of docker
@@ -15,15 +15,15 @@ RUN apt-get update && \
  			libxml2-dev mime-support libgoogle-perftools-dev liblzma-dev rpm file alien sudo libz-dev
 #ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
 
-ADD . /go/src/github.com/portworx/px-graph
+ADD . /go/src/github.com/portworx/lcfs
 
-WORKDIR /go/src/github.com/portworx/px-graph
+WORKDIR /go/src/github.com/portworx/lcfs
 RUN wget -q https://github.com/libfuse/libfuse/releases/download/fuse-2.9.7/fuse-2.9.7.tar.gz
 RUN tar -xzf fuse-2.9.7.tar.gz
 WORKDIR fuse-2.9.7
 RUN ./configure && make -j8 && make install
 
-WORKDIR /go/src/github.com/portworx/px-graph/lcfs
+WORKDIR /go/src/github.com/portworx/lcfs/lcfs
 RUN make STATIC=y
 RUN mv lcfs /tmp/lcfs.bin
 
@@ -33,6 +33,6 @@ RUN mkdir /tmp/pkgs
 RUN mv rpm/lcfs/RPMS/x86_64/*.deb /tmp/pkgs
 RUN mv rpm/lcfs/RPMS/x86_64/*.rpm /tmp/pkgs
 
-WORKDIR /go/src/github.com/portworx/px-graph/plugin
+WORKDIR /go/src/github.com/portworx/lcfs/plugin
 RUN make
 RUN mv lcfs_plugin /tmp/lcfs_plugin.bin

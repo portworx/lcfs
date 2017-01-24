@@ -94,7 +94,7 @@ LCFS stores its data on a phsyical device, for example `/dev/sdb`.  It then depl
 You can start lcfs as follows:
 
 ```
-# cd px-graph/lcfs
+# cd lcfs/lcfs
 # mkdir -p /mnt1 /mnt2
 # sudo lcfs /dev/sdb /mnt1 /mnt2
 # mount
@@ -111,6 +111,6 @@ To unmount lcfs, run:
 # sudo fusermount -u /mnt2
 ```
 
-To display lcfs stats, run "cstat 'id' [-c]" from the 'mnt'/px-graph directory.  Create px-graph directory if that does not exist.  'id' is the name of the layer.  Specifying '.' as id will display stats for all layers.  If -c is specified, existing stats will be cleared.  Normally, stats are displayed whenever a layer is deleted/unmounted.  
+To display lcfs stats, run "cstat 'id' [-c]" from the 'mnt'/lcfs directory.  Create lcfs directory if that does not exist.  'id' is the name of the layer.  Specifying '.' as id will display stats for all layers.  If -c is specified, existing stats will be cleared.  Normally, stats are displayed whenever a layer is deleted/unmounted.  
 
 For recreating the file system, unmount it and zero out the first block (4KB) of the device/file and remount the device/file.

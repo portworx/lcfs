@@ -74,7 +74,7 @@ Separately, LCFS itself is implemented as a single filesystem. It takes in (hard
 First, install the LCFS filesystem and then the LCFS v2 graph driver plugin, as described in [these instructions](INSTALL.md).
 
 # Licensing
-The Layer Cloning Filesystem (LCFS) is licensed under the Apache License, Version 2.0. See [LICENSE](https://github.com/portworx/px-graph/blob/master/LICENSE) for the full license text.
+The Layer Cloning Filesystem (LCFS) is licensed under the Apache License, Version 2.0. See [LICENSE](https://github.com/portworx/lcfs/blob/master/LICENSE) for the full license text.
 
 # Contributing
-Want to collaborate and add? Here are instructions to [get started contributing code](https://github.com/portworx/px-graph/blob/master/contributing.md). 
+Want to collaborate and add? Here are instructions to [get started contributing code](https://github.com/portworx/lcfs/blob/master/contributing.md). 

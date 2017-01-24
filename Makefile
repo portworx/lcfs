@@ -1,10 +1,10 @@
-# Makefile for px-graph
+# Makefile for lcfs
 # Maintainer Michael Vilain <michael@portworx.com> [201701.16]
 # assumes make is run as root or account running it is part of Docker group
 
 .PHONY : gr-build gr-clean
 
-GR_CONTAINER:=px-graph
+GR_CONTAINER:=lcfs
 
 ifdef LCFS_RPM_VERSION
 BUILD_ARGS=--build-arg LCFS_RPM_VER=$(LCFS_RPM_VERSION)
@@ -25,9 +25,9 @@ submodules:
 	git submodule init
 	git submodule update
 
-# build px-graph plugin in a container (2017.05 only works with docker 1.13)
+# build lcfs plugin in a container (2017.05 only works with docker 1.13)
 gr-plugin:
-	@echo "====================> building px-graph build container $(GR_CONTAINER)"
+	@echo "====================> building lcfs build container $(GR_CONTAINER)"
 	sudo docker build -t $(GR_CONTAINER) $(BUILD_ARGS) -f Dockerfile.build .
 	sudo docker run --name $(GR_CONTAINER) $(GR_CONTAINER) ls -l /tmp
 	sudo docker cp $(GR_CONTAINER):/tmp/lcfs_plugin.bin .
@@ -43,12 +43,12 @@ gr-clean:
 plugin:
 	@cd plugin && make
 
-px-graph:
-	@echo "====================> building px-graph docker plugin..."
-	cd plugin/ && make px-graph   #./build_plugin.sh
+lcfs:
+	@echo "====================> building lcfs docker plugin..."
+	cd plugin/ && make lcfs #./build_plugin.sh
 
 deploy:
-	@echo "====================> pushing px-graph to dockerhub..."
+	@echo "====================> pushing lcfs to dockerhub..."
 	@cd plugin/ && make push_plugin  #./push_plugin.sh
 
 

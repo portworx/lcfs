@@ -10,7 +10,7 @@ To install LCFS, there are four actions you must perform:
 These four steps are detailed below.
 
 ##  Step 1 - Install the LCFS file system
-1. Build and install LCFS file system following the instructions in [that directory](https://github.com/portworx/px-graph/blob/master/lcfs/README.md).
+1. Build and install LCFS file system following the instructions in [that directory](https://github.com/portworx/lcfs/blob/master/lcfs/README.md).
 2. Stop docker - for example, `sudo systemctl stop docker`
 3. Chose a device to provide to lcfs.  lcfs requires a block device (you can also use a file, but this is not recommended due to performance reasons).  In this example, we use `/dev/sdb`.
 4. Remove `/var/lib/docker` and `/lcfs` if they are present.
