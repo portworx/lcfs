@@ -18,6 +18,7 @@ build: gr-plugin
 
 clean: gr-clean plugin-clean
 	rm -rf lcfs.bin lcfs_plugin.bin
+	-\rm -rf pkgs
 
 run :
 
@@ -39,7 +40,6 @@ gr-clean:
 	@echo "removing $(REPO)$(GR_CONTAINER)"
 	-docker rm -vf $(REPO)$(GR_CONTAINER)
 	-docker rmi $(GR_CONTAINER)
-	-\rm -rf pkgs
 
 plugin:
 	@cd plugin && make
