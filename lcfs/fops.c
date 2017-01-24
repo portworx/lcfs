@@ -941,7 +941,6 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     if (off >= fsize) {
         lc_inodeUnlock(inode);
         fuse_reply_buf(req, NULL, 0);
-        assert(!(inode->i_flags & LC_INODE_REMOVED));
         goto out;
     }
 

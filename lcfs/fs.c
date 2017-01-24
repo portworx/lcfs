@@ -549,7 +549,7 @@ lc_mount(char *device, struct gfs **gfsp) {
     fs->fs_root = LC_ROOT_INODE;
     fs->fs_sblock = LC_SUPER_BLOCK;
     fs->fs_rfs = fs;
-    lc_bcacheInit(fs, LC_PCACHE_SIZE, LC_PCLOCK_COUNT);
+    lc_bcacheInit(fs, LC_PCACHE_SIZE_MIN, LC_PCLOCK_COUNT);
     gfs->gfs_fs[0] = fs;
     gfs->gfs_roots[0] = LC_ROOT_INODE;
 

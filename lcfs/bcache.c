@@ -797,14 +797,17 @@ lc_purgePages(struct gfs *gfs, bool force) {
 /* Purge pages of inactive layers */
 void *
 lc_flusher(void *data) {
-    const struct timespec interval = {LC_FLUSH_INTERVAL, 0};
+    struct timespec interval;
     struct gfs *gfs = getfs();
     struct timeval now;
     uint64_t i, count;
     struct fs *fs;
     time_t recent;
 
+    interval.tv_nsec = 0;
     while (!gfs->gfs_unmounting) {
+        gettimeofday(&now, NULL);
+        interval.tv_sec = now.tv_sec + LC_FLUSH_INTERVAL;
         pthread_mutex_lock(&gfs->gfs_lock);
         pthread_cond_timedwait(&gfs->gfs_flusherCond, &gfs->gfs_lock,
                                &interval);
