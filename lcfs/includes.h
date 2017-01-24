@@ -176,7 +176,7 @@ void lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
 void lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
                  void *buf);
-void lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
+bool lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
                      size_t size, uint64_t pg, bool remove);
 void lc_freeInodeDataBlocks(struct fs *fs, struct inode *inode,
                             struct extent **extents);

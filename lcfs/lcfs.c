@@ -34,9 +34,9 @@ lc_daemonize(int *waiter) {
         perror("setsid");
         goto out;
     }
-    err = 0;
 
-    (void) chdir("/");
+    err = chdir("/");
+    assert(err == 0);
     nullfd = open("/dev/null", O_RDWR, 0);
     if (nullfd == -1) {
         perror("open");
@@ -49,9 +49,10 @@ lc_daemonize(int *waiter) {
     if (nullfd > 2) {
         close(nullfd);
     }
-    write(waiter[1], &completed, sizeof(completed));
+    err = write(waiter[1], &completed, sizeof(completed));
     close(waiter[0]);
     close(waiter[1]);
+    err = 0;
 
 out:
     return err;
@@ -124,7 +125,6 @@ lc_serve(void *data) {
     if (!err) {
         err = fuse_session_loop_mt(fd->fd_se
 #ifdef FUSE3
-    /* XXX Experiment with clone fd argument */
                                    , 0);
     }
 #else
@@ -329,7 +329,7 @@ main(int argc, char *argv[]) {
         default:
 
             /* Wait for the mount to complete */
-            read(waiter[0], &completed, sizeof(completed));
+            err = read(waiter[0], &completed, sizeof(completed));
             exit(0);
         }
     }

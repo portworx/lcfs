@@ -379,11 +379,12 @@ lc_freeInodeDataBlocks(struct fs *fs, struct inode *inode,
 }
 
 /* Truncate the emap of a file */
-void
+bool
 lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
                 size_t size, uint64_t pg, bool remove) {
     struct extent *extents = NULL, *extent, **prev, *next;
     uint64_t bcount = 0, estart, ecount, eblock, freed;
+    bool zero = false;
 
     assert(remove || (size == 0));
 
@@ -441,6 +442,7 @@ lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
 
                     /* If a page is partially truncated, keep it */
                     freed--;
+                    zero = true;
                 }
                 if (freed) {
 
@@ -486,4 +488,5 @@ lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
             inode->i_private = true;
         }
     }
+    return zero;
 }

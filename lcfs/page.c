@@ -640,6 +640,31 @@ lc_copyPages(struct fs *fs, off_t off, size_t size, struct dpage *dpages,
     return pcount;
 }
 
+/* Fill up the last page with zeroes when a file grows */
+static void
+lc_zeroFillLastPage(struct gfs *gfs, struct inode *inode) {
+    uint64_t pg = inode->i_size / LC_BLOCK_SIZE, block;
+    struct dpage *dpage;
+    uint16_t off;
+
+    /* Check if a block exists for the last page */
+    if (inode->i_dinode.di_blocks == 0) {
+        return;
+    }
+    block = lc_inodeEmapLookup(gfs, inode, pg, NULL);
+    if (block == LC_PAGE_HOLE) {
+        return;
+    }
+    dpage = lc_findDirtyPage(inode, pg);
+    if (dpage && dpage->dp_data) {
+        off = dpage->dp_poffset + dpage->dp_psize;
+        if (off != LC_BLOCK_SIZE) {
+            memset(&dpage->dp_data[off], 0, LC_BLOCK_SIZE - off);
+            dpage->dp_psize = LC_BLOCK_SIZE - dpage->dp_poffset;
+        }
+    }
+}
+
 /* Update pages of a file with provided data */
 uint64_t
 lc_addPages(struct inode *inode, off_t off, size_t size,
@@ -656,6 +681,11 @@ lc_addPages(struct inode *inode, off_t off, size_t size,
 
     /* Update inode size if needed */
     if (endoffset > inode->i_size) {
+
+        /* Zero fill last page if that is a partial page */
+        if ((off > inode->i_size) && (inode->i_size % LC_BLOCK_SIZE)) {
+            lc_zeroFillLastPage(gfs, inode);
+        }
         inode->i_size = endoffset;
     }
 
@@ -1032,13 +1062,16 @@ out:
 /* Truncate a dirty page */
 static void
 lc_truncatePage(struct gfs *gfs, struct fs *fs, struct inode *inode,
-                uint64_t pg, uint16_t poffset) {
+                uint64_t pg, uint16_t poffset, bool create) {
 
     struct dpage *dpage;
 
     lc_inodeAllocPages(inode);
     dpage = lc_findDirtyPage(inode, pg);
     if (dpage == NULL) {
+        if (!create) {
+            return;
+        }
         assert(inode->i_flags & LC_INODE_HASHED);
         lc_addDirtyPage(fs, inode->i_hpage, pg, NULL, 0, 0);
         dpage = lc_findDirtyPage(inode, pg);
@@ -1046,6 +1079,9 @@ lc_truncatePage(struct gfs *gfs, struct fs *fs, struct inode *inode,
 
     /* Create a dirty page if one does not exist */
     if (dpage->dp_data == NULL) {
+        if (!create) {
+            return;
+        }
         lc_mallocBlockAligned(fs, (void **)&dpage->dp_data, LC_MEMTYPE_DATA);
         inode->i_dpcount++;
         lc_updateInodePageMarkers(inode, pg);
@@ -1173,6 +1209,7 @@ lc_truncateFile(struct inode *inode, off_t size, bool remove) {
     uint64_t pg = size / LC_BLOCK_SIZE;
     struct gfs *gfs;
     struct fs *fs;
+    bool zero;
 
     assert(S_ISREG(inode->i_mode));
 
@@ -1211,12 +1248,12 @@ lc_truncateFile(struct inode *inode, off_t size, bool remove) {
     assert(!(inode->i_flags & LC_INODE_SHARED));
 
     /* Free blocks allocated beyond new eof */
-    lc_emapTruncate(gfs, fs, inode, size, pg, remove);
+    zero = lc_emapTruncate(gfs, fs, inode, size, pg, remove);
 
     if (size % LC_BLOCK_SIZE) {
 
         /* Adjust the last page if it is partially truncated */
-        lc_truncatePage(gfs, fs, inode, pg, size % LC_BLOCK_SIZE);
+        lc_truncatePage(gfs, fs, inode, pg, size % LC_BLOCK_SIZE, zero);
     }
     lc_invalidatePages(gfs, fs, inode, size);
 }
