@@ -33,7 +33,7 @@ Additional performance considerations:
 ## Measured Performance
 The current experimental release of LCFS is shown against several of the top storage drivers.
 
-The below table compares lcfs to aufs on a `docker pull` and a `docker build` of a few images on an Ubuntu 14.04 system with a single SATA disk:
+The below table shows a quick comparison of some common Docker operations; a `docker pull` and a `docker build` of a few images on an Ubuntu 14.04 system with a single SATA disk:
 
 | test                             | LCFS      | AUFS      | %age difference |
 |----------------------------------|-----------|-----------|-----------------|
