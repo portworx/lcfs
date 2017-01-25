@@ -73,14 +73,18 @@ if [ $? -eq 0 ]; then
 fi
 
 RPMPATH="${RPMRPMSROOT}/${PLATFORM}/${RPM_NAME}-${VERSION}-${REVISION}.${PLATFORM}.rpm"
+[ -e ${RPMPATH} ] && cd ${RPMRPMSROOT}/${PLATFORM} && ln -s ${RPM_NAME}-${VERSION}-${REVISION}.${PLATFORM}.rpm ${RPM_NAME}.rpm
 DPKGPATH="${RPMRPMSROOT}/${PLATFORM}/${DEBPKG}"
+[ -e ${DPKGPATH} ] && cd ${RPMRPMSROOT}/${PLATFORM} && ln -s ${DEBPKG} ${RPM_NAME}.deb
 
 if [ ! -z "${OUTPATH}" ]; then
 	cp  ${RPMPATH} ${OUTPATH}
 	RPMPATH="$OUTPATH/${RPM_NAME}-${VERSION}-${REVISION}.${PLATFORM}.rpm"
+	[ -e ${RPMPATH} ] && cd ${OUTPATH} && ln -s ${RPM_NAME}-${VERSION}-${REVISION}.${PLATFORM}.rpm ${RPM_NAME}.rpm
 	if [ -n "${DEBPKG}" ]; then
 		cp ${RPMRPMSROOT}/${PLATFORM}/${DEBPKG} ${OUTPATH}
 		DPKGPATH="${OUTPATH}/${DEBPKG}"
+		[ -e ${DPKGPATH} ] && cd ${OUTPATH} && ln -s ${DEBPKG} ${RPM_NAME}.deb
 	fi
 fi
 
