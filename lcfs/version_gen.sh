@@ -1,8 +1,12 @@
 #!/bin/bash
 
+[ "$1" == "-p" ] && ECHOVERSIONONLY="yes"
+
 BUILD_VERSION="$(git rev-parse HEAD)"
 SHORT_BUILD_VERSION="$(git rev-parse --short HEAD)"
-VERSION="$(git symbolic-ref -q --short HEAD || git describe --tags --exact-match)"
+if [ -z "${VERSION}" ]; then
+    VERSION="$(git symbolic-ref -q --short HEAD || git describe --tags --exact-match)"
+fi
 
 if [[ "${VERSION}" == *"-v"* || "${VERSION}" == "v"[0-9]* ]]; then
     NEWVERSION=$(echo "${VERSION}" | sed -e 's/^v//' -e 's/.*-v//');
@@ -13,6 +17,8 @@ if [ -n "$(echo ${VERSION} | sed -e 's/[0-9.]*//g' -e 's/-.*$//')" -o -z "${VERS
     VERSION=0.5.0
     [ -n "${DEFVERSION}" ] && VERSION="${DEFVERSION}"
 fi
+
+[ "${ECHOVERSIONONLY}" == "yes" ] &&  echo "${VERSION}" && exit 0
 
 VERSION="${VERSION}-"$SHORT_BUILD_VERSION
 

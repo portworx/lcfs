@@ -6,8 +6,12 @@
 
 GR_CONTAINER:=lcfs
 
-ifdef LCFS_RPM_VERSION
-BUILD_ARGS=--build-arg LCFS_RPM_VER=$(LCFS_RPM_VERSION)
+ifdef VERSION
+BUILD_ARGS := $(BUILD_ARGS) --build-arg VERSION=$(VERSION)
+endif
+
+ifdef REVISION
+BUILD_ARGS := $(BUILD_ARGS) --build-arg REVISION=$(REVISION)
 endif
 
 TARGETS := gr-plugin
@@ -19,6 +23,7 @@ build: gr-plugin
 clean: gr-clean plugin-clean
 	rm -rf lcfs.bin lcfs_plugin.bin
 	-\rm -rf pkgs
+	-\rm -rf lcfs/version/* lcfs/rpm/lcfs lcfs/rpm/rpmtmp lcfs/rpm/tmp     # Unable to \rm -rf. Docker bug so remove directories manually
 
 run :
 

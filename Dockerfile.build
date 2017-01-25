@@ -6,8 +6,11 @@
 
 FROM golang
 MAINTAINER Michael Vilain <michael@portworx.com>
-ARG LCFS_RPM_VER
-ENV LCFS_RPM_VER ${LCFS_RPM_VER}
+ARG VERSION
+ENV VERSION ${VERSION}
+
+ARG REVISION
+ENV REVISION ${REVISION}
 
 # tools to build libfuse for lcfs
 RUN apt-get update && \
@@ -28,7 +31,7 @@ RUN make STATIC=y
 RUN mv lcfs /tmp/lcfs.bin
 
 RUN make clean
-RUN make STATIC=y VERSION=${LCFS_RPM_VER} rpm
+RUN make STATIC=y VERSION=${VERSION} REVISION=${REVISION} rpm
 RUN mkdir /tmp/pkgs
 RUN mv rpm/lcfs/RPMS/x86_64/*.deb /tmp/pkgs
 RUN mv rpm/lcfs/RPMS/x86_64/*.rpm /tmp/pkgs

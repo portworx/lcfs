@@ -47,6 +47,6 @@ test: lcfs testxattr
 	sudo ./test.sh
 
 rpm:
-	@cd rpm && ./buildrpm.sh
+	@cd rpm && VERSION="`VERSION="$(VERSION)" ../version_gen.sh -p`" REVISION=$(REVISION) ./buildrpm.sh
 
 .PHONY: rpm version clean
