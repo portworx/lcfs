@@ -43,6 +43,9 @@ struct icache {
 /* Portion of the readdir offset storing index in the list */
 #define LC_DIRHASH_INDEX 0x00000000FFFFFFFFul
 
+/* Padding used for Darwin */
+#define DARWIN_DINODE_SIZE 6
+
 /* Directory entry */
 struct dirent {
 
@@ -183,8 +186,17 @@ struct inode {
 
     /* Various flags */
     uint32_t i_flags;
+
+#ifdef __APPLE__
+   /* Padding for darwin */
+   char opaque[DARWIN_DINODE_SIZE];
+#endif
 }  __attribute__((packed));
+#ifdef __APPLE__
+static_assert(sizeof(struct inode) <= 512, "inode size <= 512");
+#else
 static_assert(sizeof(struct inode) == 216, "inode size != 216");
+#endif
 static_assert((sizeof(struct inode) % sizeof(void *)) == 0,
               "Inode size is not aligned");
 

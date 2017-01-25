@@ -34,7 +34,20 @@ lc_writeBlocks(struct gfs *gfs, struct fs *fs,
 
     //lc_printf("lc_writeBlocks: Writing %d block %ld\n", iovcnt, block);
     assert(block < gfs->gfs_super->sb_tblocks);
+#ifdef __APPLE__
+    off_t offset, current;
+    // OSX does not have pwritev but does have writev
+    // Simulating pwritev by doing a few lseeks and always maintaining
+    // the current offset
+    current = lseek(gfs->gfs_fd, 0, SEEK_CUR);
+    offset = lseek(gfs->gfs_fd, block * LC_BLOCK_SIZE, SEEK_SET);
+    assert(offset != -1);
+    count = writev(gfs->gfs_fd, iov, iovcnt);
+    offset = lseek(gfs->gfs_fd, current, SEEK_SET);
+    assert(offset != -1);
+#else
     count = pwritev(gfs->gfs_fd, iov, iovcnt, block * LC_BLOCK_SIZE);
+#endif
     assert(count == (iovcnt * LC_BLOCK_SIZE));
     __sync_add_and_fetch(&gfs->gfs_writes, 1);
     __sync_add_and_fetch(&fs->fs_writes, 1);

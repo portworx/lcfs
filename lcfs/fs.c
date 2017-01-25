@@ -514,12 +514,24 @@ lc_mount(char *device, struct gfs **gfsp) {
     lc_memoryInit();
 
     /* Open the device for mounting */
+#ifdef __APPLE__
+    fd = open(device, O_RDWR | O_EXCL, 0);
+#else
     fd = open(device, O_RDWR | O_DIRECT | O_EXCL | O_NOATIME, 0);
+#endif
     if (fd == -1) {
         perror("open");
         return errno;
     }
 
+#ifdef __APPLE__
+    int ret;
+    ret = fcntl(fd, F_NOCACHE);
+    if (ret == -1) {
+      perror("fcntl");
+      return errno;
+    }
+#endif
     /* Find the size of the device and calculate total blocks */
     size = lseek(fd, 0, SEEK_END);
     if (size == -1) {

@@ -52,12 +52,31 @@ static const char *mrequests[] = {
 /* Initialize limit based on available memory */
 void
 lc_memoryInit(void) {
-    struct sysinfo info;
-
     lc_mem.m_dataMemory = LC_PCACHE_MEMORY;
+    uint64_t totalram;
+#ifdef __APPLE__
+    int mib[2];
+    uint8_t usermembuf[8];
+    size_t usermemlen = 8;
+    uint64_t usermem;
+
+    mib[0] = CTL_HW;
+    mib[1] = HW_USERMEM;
+
+    sysctl(mib, 2, usermembuf, &usermemlen, NULL, 0);
+
+    if (usermemlen == sizeof(uint64_t))
+      usermem = *(uint64_t *)usermembuf;
+    else
+      usermem = *(uint32_t *)usermembuf;
+    totalram = usermem;
+#else
+    struct sysinfo info;
     sysinfo(&info);
-    if (info.totalram < lc_mem.m_dataMemory) {
-        lc_mem.m_dataMemory = (info.totalram * LC_PCACHE_MEMORY_MIN) / 100;
+    totalram = info.totalram;
+#endif
+    if (totalram < lc_mem.m_dataMemory) {
+        lc_mem.m_dataMemory = (totalram * LC_PCACHE_MEMORY_MIN) / 100;
     }
     lc_printf("Maximum memory allowed for data pages %ld MB\n",
               lc_mem.m_dataMemory / (1024 * 1024));
