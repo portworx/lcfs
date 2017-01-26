@@ -675,6 +675,29 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs) {
     }
 }
 
+/* Invalidate pages in kernel page cache for the layer */
+void
+lc_invalidateLayerPages(struct gfs *gfs, struct fs *fs) {
+    struct inode *inode;
+    int i;
+
+    for (i = 0; (i < fs->fs_icacheSize) && !fs->fs_removed; i++) {
+        inode = fs->fs_icache[i].ic_head;
+        while (inode && !fs->fs_removed) {
+            if (S_ISREG(inode->i_mode) && !inode->i_private && inode->i_size) {
+                fuse_lowlevel_notify_inval_inode(
+#ifdef FUSE3
+                                                 gfs->gfs_se[LC_LAYER_MOUNT],
+#else
+                                                 gfs->gfs_ch,
+#endif
+                                                 inode->i_ino, 0, -1);
+            }
+            inode = inode->i_cnext;
+        }
+    }
+}
+
 /* Destroy inodes belong to a file system */
 void
 lc_destroyInodes(struct fs *fs, bool remove) {

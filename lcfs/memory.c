@@ -15,6 +15,9 @@ static struct lc_memory {
     /* Maximum memory that can be used for data pages */
     uint64_t m_dataMemory;
 
+    /* Amount of memory for data pages targetted by cleaner */
+    uint64_t m_purgeMemory;
+
     /* Memory allocated globally */
     uint64_t m_globalMemory;
 
@@ -54,31 +57,34 @@ void
 lc_memoryInit(void) {
     struct sysinfo info;
 
-    lc_mem.m_dataMemory = LC_PCACHE_MEMORY;
+    lc_mem.m_purgeMemory = LC_PCACHE_MEMORY;
     sysinfo(&info);
-    if (info.totalram < lc_mem.m_dataMemory) {
-        lc_mem.m_dataMemory = (info.totalram * LC_PCACHE_MEMORY_MIN) / 100;
+    if (info.totalram < lc_mem.m_purgeMemory) {
+        lc_mem.m_purgeMemory = (info.totalram * LC_PCACHE_MEMORY_MIN) / 100;
     }
+    lc_mem.m_dataMemory = (lc_mem.m_purgeMemory * (100 + LC_PURGE_TARGET))
+                          / 100;
     lc_printf("Maximum memory allowed for data pages %ld MB\n",
-              lc_mem.m_dataMemory / (1024 * 1024));
+              lc_mem.m_purgeMemory / (1024 * 1024));
 }
 
 /* Check memory usage for data pages is under limit or not */
 bool
-lc_checkMemoryAvailable() {
-    return lc_mem.m_totalMemory < lc_mem.m_dataMemory;
+lc_checkMemoryAvailable(bool flush) {
+    return lc_mem.m_totalMemory < (flush ?
+                                   lc_mem.m_purgeMemory : lc_mem.m_dataMemory);
 }
 
 /* Flush dirty pages and purge cache entries when running low on memory */
 void
-lc_waitMemory(void) {
+lc_waitMemory(bool wait) {
     struct gfs *gfs = getfs();
 
     /* If memory used for data usage is above limit, Flush dirty pages and
      * purge cache entries.
      */
-    if (!lc_checkMemoryAvailable()) {
-        lc_purgePages(gfs, true);
+    if (!lc_checkMemoryAvailable(false)) {
+        lc_wakeupCleaner(gfs, wait);
     }
 }
 

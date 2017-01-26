@@ -33,16 +33,32 @@ lc_linkParent(struct fs *fs, struct fs *pfs) {
     fs->fs_rfs = pfs->fs_rfs;
 }
 
+/* Invalidate pages of the first layer in kernel page cache */
+static void
+lc_invalidateFirstLayer(struct gfs *gfs, struct fs *pfs) {
+    struct fs *fs;
+
+    pthread_mutex_lock(&gfs->gfs_lock);
+    fs = pfs->fs_child ? pfs->fs_child->fs_child : NULL;
+    if (fs && !lc_tryLock(fs, false)) {
+        pthread_mutex_unlock(&gfs->gfs_lock);
+        lc_invalidateLayerPages(gfs, fs);
+        lc_unlock(fs);
+    } else {
+        pthread_mutex_unlock(&gfs->gfs_lock);
+    }
+}
+
 /* Create a new layer */
 void
 lc_newLayer(fuse_req_t req, struct gfs *gfs, const char *name,
             const char *parent, size_t size, bool rw) {
     struct fs *fs = NULL, *pfs = NULL, *rfs = NULL;
     struct inode *dir, *pdir;
+    bool base, init, inval;
     ino_t root, pinum = 0;
     struct timeval start;
     char pname[size + 1];
-    bool base, init;
     uint32_t flags;
     size_t icsize;
     void *super;
@@ -121,7 +137,7 @@ lc_newLayer(fuse_req_t req, struct gfs *gfs, const char *name,
     }
 
     /* Add this file system to global list of file systems */
-    err = lc_addfs(gfs, fs, pfs);
+    err = lc_addfs(gfs, fs, pfs, &inval);
 
     /* If new layer could not be added, undo everything done so far */
     if (err) {
@@ -182,6 +198,9 @@ out:
         }
     }
     if (pfs) {
+        if (!err && inval) {
+            lc_invalidateFirstLayer(gfs, pfs);
+        }
         lc_unlock(pfs);
     }
     lc_unlock(rfs);
@@ -363,4 +382,3 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
     }
     lc_unlock(rfs);
 }
-

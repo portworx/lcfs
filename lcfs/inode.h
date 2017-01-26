@@ -6,8 +6,8 @@
 /* Initial size of the inode hash table */
 /* XXX This needs to consider available memory */
 #define LC_ICACHE_SIZE_MIN 128
-#define LC_ICACHE_SIZE     1024
-#define LC_ICACHE_SIZE_MAX 2048
+#define LC_ICACHE_SIZE     4096
+#define LC_ICACHE_SIZE_MAX 8192
 
 /* Current file name size limit */
 #define LC_FILENAME_MAX 255

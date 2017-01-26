@@ -11,10 +11,6 @@
 #define LC_PCACHE_SIZE_MIN  1024
 #define LC_PCACHE_SIZE      (1024 * 1024)
 
-/* Maximum number of pages */
-#define LC_PAGE_MAX         1200000
-static_assert(LC_PAGE_MAX >= LC_PCACHE_SIZE, "LC_PAGE_MAX <= LC_PCACHE_SIZE");
-
 /* Number of locks for the block cache hash lists */
 #define LC_PCLOCK_COUNT     1024
 
@@ -28,6 +24,11 @@ static_assert(LC_PAGE_MAX >= LC_PCACHE_SIZE, "LC_PAGE_MAX <= LC_PCACHE_SIZE");
 /* Maximum memory in bytes allowed for data pages */
 #define LC_PCACHE_MEMORY        (512ull * 1024ull * 1024ull)
 
+/* Percentage of memory allowed above LC_PCACHE_MEMORY before threads are
+ * blocked.
+ */
+#define LC_PURGE_TARGET         20
+
 /* Minimum amount of total system memory which can be used for data pages if
  * system does not have LC_PCACHE_MEMORY bytes of memory.
  */
@@ -40,13 +41,6 @@ static_assert(LC_PAGE_MAX >= LC_PCACHE_SIZE, "LC_PAGE_MAX <= LC_PCACHE_SIZE");
  */
 #define LC_MAX_LAYER_DIRTYPAGES 524288
 
-/* Minimum Number of pages in a list before a page is attempted to be freed */
-#define LC_CACHE_LIST_MAX        20
-
-/* Maximum number of pages checked in a hash list for picking one for freeing
- */
-#define LC_CACHE_PURGE_CHECK_MAX 10
-
 /* Number of minimum blocks a file need to grow before it is converted to use a
  * hash scheme for dirty pages.
  */
@@ -55,8 +49,14 @@ static_assert(LC_PAGE_MAX >= LC_PCACHE_SIZE, "LC_PAGE_MAX <= LC_PCACHE_SIZE");
 /* Time in seconds background flusher is woken up */
 #define LC_FLUSH_INTERVAL       10
 
-/* Idle time after which pages of a layer are purged */
-#define LC_PURGE_TIME           60
+/* Time in seconds background cleaner is woken up */
+#define LC_CLEAN_INTERVAL       5
+
+/* Time in seconds before flusher kicks in on a newly created layer */
+#define LC_FLUSH_TIME           120
+
+/* Time in seconds before cleaner kicks in on a newly created layer */
+#define LC_PURGE_TIME           30
 
 /* Page cache header */
 struct pcache {
@@ -133,7 +133,10 @@ struct dpage {
     uint16_t dp_poffset;
 
     /* Size of valid data starting from dp_poffset */
-    uint16_t dp_psize;
+    uint16_t dp_psize:15;
+
+    /* Read while dirty */
+    uint16_t dp_pread:1;
 } __attribute__((packed));
 
 /* Page structure used for caching dirty pages of an inode

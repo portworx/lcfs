@@ -847,12 +847,11 @@ lc_openInode(struct fs *fs, fuse_ino_t ino, struct fuse_file_info *fi) {
     /* Do not allow opening a removed inode */
     if (inode->i_flags & LC_INODE_REMOVED) {
         lc_inodeUnlock(inode);
-        lc_reportError(__func__, __LINE__, ino, ENOENT);
-        return ENOENT;
+        lc_reportError(__func__, __LINE__, ino, ESTALE);
+        return ESTALE;
     }
 
-    /* Increment open count if inode is private to this layer.
-     */
+    /* Increment open count if inode is private to this layer */
     if (inode->i_fs == fs) {
         if (trunc) {
 
@@ -954,7 +953,7 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 
 out:
     lc_statsAdd(fs, LC_READ, err, &start);
-    lc_waitMemory();
+    lc_waitMemory(false);
     lc_unlock(fs);
 }
 
@@ -986,20 +985,10 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
 
             /* Invalidate pages in kernel page cache if multiple layers are
              * reading shared data from parent layer.
+             * Allow a single container to cache data from parent layers in
+             * kernel page cache.
              */
-            *inval = reg && (inode->i_size > 0);
-#if 0
-            /* If a single container wants data in kernel page cache, avoid
-             * invalidation using these checks.
-             *
-             * Such pages may stay in kernel page cache even when new
-             * containers are created.
-             *
-             * XXX Figure out how to enable this for docker builds.
-             */
-                    (fs->fs_readOnly || fs->fs_next || fs->fs_prev ||
-                     (fs->fs_super->sb_flags & LC_SUPER_INIT));
-#endif
+            *inval = reg && (inode->i_size > 0) && !fs->fs_parent->fs_single;
         }
         return;
     }
@@ -1040,7 +1029,7 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
                 lc_addDirtyInode(fs, inode);
             }
 
-            /* Flush pages of the inode if inode has too many dirty pages */
+            /* Flush pages of the inode if layer has too many dirty pages */
             if ((fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES) &&
                 lc_flushInodeDirtyPages(inode, inode->i_size / LC_BLOCK_SIZE,
                                         true, true)) {
@@ -1361,9 +1350,6 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, ino, 0, NULL);
-
-    /* Make sure enough memory available before proceeding */
-    lc_waitMemory();
     size = bufv->buf[bufv->idx].size;
     pcount = (size / LC_BLOCK_SIZE) + 2;
     wsize = sizeof(struct fuse_bufvec) + (sizeof(struct fuse_buf) * pcount);
@@ -1379,6 +1365,9 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
         pcount = 0;
         goto out;
     }
+
+    /* Make sure enough memory available before proceeding */
+    lc_waitMemory(fs->fs_pcount > LC_MAX_LAYER_DIRTYPAGES);
 
     /* Copy in the data before taking the lock */
     pcount = lc_copyPages(fs, off, size, dpages, bufv, dst);
@@ -1428,7 +1417,7 @@ out:
 
     /* Trigger flush of dirty pages if layer has too many now */
     if (!err && (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES)) {
-        lc_flushDirtyInodeList(fs, false);
+        lc_flushDirtyInodeList(fs);
     }
     lc_unlock(fs);
 }

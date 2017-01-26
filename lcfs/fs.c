@@ -278,7 +278,7 @@ lc_getfsForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
 
 /* Add a file system to global list of file systems */
 int
-lc_addfs(struct gfs *gfs, struct fs *fs, struct fs *pfs) {
+lc_addfs(struct gfs *gfs, struct fs *fs, struct fs *pfs, bool *inval) {
     struct fs *child, *rfs = fs->fs_rfs;
     int i;
 
@@ -310,9 +310,11 @@ lc_addfs(struct gfs *gfs, struct fs *fs, struct fs *pfs) {
         return EOVERFLOW;
     }
     child = pfs ? pfs->fs_child : lc_getGlobalFs(gfs);
+    *inval = pfs && pfs->fs_child && pfs->fs_child->fs_single;
 
     /* Add this file system to the layer list or root file systems list */
     if (child) {
+        child->fs_single = false;
         fs->fs_prev = child;
         if (child->fs_next) {
             child->fs_next->fs_prev = fs;
@@ -323,6 +325,14 @@ lc_addfs(struct gfs *gfs, struct fs *fs, struct fs *pfs) {
         child->fs_super->sb_nextLayer = fs->fs_sblock;
         child->fs_super->sb_flags |= LC_SUPER_DIRTY;
     } else if (pfs) {
+
+        /* Tag the very first read-write init layer created as the single child
+         * of the base layer so that it can cache shared data in kernel page
+         * cache.
+         */
+        if (fs->fs_super->sb_flags & LC_SUPER_INIT) {
+            fs->fs_single = true;
+        }
         pfs->fs_child = fs;
         pfs->fs_super->sb_childLayer = fs->fs_sblock;
         pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
@@ -359,6 +369,7 @@ lc_gfsAlloc(int fd) {
     memset(gfs->gfs_roots, 0, sizeof(ino_t) * LC_LAYER_MAX);
     pthread_cond_init(&gfs->gfs_mcond, NULL);
     pthread_cond_init(&gfs->gfs_flusherCond, NULL);
+    pthread_cond_init(&gfs->gfs_cleanerCond, NULL);
     pthread_mutex_init(&gfs->gfs_lock, NULL);
     pthread_mutex_init(&gfs->gfs_alock, NULL);
     gfs->gfs_fd = fd;
@@ -385,6 +396,7 @@ lc_gfsDeinit(struct gfs *gfs) {
             LC_MEMTYPE_GFS);
     pthread_cond_destroy(&gfs->gfs_mcond);
     pthread_cond_destroy(&gfs->gfs_flusherCond);
+    pthread_cond_destroy(&gfs->gfs_cleanerCond);
     pthread_mutex_destroy(&gfs->gfs_lock);
     pthread_mutex_destroy(&gfs->gfs_alock);
 }

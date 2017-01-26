@@ -53,8 +53,8 @@ void *lc_malloc(struct fs *fs, size_t size, enum lc_memTypes type);
 void lc_mallocBlockAligned(struct fs *fs, void **memptr,
                            enum lc_memTypes type);
 void lc_free(struct fs *fs, void *ptr, size_t size, enum lc_memTypes type);
-bool lc_checkMemoryAvailable(void);
-void lc_waitMemory(void);
+bool lc_checkMemoryAvailable(bool flush);
+void lc_waitMemory(bool wait);
 void lc_memUpdateTotal(struct fs *fs, size_t size);
 void lc_memTransferCount(struct fs *fs, uint64_t count);
 void lc_checkMemStats(struct fs *fs, bool unmount);
@@ -107,7 +107,7 @@ void lc_superInit(struct super *super, uint64_t root, size_t size,
 struct fs *lc_getfs(ino_t ino, bool exclusive);
 uint64_t lc_getfsForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp);
 int lc_getIndex(struct fs *nfs, ino_t parent, ino_t ino);
-int lc_addfs(struct gfs *gfs, struct fs *fs, struct fs *pfs);
+int lc_addfs(struct gfs *gfs, struct fs *fs, struct fs *pfs, bool *inval);
 void lc_removefs(struct gfs *gfs, struct fs *fs);
 void lc_lock(struct fs *fs, bool exclusive);
 int lc_tryLock(struct fs *fs, bool exclusive);
@@ -145,6 +145,7 @@ void lc_inodeLock(struct inode *inode, bool exclusive);
 void lc_inodeUnlock(struct inode *inode);
 int lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void lc_invalidateInodePages(struct gfs *gfs, struct fs *fs);
+void lc_invalidateLayerPages(struct gfs *gfs, struct fs *fs);
 
 ino_t lc_dirLookup(struct fs *fs, struct inode *dir, const char *name);
 void lc_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,
@@ -203,7 +204,7 @@ void lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
 void lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head);
 void lc_addPageForWriteBack(struct gfs *gfs, struct fs *fs, struct page *head,
                             struct page *tail, uint64_t pcount);
-void *lc_flusher(void *data);
+void *lc_cleaner(void *data);
 
 uint64_t lc_copyPages(struct fs *fs, off_t off, size_t size,
                       struct dpage *dpages, struct fuse_bufvec *bufv,
@@ -218,9 +219,9 @@ void lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
 void lc_truncateFile(struct inode *inode, off_t size, bool remove);
 void lc_flushDirtyPages(struct gfs *gfs, struct fs *fs);
 void lc_addDirtyInode(struct fs *fs, struct inode *inode);
-void lc_flushDirtyInodeList(struct fs *fs, bool force);
+void lc_flushDirtyInodeList(struct fs *fs);
 void lc_invalidateDirtyPages(struct gfs *gfs, struct fs *fs);
-void lc_purgePages(struct gfs *gfs, bool force);
+void lc_wakeupCleaner(struct gfs *gfs, bool wait);
 bool lc_flushInodeDirtyPages(struct inode *inode, uint64_t page, bool unlock,
                              bool force);
 void lc_freePageData(struct gfs *gfs, struct fs *fs, char *data);

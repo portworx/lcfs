@@ -92,7 +92,7 @@ lc_serve(void *data) {
     struct fuse_session *se;
     bool fcancel = false;
     int err = 0, count;
-    pthread_t flusher;
+    pthread_t cleaner;
 
     if (!fd->fd_thread) {
         if (fuse_set_signal_handlers(fd->fd_se) == -1) {
@@ -100,7 +100,7 @@ lc_serve(void *data) {
             err = EPERM;
             goto out;
         }
-        err = pthread_create(&flusher, NULL, lc_flusher, NULL);
+        err = pthread_create(&cleaner, NULL, lc_cleaner, NULL);
         if (err) {
             fprintf(stderr,
                    "Flusher thread could not be created, err %d\n", err);
@@ -150,12 +150,12 @@ out:
         pthread_mutex_unlock(&gfs->gfs_lock);
         fuse_remove_signal_handlers(fd->fd_se);
 
-        /* Wait for flusher thread to exit */
+        /* Wait for cleaner thread to exit */
         if (fcancel) {
             pthread_mutex_lock(&gfs->gfs_lock);
-            pthread_cond_broadcast(&gfs->gfs_flusherCond);
+            pthread_cond_signal(&gfs->gfs_cleanerCond);
             pthread_mutex_unlock(&gfs->gfs_lock);
-            pthread_join(flusher, NULL);
+            pthread_join(cleaner, NULL);
         }
     }
 #ifdef FUSE3

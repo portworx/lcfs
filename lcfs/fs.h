@@ -65,8 +65,11 @@ struct gfs {
     /* condition on threads wait on low memory */
     pthread_cond_t gfs_mcond;
 
-    /* Condition variable flusher is waiting on */
+    /* Condition variable flusher thread is waiting on */
     pthread_cond_t gfs_flusherCond;
+
+    /* Condition variable cleaner thread is waiting on */
+    pthread_cond_t gfs_cleanerCond;
 
     /* Count of pages in use */
     uint64_t gfs_pcount;
@@ -105,7 +108,7 @@ struct gfs {
     int gfs_scount;
 
     /* Layer from pages being purged */
-    int gfs_tpIndex;
+    int gfs_cleanerIndex;
 
     /* Number of mounts */
     uint8_t gfs_mcount;
@@ -114,7 +117,7 @@ struct gfs {
     bool gfs_unmounting;
 
     /* Pages being purged */
-    bool gfs_tpurging;
+    bool gfs_pcleaning;
 
     /* Set if extended attributes are enabled */
     bool gfs_xattr_enabled;
@@ -298,6 +301,9 @@ struct fs {
 
     /* Next index in inode block */
     uint8_t fs_inodeBlockIndex;
+
+    /* Set if single read-write child of a read-only parent */
+    bool fs_single;
 
     /* Set if readOnly layer */
     bool fs_readOnly;

@@ -60,6 +60,7 @@ lc_addDirtyPage(struct fs *fs, struct dhpage **dhpage, uint64_t page,
     hpage->dh_page.dp_data = data;
     hpage->dh_page.dp_poffset = poffset;
     hpage->dh_page.dp_psize = psize;
+    hpage->dh_page.dp_pread = 0;
 
     /* Keep the list sorted */
     while (next && (page < next->dh_pg)) {
@@ -163,20 +164,16 @@ lc_removeDirtyInode(struct fs *fs, struct inode *inode, struct inode *prev) {
 
 /* Flush inodes on the dirty list */
 void
-lc_flushDirtyInodeList(struct fs *fs, bool force) {
+lc_flushDirtyInodeList(struct fs *fs) {
     struct inode *inode, *prev = NULL, *next;
-    struct gfs *gfs = fs->fs_gfs;
-    bool flushed;
+    bool flushed, force;
     uint64_t id;
 
     if ((fs->fs_dirtyInodes == NULL) || fs->fs_removed) {
         return;
     }
-    if (force) {
-        pthread_mutex_lock(&fs->fs_dilock);
-    } else if (pthread_mutex_trylock(&fs->fs_dilock)) {
-        return;
-    }
+    force = fs->fs_pcount > LC_MAX_LAYER_DIRTYPAGES;
+    pthread_mutex_lock(&fs->fs_dilock);
 
     /* Increment flusher id and store it with inodes flushed by this thread.
      * This helps to avoid processing same inodes over and over.
@@ -215,27 +212,15 @@ lc_flushDirtyInodeList(struct fs *fs, bool force) {
                         lc_addDirtyInode(fs, inode);
                     }
                     pthread_rwlock_unlock(&inode->i_rwlock);
+                } else if (fs->fs_pcount < (LC_MAX_LAYER_DIRTYPAGES / 2)) {
+                    return;
                 }
             } else {
                 pthread_rwlock_unlock(&inode->i_rwlock);
                 inode = next;
                 continue;
             }
-            if (fs->fs_pcount < (LC_MAX_LAYER_DIRTYPAGES / 2)) {
-                return;
-            }
-            if (force) {
-
-                /* If memory is available now, wakeup any threads waiting for
-                 * memory.
-                 */
-                if (lc_checkMemoryAvailable()) {
-                    pthread_cond_broadcast(&gfs->gfs_mcond);
-                }
-                pthread_mutex_lock(&fs->fs_dilock);
-            } else if (pthread_mutex_trylock(&fs->fs_dilock)) {
-                return;
-            }
+            pthread_mutex_lock(&fs->fs_dilock);
             prev = NULL;
             inode = fs->fs_dirtyInodes;
         } else {
@@ -317,7 +302,7 @@ lc_fillPage(struct gfs *gfs, struct inode *inode, struct dpage *dpage,
 /* Remove a dirty page from the inode's list */
 static inline char *
 lc_removeDirtyPage(struct gfs *gfs, struct inode *inode, uint64_t pg,
-                   bool release) {
+                   bool release, bool *cached) {
     struct dhpage *dhpage = NULL, **prev;
     struct fs *fs = inode->i_fs;
     struct dpage *page;
@@ -349,7 +334,14 @@ lc_removeDirtyPage(struct gfs *gfs, struct inode *inode, uint64_t pg,
         assert(pg < inode->i_pcount);
         page = &inode->i_page[pg];
     }
-    pdata = page ? page->dp_data : NULL;
+    if (page) {
+        pdata = page->dp_data;
+        if (cached) {
+            *cached = page->dp_pread;
+        }
+    } else {
+        pdata = NULL;
+    }
     if (pdata) {
         if (release) {
 
@@ -468,11 +460,13 @@ lc_getDirtyPage(struct gfs *gfs, struct inode *inode, uint64_t pg,
 
     dpage = lc_findDirtyPage(inode, pg);
     pdata = dpage ? dpage->dp_data : NULL;
-    if (pdata &&
-        ((dpage->dp_poffset != 0) || (dpage->dp_psize != LC_BLOCK_SIZE))) {
+    if (pdata) {
+        if ((dpage->dp_poffset != 0) || (dpage->dp_psize != LC_BLOCK_SIZE)) {
 
-        /* Fill up a partial page */
-        lc_fillPage(gfs, inode, dpage, pg, extents);
+            /* Fill up a partial page */
+            lc_fillPage(gfs, inode, dpage, pg, extents);
+        }
+        dpage->dp_pread = 1;
     }
     return pdata;
 }
@@ -513,6 +507,7 @@ lc_mergePage(struct gfs *gfs, struct inode *inode, uint64_t pg,
         }
         return 1;
     }
+    dpage->dp_pread = 0;
 
     /* If no dirty page exists, add the new page and return */
     if (dpage->dp_data == NULL) {
@@ -804,7 +799,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
     struct page *page, *dpage = NULL, *tpage = NULL;
     uint64_t fcount = 0, block = LC_INVALID_BLOCK;
     struct extent *extents = NULL, *extent, *tmp;
-    bool single, nocache;
+    bool single, cached;
     char *pdata;
     int64_t i;
 
@@ -887,10 +882,6 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
         lc_expandEmap(gfs, fs, inode);
     }
 
-    /* Invalidate pages if blocks are cached in kernel page cache */
-    nocache = inode->i_private && !fs->fs_readOnly &&
-              !(fs->fs_super->sb_flags & LC_SUPER_INIT);
-
     /* Queue the dirty pages for flushing after associating with newly
      * allocated blocks
      */
@@ -918,7 +909,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
         assert(count < rcount);
 
         /* Find the next dirty page */
-        pdata = lc_removeDirtyPage(gfs, inode, i, false);
+        pdata = lc_removeDirtyPage(gfs, inode, i, false, &cached);
         if (pdata) {
             assert(count < rcount);
             if (!single) {
@@ -953,7 +944,11 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
                 zcount++;
             }
             page = lc_getPageNew(gfs, fs, block + count, pdata);
-            page->p_nocache = nocache;
+
+            /* Invalidate the page after flush if it is cached in kernel page
+             * cache.
+             */
+            page->p_nocache = cached ? 1 : 0;
             if (tpage == NULL) {
                 tpage = page;
             }
@@ -1156,7 +1151,7 @@ lc_invalidatePages(struct gfs *gfs, struct fs *fs, struct inode *inode,
 
             /* Don't remove last paget if that is partially truncated */
             if ((i > pg) || ((size % LC_BLOCK_SIZE) == 0)) {
-                lc_removeDirtyPage(gfs, inode, i, true);
+                lc_removeDirtyPage(gfs, inode, i, true, NULL);
                 freed++;
             }
         }
