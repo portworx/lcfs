@@ -37,8 +37,8 @@ clean:
 
 
 PLUGIN_BASE_DIR=artifacts
-DOCKER_HUB_PXGRAPH_PLUGIN=lcfs
-DOCKER_HUB_PXGRAPH_TAG=latest
+DOCKER_HUB_LCFS_PLUGIN=lcfs
+DOCKER_HUB_LCFS_TAG=latest
 
 # assume top-level Makefile built lcfs_plugin.bin
 lcfs:
@@ -49,11 +49,11 @@ lcfs:
 	docker create --name rootfsimage rootfsimage
 	docker export rootfsimage | tar -x -C $(PLUGIN_BASE_DIR)/rootfs
 ifeq ($(origin DOCKER_HUB_REPO), undefined)
-	@echo "====================> creating plugin $(DOCKER_HUB_PXGRAPH_PLUGIN)"
-	docker plugin create $(DOCKER_HUB_PXGRAPH_PLUGIN) $(PLUGIN_BASE_DIR)
+	@echo "====================> creating plugin $(DOCKER_HUB_LCFS_PLUGIN)"
+	docker plugin create $(DOCKER_HUB_LCFS_PLUGIN) $(PLUGIN_BASE_DIR)
 else
-	@echo "====================> creating plugin $(DOCKER_HUB_REPO)/$(DOCKER_HUB_PXGRAPH_PLUGIN):$(DOCKER_HUB_PXGRAPH_TAG)"
-	docker plugin create $(DOCKER_HUB_REPO)/$(DOCKER_HUB_PXGRAPH_PLUGIN):$(DOCKER_HUB_PXGRAPH_TAG) $(PLUGIN_BASE_DIR)
+	@echo "====================> creating plugin $(DOCKER_HUB_REPO)/$(DOCKER_HUB_LCFS_PLUGIN):$(DOCKER_HUB_LCFS_TAG)"
+	docker plugin create $(DOCKER_HUB_REPO)/$(DOCKER_HUB_LCFS_PLUGIN):$(DOCKER_HUB_LCFS_TAG) $(PLUGIN_BASE_DIR)
 endif
 	docker rm -vf rootfsimage
 	docker rmi rootfsimage
@@ -62,10 +62,10 @@ endif
 
 push_plugin:
 ifeq ($(origin DOCKER_HUB_REPO), undefined)
-	@echo "please use 'make -e DOCKER_HUB_REPO=xxx -e DOCKER_HUB_PXGRAPH_PLUGIN=xxx -e DOCKER_HUB_PXGRAPH_TAG=xxx lcfs'"
+	@echo "please use 'make -e DOCKER_HUB_REPO=xxx -e DOCKER_HUB_LCFS_PLUGIN=xxx -e DOCKER_HUB_LCFS_TAG=xxx lcfs'"
 else
-	@echo "====================> Deploying container: docker push $(DOCKER_HUB_REPO)/$(DOCKER_HUB_PXGRAPH_PLUGIN):$(DOCKER_HUB_PXGRAPH_TAG)"
+	@echo "====================> Deploying container: docker push $(DOCKER_HUB_REPO)/$(DOCKER_HUB_LCFS_PLUGIN):$(DOCKER_HUB_LCFS_TAG)"
 	#@docker login --username=$(DOCKER_HUB_USER) --password=$(DOCKER_HUB_PASSWD)
-	docker plugin push $(DOCKER_HUB_REPO)/$(DOCKER_HUB_PXGRAPH_PLUGIN):$(DOCKER_HUB_PXGRAPH_TAG)
+	docker plugin push $(DOCKER_HUB_REPO)/$(DOCKER_HUB_LCFS_PLUGIN):$(DOCKER_HUB_LCFS_TAG)
 endif
 

@@ -6,7 +6,7 @@ SUDO=sudo
 DOCKER_BIN=docker
 DOCKER_SRV_BIN=dockerd
 
-PXGRAPH_IMG=${PXGRAPH_IMG:-"jvinod/lcfs:latest"}
+LCFS_PLUGIN=${LCFS_PLUGIN:-"portworx/lcfs"}
 DOCKER_MNT=${DOCKER_MNT:-"/var/lib/docker"}
 PLUGIN_MNT=${PLUGIN_MNT:-"/lcfs"}
 DEV=${DEV:-"/dev/sdc"}
@@ -54,10 +54,10 @@ function install_lcfs_binary()
 
 function remove_lcfs_plugin()
 {
-    ${SUDO} ${DOCKER_BIN} plugin ls | egrep -q "${PXGRAPH_IMG}"
+    ${SUDO} ${DOCKER_BIN} plugin ls | egrep -q "${LCFS_PLUGIN}"
     [ $? -ne 0 ] && return 0
-    ${SUDO} ${DOCKER_BIN} plugin disable ${PXGRAPH_IMG} &> /dev/null
-    ${SUDO} ${DOCKER_BIN} plugin rm ${PXGRAPH_IMG} &> /dev/null
+    ${SUDO} ${DOCKER_BIN} plugin disable ${LCFS_PLUGIN} &> /dev/null
+    ${SUDO} ${DOCKER_BIN} plugin rm ${LCFS_PLUGIN} &> /dev/null
 }
 
 function dockerd_manual_start()
@@ -97,7 +97,7 @@ if [ "$1" == "-stop" -o "$1" ==  "-stop-docker" ]; then
 	dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN} -s vfs"
 	remove_lcfs_plugin
 	killprocess ${DOCKER_SRV_BIN}
-	read -p "Zero out the lcfs device: ${DEV} (y/n)? " yn
+	read -p "Initialize the lcfs device: ${DEV} (y/n)? " yn
 	if [ "${yn,,}" = "y" ]; then
 	    ${SUDO} dd if=/dev/zero of=${DEV} count=1 bs=4096
 	fi
@@ -116,8 +116,8 @@ sleep 3
 # Restart docker
 dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN} -s vfs"
 remove_lcfs_plugin
-${SUDO} ${DOCKER_BIN} plugin install --grant-all-permissions ${PXGRAPH_IMG}
+${SUDO} ${DOCKER_BIN} plugin install --grant-all-permissions ${LCFS_PLUGIN}
 killprocess ${DOCKER_SRV_BIN}
-dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN} --experimental -s ${PXGRAPH_IMG}"
+dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN} --experimental -s ${LCFS_PLUGIN}"
 ${SUDO} ${DOCKER_BIN} info
 cleanup_and_exit $?

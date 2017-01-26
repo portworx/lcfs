@@ -2,10 +2,13 @@
 
 # A script to configure docker with portworx/lcfs storage driver on Ubuntu
 
-#Default docker directory
+# Device to configure LCFS file system
+DEVICE=$1
+
+# Default docker directory
 MNT=/var/lib/docker
 
-#Default plugin directory.  Do not change this without updating config.json.
+# Default plugin directory.  Do not change this without updating config.json.
 MNT2=/lcfs
 
 #Install docker if needed.
@@ -20,8 +23,6 @@ sudo fusermount -u $MNT
 sudo umount -f $MNT2 $MNT
 sudo rm -fr $MNT2 $MNT
 
-#Choose a device for lcfs
-export DEVICE=/dev/sdb
 sudo dd if=/dev/zero of=$DEVICE count=1 bs=4096
 
 sudo apt-get update
@@ -65,7 +66,7 @@ make
 
 # Mount lcfs
 sudo mkdir -p $MNT $MNT2
-sudo $WDIR/lcfs/lcfs/lcfs $DEVICE $MNT $MNT2 &
+sudo $WDIR/lcfs/lcfs/lcfs $DEVICE $MNT $MNT2
 sleep 3
 
 # Restart docker
@@ -79,11 +80,11 @@ docker plugin ls
 # Restart docker with lcfs
 sudo pkill dockerd
 sleep 3
-sudo dockerd -s portworx/lcfs &
+sudo dockerd --experimental -s portworx/lcfs &
 sleep 3
 docker info
 
 rm -fr $WDIR
 
 # pkill dockerd
-# fusermount -u $MNT2 $MNT
+# fusermount -u $MNT2

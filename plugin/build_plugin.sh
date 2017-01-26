@@ -10,13 +10,13 @@ if [ -z "${DOCKER_HUB_REPO}" ]; then
     exit -1;
 fi
 
-if [ -z "${DOCKER_HUB_PXGRAPH_PLUGIN}" ]; then
-    echo -e "Please set DOCKER_HUB_PXGRAPH_PLUGIN env variable."
+if [ -z "${DOCKER_HUB_LCFS_PLUGIN}" ]; then
+    echo -e "Please set DOCKER_HUB_LCFS_PLUGIN env variable."
     exit -1;
 fi
 
-if [ -z "${DOCKER_HUB_PXGRAPH_TAG}" ]; then
-    echo -e "Please set DOCKER_HUB_PXGRAPH_TAG env variable."
+if [ -z "${DOCKER_HUB_LCFS_TAG}" ]; then
+    echo -e "Please set DOCKER_HUB_LCFS_TAG env variable."
     exit -1;
 fi
 
@@ -34,7 +34,7 @@ id=$($SUDO docker create rootfsimage)
 # Export and untar the container into a rootfs directory
 $SUDO docker export "$id" | tar -x -C $PLUGIN_BASE_DIR/rootfs
 # Create a docker v2 plugin
-$SUDO docker plugin create $DOCKER_HUB_REPO/$DOCKER_HUB_PXGRAPH_PLUGIN:$DOCKER_HUB_PXGRAPH_TAG $PLUGIN_BASE_DIR
+$SUDO docker plugin create $DOCKER_HUB_REPO/$DOCKER_HUB_LCFS_PLUGIN:$DOCKER_HUB_LCFS_TAG $PLUGIN_BASE_DIR
 # Remove the temporary container
 $SUDO docker rm -vf "$id"
 $SUDO docker rmi rootfsimage

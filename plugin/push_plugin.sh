@@ -7,16 +7,16 @@ if [ -z "${DOCKER_HUB_REPO}" ]; then
     exit -1;
 fi
 
-if [ -z "${DOCKER_HUB_PXGRAPH_PLUGIN}" ]; then
-    echo -e "Please set DOCKER_HUB_PXGRAPH_PLUGIN env variable."
+if [ -z "${DOCKER_HUB_LCFS_PLUGIN}" ]; then
+    echo -e "Please set DOCKER_HUB_LCFS_PLUGIN env variable."
     exit -1;
 fi
 
-if [ -z "${DOCKER_HUB_PXGRAPH_TAG}" ]; then
-    echo -e "Please set DOCKER_HUB_PXGRAPH_TAG env variable."
+if [ -z "${DOCKER_HUB_LCFS_TAG}" ]; then
+    echo -e "Please set DOCKER_HUB_LCFS_TAG env variable."
     exit -1;
 fi
 
 
 # Push the plugin to docker hub
-$SUDO docker plugin push $DOCKER_HUB_REPO/$DOCKER_HUB_PXGRAPH_PLUGIN:$DOCKER_HUB_PXGRAPH_TAG
+$SUDO docker plugin push $DOCKER_HUB_REPO/$DOCKER_HUB_LCFS_PLUGIN:$DOCKER_HUB_LCFS_TAG
