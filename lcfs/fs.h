@@ -40,6 +40,12 @@ struct gfs {
     /* Lock protecting global list of file system chain */
     pthread_mutex_t gfs_lock;
 
+    /* Lock used by flusher */
+    pthread_mutex_t gfs_flock;
+
+    /* Lock used by cleaner */
+    pthread_mutex_t gfs_clock;
+
     /* background flusher */
     pthread_t gfs_flusher;
 

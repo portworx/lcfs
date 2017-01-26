@@ -164,7 +164,7 @@ lc_removeDirtyInode(struct fs *fs, struct inode *inode, struct inode *prev) {
 
 /* Flush inodes on the dirty list */
 void
-lc_flushDirtyInodeList(struct fs *fs) {
+lc_flushDirtyInodeList(struct fs *fs, bool all) {
     struct inode *inode, *prev = NULL, *next;
     bool flushed, force;
     uint64_t id;
@@ -172,7 +172,7 @@ lc_flushDirtyInodeList(struct fs *fs) {
     if ((fs->fs_dirtyInodes == NULL) || fs->fs_removed) {
         return;
     }
-    force = fs->fs_pcount > LC_MAX_LAYER_DIRTYPAGES;
+    force = all || (fs->fs_pcount > LC_MAX_LAYER_DIRTYPAGES);
     pthread_mutex_lock(&fs->fs_dilock);
 
     /* Increment flusher id and store it with inodes flushed by this thread.
@@ -212,7 +212,8 @@ lc_flushDirtyInodeList(struct fs *fs) {
                         lc_addDirtyInode(fs, inode);
                     }
                     pthread_rwlock_unlock(&inode->i_rwlock);
-                } else if (fs->fs_pcount < (LC_MAX_LAYER_DIRTYPAGES / 2)) {
+                } else if (!all &&
+                           (fs->fs_pcount < (LC_MAX_LAYER_DIRTYPAGES / 2))) {
                     return;
                 }
             } else {

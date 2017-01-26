@@ -625,11 +625,18 @@ lc_flusher(void *data) {
     while (!gfs->gfs_unmounting) {
         gettimeofday(&now, NULL);
         interval.tv_sec = now.tv_sec + LC_FLUSH_INTERVAL;
-        pthread_mutex_lock(&gfs->gfs_lock);
-        pthread_cond_timedwait(&gfs->gfs_flusherCond, &gfs->gfs_lock,
+        pthread_mutex_lock(&gfs->gfs_flock);
+        pthread_cond_timedwait(&gfs->gfs_flusherCond, &gfs->gfs_flock,
                                &interval);
+        pthread_mutex_unlock(&gfs->gfs_flock);
+
+        /* Check if any layers accumulated too many dirty pages */
+        pthread_mutex_lock(&gfs->gfs_lock);
         for (i = 0; i <= gfs->gfs_scount; i++) {
             fs = gfs->gfs_fs[i];
+            if (fs == NULL) {
+                continue;
+            }
             force = !lc_checkMemoryAvailable(true);
 
             /* Skip newly created layers */
@@ -640,22 +647,21 @@ lc_flusher(void *data) {
              * Dirty data from read only layers are flushed as those are
              * created.
              */
-            if (fs && !fs->fs_readOnly &&
-                !(fs->fs_super->sb_flags & LC_SUPER_INIT) &&
+            if (!fs->fs_readOnly && fs->fs_dirtyInodes &&
                 ((fs->fs_pcount > LC_MAX_LAYER_DIRTYPAGES) ||
                  (force && (fs->fs_ctime < recent))) &&
-                fs->fs_dirtyInodes && !lc_tryLock(fs, false)) {
+                !(fs->fs_super->sb_flags & LC_SUPER_INIT) &&
+                !lc_tryLock(fs, false)) {
                 pthread_mutex_unlock(&gfs->gfs_lock);
 
                 if (fs->fs_pcount) {
-                    lc_flushDirtyInodeList(fs);
+                    lc_flushDirtyInodeList(fs, false);
                 }
                 lc_unlock(fs);
                 pthread_mutex_lock(&gfs->gfs_lock);
             }
         }
         pthread_mutex_unlock(&gfs->gfs_lock);
-
     }
     return NULL;
 }
@@ -679,14 +685,17 @@ lc_wakeupCleaner(struct gfs *gfs, bool wait) {
     }
 
     /* Wakeup cleaner and wait to be woken up */
-    pthread_mutex_lock(&gfs->gfs_lock);
+    pthread_mutex_lock(&gfs->gfs_clock);
     if (!gfs->gfs_pcleaning) {
+
+        /* Let a single thread do the job to avoid contention on locks */
+        gfs->gfs_pcleaning = true;
         pthread_cond_signal(&gfs->gfs_cleanerCond);
     }
     while (!lc_checkMemoryAvailable(false) && gfs->gfs_pcleaning) {
-        pthread_cond_wait(&gfs->gfs_mcond, &gfs->gfs_lock);
+        pthread_cond_wait(&gfs->gfs_mcond, &gfs->gfs_clock);
     }
-    pthread_mutex_unlock(&gfs->gfs_lock);
+    pthread_mutex_unlock(&gfs->gfs_clock);
 }
 
 /* Purge some pages of a tree of layers */
@@ -700,8 +709,7 @@ lc_purgeTreePages(struct gfs *gfs, struct fs *fs) {
 
     assert(fs->fs_parent == NULL);
     for (j = 0; j < lbcache->lb_pcacheSize; j++) {
-        if ((lbcache->lb_pcount == 0) || fs->fs_removed ||
-            lc_checkMemoryAvailable(true)) {
+        if ((lbcache->lb_pcount == 0) || fs->fs_removed) {
             break;
         }
 
@@ -746,6 +754,9 @@ lc_purgeTreePages(struct gfs *gfs, struct fs *fs) {
         if (lc_checkMemoryAvailable(false)) {
             pthread_cond_broadcast(&gfs->gfs_mcond);
         }
+        if (lc_checkMemoryAvailable(true)) {
+            break;
+        }
     }
     return count;
 }
@@ -759,9 +770,7 @@ lc_purgePages(struct gfs *gfs, bool force) {
     struct fs *fs;
     int i;
 
-    /* Let a single thread do the job to avoid contention on locks */
     gfs->gfs_pcleaning = true;
-
     pthread_mutex_lock(&gfs->gfs_lock);
     for (i = 0; i <= gfs->gfs_scount; i++) {
 
@@ -770,6 +779,10 @@ lc_purgePages(struct gfs *gfs, bool force) {
             gfs->gfs_cleanerIndex = 0;
         }
         fs = gfs->gfs_fs[gfs->gfs_cleanerIndex];
+        if (fs == NULL) {
+            gfs->gfs_cleanerIndex++;
+            continue;
+        }
 
         /* Skip newly created layers */
         if (!force) {
@@ -780,7 +793,7 @@ lc_purgePages(struct gfs *gfs, bool force) {
         /* A file system being removed when shared lock fails on it, so skip
          * those.
          */
-        if (fs && (fs->fs_parent == NULL) &&
+        if ((fs->fs_parent == NULL) &&
             (force || (fs->fs_ctime < recent)) &&
             !lc_tryLock(fs, false)) {
             pthread_mutex_unlock(&gfs->gfs_lock);
@@ -788,14 +801,16 @@ lc_purgePages(struct gfs *gfs, bool force) {
             /* Purge clean pages for the tree */
             if (fs->fs_bcache->lb_pcount) {
                 count += lc_purgeTreePages(gfs, fs);
+                if (lc_checkMemoryAvailable(true)) {
+                    pthread_mutex_lock(&gfs->gfs_lock);
+                    lc_unlock(fs);
+                    break;
+                }
             }
             lc_unlock(fs);
             pthread_mutex_lock(&gfs->gfs_lock);
         }
         gfs->gfs_cleanerIndex++;
-        if (lc_checkMemoryAvailable(true)) {
-            break;
-        }
     }
 
     /* Wakeup flusher */
@@ -834,15 +849,15 @@ lc_cleaner(void *data) {
         force = true;
         gettimeofday(&now, NULL);
         interval.tv_sec = now.tv_sec + LC_CLEAN_INTERVAL;
-        pthread_mutex_lock(&gfs->gfs_lock);
+        pthread_mutex_lock(&gfs->gfs_clock);
         if (!gfs->gfs_pcleaning) {
-            err = pthread_cond_timedwait(&gfs->gfs_cleanerCond, &gfs->gfs_lock,
-                                         &interval);
+            err = pthread_cond_timedwait(&gfs->gfs_cleanerCond,
+                                         &gfs->gfs_clock, &interval);
             if (err == ETIMEDOUT) {
                 force = false;
             }
         }
-        pthread_mutex_unlock(&gfs->gfs_lock);
+        pthread_mutex_unlock(&gfs->gfs_clock);
         if (!gfs->gfs_unmounting) {
             lc_purgePages(gfs, force);
         }

@@ -219,7 +219,7 @@ void lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
 void lc_truncateFile(struct inode *inode, off_t size, bool remove);
 void lc_flushDirtyPages(struct gfs *gfs, struct fs *fs);
 void lc_addDirtyInode(struct fs *fs, struct inode *inode);
-void lc_flushDirtyInodeList(struct fs *fs);
+void lc_flushDirtyInodeList(struct fs *fs, bool all);
 void lc_invalidateDirtyPages(struct gfs *gfs, struct fs *fs);
 void lc_wakeupCleaner(struct gfs *gfs, bool wait);
 bool lc_flushInodeDirtyPages(struct inode *inode, uint64_t page, bool unlock,

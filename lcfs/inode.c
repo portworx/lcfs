@@ -219,6 +219,7 @@ lc_rootInit(struct fs *fs, ino_t root) {
 /* Set up layer root inode */
 void
 lc_setLayerRoot(struct gfs *gfs, ino_t ino) {
+    struct fs *fs = lc_getGlobalFs(gfs);;
     struct inode *dir;
 
     /* Switching layer root is supported just to make tests to run */
@@ -230,12 +231,15 @@ lc_setLayerRoot(struct gfs *gfs, ino_t ino) {
                gfs->gfs_layerRoot, ino);
         gfs->gfs_layerRoot = 0;
     }
-    dir = lc_getInode(lc_getGlobalFs(gfs), ino, NULL, false, false);
+    dir = lc_getInode(fs, ino, NULL, false, false);
     if (dir) {
         gfs->gfs_layerRoot = ino;
-        lc_dirConvertHashed(dir->i_fs, dir);
+        lc_dirConvertHashed(fs, dir);
         gfs->gfs_layerRootInode = dir;
         lc_inodeUnlock(dir);
+
+        /* Flush dirty pages created before starting layer management */
+        lc_flushDirtyInodeList(fs, true);
     }
     printf("layer root inode %ld\n", ino);
 }

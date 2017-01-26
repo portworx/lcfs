@@ -372,6 +372,8 @@ lc_gfsAlloc(int fd) {
     pthread_cond_init(&gfs->gfs_cleanerCond, NULL);
     pthread_mutex_init(&gfs->gfs_lock, NULL);
     pthread_mutex_init(&gfs->gfs_alock, NULL);
+    pthread_mutex_init(&gfs->gfs_clock, NULL);
+    pthread_mutex_init(&gfs->gfs_flock, NULL);
     gfs->gfs_fd = fd;
     return gfs;
 }
@@ -399,6 +401,8 @@ lc_gfsDeinit(struct gfs *gfs) {
     pthread_cond_destroy(&gfs->gfs_cleanerCond);
     pthread_mutex_destroy(&gfs->gfs_lock);
     pthread_mutex_destroy(&gfs->gfs_alock);
+    pthread_mutex_destroy(&gfs->gfs_clock);
+    pthread_mutex_destroy(&gfs->gfs_flock);
 }
 
 /* Initialize a file system after reading its super block */

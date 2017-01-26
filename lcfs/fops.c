@@ -1417,7 +1417,7 @@ out:
 
     /* Trigger flush of dirty pages if layer has too many now */
     if (!err && (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES)) {
-        lc_flushDirtyInodeList(fs);
+        lc_flushDirtyInodeList(fs, false);
     }
     lc_unlock(fs);
 }

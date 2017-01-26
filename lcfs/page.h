@@ -47,10 +47,10 @@
 #define LC_DHASH_MIN            1024
 
 /* Time in seconds background flusher is woken up */
-#define LC_FLUSH_INTERVAL       10
+#define LC_FLUSH_INTERVAL       120
 
 /* Time in seconds background cleaner is woken up */
-#define LC_CLEAN_INTERVAL       5
+#define LC_CLEAN_INTERVAL       60
 
 /* Time in seconds before flusher kicks in on a newly created layer */
 #define LC_FLUSH_TIME           120
