@@ -350,11 +350,8 @@ lc_format(struct gfs *gfs, struct fs *fs, size_t size) {
 }
 
 /* Allocate global file system */
-static struct gfs *
-lc_gfsAlloc(int fd) {
-    struct gfs *gfs = lc_malloc(NULL, sizeof(struct gfs), LC_MEMTYPE_GFS);
-
-    memset(gfs, 0, sizeof(struct gfs));
+static void
+lc_gfsInit(struct gfs *gfs, int fd) {
 
     /* XXX Allocate these more dynamically when new layers are created instead
      * of allocating memory for maximum number of layers supported.
@@ -375,7 +372,6 @@ lc_gfsAlloc(int fd) {
     pthread_mutex_init(&gfs->gfs_clock, NULL);
     pthread_mutex_init(&gfs->gfs_flock, NULL);
     gfs->gfs_fd = fd;
-    return gfs;
 }
 
 /* Free resources allocated for the global file system */
@@ -521,13 +517,10 @@ lc_setupSpecialInodes(struct gfs *gfs, struct fs *fs) {
 
 /* Mount the device */
 int
-lc_mount(char *device, struct gfs **gfsp) {
-    struct gfs *gfs;
+lc_mount(char *device, struct gfs *gfs) {
     struct fs *fs;
     size_t size;
     int i, fd;
-
-    lc_memoryInit();
 
     /* Open the device for mounting */
     fd = open(device, O_RDWR | O_DIRECT | O_EXCL | O_NOATIME, 0);
@@ -555,8 +548,7 @@ lc_mount(char *device, struct gfs **gfsp) {
         close(fd);
         return EINVAL;
     }
-
-    gfs = lc_gfsAlloc(fd);
+    lc_gfsInit(gfs, fd);
 
     /* Initialize a file system structure in memory */
     fs = lc_newFs(gfs, true);
@@ -604,7 +596,6 @@ lc_mount(char *device, struct gfs **gfsp) {
     /* Write out the file system super block */
     gfs->gfs_super->sb_flags |= LC_SUPER_DIRTY | LC_SUPER_MOUNTED;
     lc_superWrite(gfs, fs);
-    *gfsp = gfs;
     return 0;
 }
 

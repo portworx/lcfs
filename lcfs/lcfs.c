@@ -58,10 +58,27 @@ out:
     return err;
 }
 
+/* Destroy a fuse session */
+static void
+lc_stopSession(struct gfs *gfs, struct fuse_session *se, enum lc_mountId id) {
+#ifdef FUSE3
+    fuse_session_unmount(se);
+#else
+    fuse_session_remove_chan(gfs->gfs_ch[id]);
+#endif
+    fuse_session_destroy(se);
+    if (id == LC_LAYER_MOUNT) {
+        fuse_remove_signal_handlers(se);
+    }
+#ifndef FUSE3
+    fuse_unmount(gfs->gfs_mountpoint[id], gfs->gfs_ch[id]);
+#endif
+}
+
 /* Serve file system requests */
 static void *
 lc_serve(void *data) {
-    enum lc_mountId id = (enum lc_mountId)data;
+    enum lc_mountId id = (enum lc_mountId)data, other;
     struct gfs *gfs = getfs();
     struct fuse_session *se;
     bool fcancel = false;
@@ -69,21 +86,17 @@ lc_serve(void *data) {
     int err = 0;
 
     if (id == LC_LAYER_MOUNT) {
-        if (fuse_set_signal_handlers(gfs->gfs_se[id]) == -1) {
-            fprintf(stderr, "Error setting signal handlers\n");
-            err = EPERM;
-            goto out;
-        }
 
         /* Start a background thread to flush and purge pages */
         err = pthread_create(&cleaner, NULL, lc_cleaner, NULL);
         if (err) {
             fprintf(stderr,
-                   "Flusher thread could not be created, err %d\n", err);
+                    "Cleaner thread could not be created, err %d\n", err);
             goto out;
         }
         fcancel = true;
     }
+
 #ifdef FUSE3
     fuse_session_mount(gfs->gfs_se[id], gfs->gfs_mountpoint[id]);
 #else
@@ -105,15 +118,18 @@ lc_serve(void *data) {
 #else
                                    );
     }
-    fuse_session_remove_chan(gfs->gfs_ch[id]);
 #endif
 
 out:
     gfs->gfs_unmounting = true;
 
     /* Other mount need to exit as well */
+    other = (id == LC_BASE_MOUNT) ? LC_LAYER_MOUNT : LC_BASE_MOUNT;
+    if (gfs->gfs_se[other]) {
+        printf("Waiting for %s to be unmounted\n", gfs->gfs_mountpoint[other]);
+    }
     pthread_mutex_lock(&gfs->gfs_lock);
-    se = gfs->gfs_se[(id == LC_BASE_MOUNT) ? LC_LAYER_MOUNT : LC_BASE_MOUNT];
+    se = gfs->gfs_se[other];
     if (se) {
         fuse_session_exit(se);
     }
@@ -133,22 +149,13 @@ out:
             pthread_mutex_unlock(&gfs->gfs_lock);
             pthread_join(cleaner, NULL);
         }
-        fuse_remove_signal_handlers(se);
     }
-#ifdef FUSE3
-    fuse_session_unmount(se);
-#endif
-    fuse_session_destroy(se);
-#ifndef FUSE3
-    fuse_unmount(gfs->gfs_mountpoint[id], gfs->gfs_ch[id]);
-#endif
+    lc_stopSession(gfs, se, id);
     return NULL;
 }
-
-/* Mount a device at the specified mount point */
+/* Start a fuse session after processing the arguments */
 static int
-lc_fuseMount(struct gfs *gfs, char **arg, char *device, int argc,
-             enum lc_mountId id) {
+lc_fuseSession(struct gfs *gfs, char **arg, int argc, enum lc_mountId id) {
     struct fuse_args args = FUSE_ARGS_INIT(argc, arg);
     struct fuse_session *se;
     char *mountpoint = NULL;
@@ -167,11 +174,13 @@ lc_fuseMount(struct gfs *gfs, char **arg, char *device, int argc,
     if (opts.show_help) {
         fuse_cmdline_help();
         //fuse_lowlevel_help();
+        err = EINVAL;
         goto out;
     }
     if (opts.show_version) {
         printf("FUSE library version %s\n", fuse_pkgversion());
         fuse_lowlevel_version();
+        err = EINVAL;
         goto out;
     }
     se = fuse_session_new
@@ -198,30 +207,6 @@ lc_fuseMount(struct gfs *gfs, char **arg, char *device, int argc,
     }
     gfs->gfs_se[id] = se;
     gfs->gfs_mountpoint[id] = mountpoint;
-    if (id == LC_BASE_MOUNT) {
-        err = pthread_create(&gfs->gfs_mountThread, NULL,
-                             lc_serve, (void *)id);
-        if (err) {
-            perror("pthread_create");
-        } else {
-            printf("%s mounted at %s\n", device, mountpoint);
-        }
-    } else {
-
-        /* Wait for first thread to complete */
-        pthread_mutex_lock(&gfs->gfs_lock);
-        while (gfs->gfs_mcount == 0) {
-            pthread_cond_wait(&gfs->gfs_mountCond, &gfs->gfs_lock);
-        }
-        pthread_mutex_unlock(&gfs->gfs_lock);
-        if (!gfs->gfs_unmounting) {
-            printf("%s mounted at %s\n", device, mountpoint);
-            lc_serve((void *)id);
-        } else {
-            fprintf(stderr, "Aborting mount, base layer unmounted\n");
-            err = EIO;
-        }
-    }
     mountpoint = NULL;
 
 out:
@@ -232,14 +217,49 @@ out:
     return err;
 }
 
+/* Start file system services on mount points */
+static int
+lc_start(struct gfs *gfs, char *device, enum lc_mountId id) {
+    int err;
+
+    if (id == LC_BASE_MOUNT) {
+        err = pthread_create(&gfs->gfs_mountThread, NULL,
+                             lc_serve, (void *)id);
+        if (err) {
+            perror("pthread_create");
+        } else {
+            printf("%s mounted at %s\n", device, gfs->gfs_mountpoint[id]);
+        }
+    } else {
+
+        /* Wait for first thread to complete */
+        pthread_mutex_lock(&gfs->gfs_lock);
+        while (gfs->gfs_mcount == 0) {
+            pthread_cond_wait(&gfs->gfs_mountCond, &gfs->gfs_lock);
+        }
+        pthread_mutex_unlock(&gfs->gfs_lock);
+        if (!gfs->gfs_unmounting) {
+            printf("%s mounted at %s\n", device, gfs->gfs_mountpoint[id]);
+            lc_serve((void *)id);
+            err = 0;
+        } else {
+            fprintf(stderr, "Aborting mount, base layer unmounted\n");
+            err = EIO;
+        }
+    }
+    return err;
+}
+
 /* Mount the specified device and start serving requests */
 int
 main(int argc, char *argv[]) {
+    struct fuse_session *se = NULL;
     char *arg[argc + 1], completed;
     int i, err = -1, waiter[2];
     bool daemon = argc == 4;
     struct stat st;
 
+    /* Validate arguments */
 #ifdef FUSE3
     if (argc < 4) {
 #else
@@ -263,15 +283,40 @@ main(int argc, char *argv[]) {
         usage(argv[0]);
         exit(errno);
     }
-    if (!daemon) {
+
+    /* Fork a new process if run in background mode */
+    if (daemon) {
+        err = pipe(waiter);
+        if (err) {
+            perror("pipe");
+            exit(errno);
+        }
+        switch (fork()) {
+        case -1:
+            perror("fork");
+            exit(errno);
+
+        case 0:
+            break;
+
+        default:
+
+            /* Wait for the mount to complete */
+            err = read(waiter[0], &completed, sizeof(completed));
+            exit(0);
+        }
+    } else {
         printf("%s %s\n", Build, Release);
     }
 
-    /* XXX Block signals around lc_mount/lc_unmount calls */
-    err = lc_mount(argv[1], &gfs);
-    if (err) {
-        fprintf(stderr, "Mounting %s failed, err %d\n", argv[1], err);
-        exit(err);
+    /* Initialize memory allocator */
+    lc_memoryInit();
+
+    /* Allocate gfs structure */
+    gfs = lc_malloc(NULL, sizeof(struct gfs), LC_MEMTYPE_GFS);
+    memset(gfs, 0, sizeof(struct gfs));
+    if (daemon) {
+        gfs->gfs_waiter = waiter;
     }
 
     /* Setup arguments for fuse mount */
@@ -289,50 +334,66 @@ main(int argc, char *argv[]) {
         arg[i] = argv[i];
     }
 
-    /* Fork a new process if run in background mode */
-    if (daemon) {
-        err = pipe(waiter);
-        if (err) {
-            perror("pipe");
-            goto out;
-        }
-        gfs->gfs_waiter = waiter;
-        switch (fork()) {
-        case -1:
-            perror("fork");
-            goto out;
-
-        case 0:
-            break;
-
-        default:
-
-            /* Wait for the mount to complete */
-            err = read(waiter[0], &completed, sizeof(completed));
-            exit(0);
-        }
+    /* Start fuse sessions for the given mount points */
+    err = lc_fuseSession(gfs, arg, argc, LC_BASE_MOUNT);
+    if (err) {
+        goto out;
+    }
+    arg[1] = argv[3];
+    err = lc_fuseSession(gfs, arg, argc, LC_LAYER_MOUNT);
+    if (err) {
+        goto out;
     }
 
-    /* Mount the device at given mount points */
-    err = lc_fuseMount(gfs, arg, argv[1], argc, LC_BASE_MOUNT);
-    if (!err) {
-        arg[1] = argv[3];
-        err = lc_fuseMount(gfs, arg, argv[1], argc, LC_LAYER_MOUNT);
+    /* Mask signals before mounting the file system */
+    se = gfs->gfs_se[LC_LAYER_MOUNT];
+    if (fuse_set_signal_handlers(se) == -1) {
+        fprintf(stderr, "Error setting signal handlers\n");
+        se = NULL;
+        err = EPERM;
+        goto out;
+    }
+
+    /* Open the device as backend for the mount points */
+    err = lc_mount(argv[1], gfs);
+    if (err) {
+        fprintf(stderr, "Mounting %s failed, err %d\n", argv[1], err);
+        goto out;
+    }
+
+    /* Start file system services on the mount points */
+    for (i = 0; i < LC_MAX_MOUNTS; i++) {
+        err = lc_start(gfs, argv[1], i);
+        if (err) {
+            break;
+        }
+    }
+    if (!gfs->gfs_unmounting) {
+        assert(err);
+        gfs->gfs_unmounting = true;
+        lc_unmount(gfs);
+    }
+    assert(gfs->gfs_unmounting);
+
+out:
+    if (err) {
+        if (se) {
+            fuse_remove_signal_handlers(se);
+        }
+    } else {
+        printf("%s unmounted\n", argv[1]);
     }
     for (i = 0; i < LC_MAX_MOUNTS; i++) {
+        if (gfs->gfs_se[i]) {
+            assert(err);
+            lc_stopSession(gfs, gfs->gfs_se[i], i);
+        }
         if (gfs->gfs_mountpoint[i]) {
             lc_free(NULL, gfs->gfs_mountpoint[i], 0, LC_MEMTYPE_GFS);
         }
     }
-
-out:
-    if (!gfs->gfs_unmounting) {
-        gfs->gfs_unmounting = true;
-        lc_unmount(gfs);
-    }
     lc_free(NULL, arg[3], LC_SIZEOF_MOUNTARGS, LC_MEMTYPE_GFS);
     lc_free(NULL, gfs, sizeof(struct gfs), LC_MEMTYPE_GFS);
-    printf("%s unmounted\n", argv[1]);
     lc_displayGlobalMemStats();
     return err ? 1 : 0;
 }

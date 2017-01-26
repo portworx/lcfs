@@ -2,8 +2,8 @@
 CC=gcc
 CFLAGS=-g -Wall -D_FILE_OFFSET_BITS=64 -I/usr/include/fuse -I/usr/local/include/fuse
 LDFLAGS=-lz -ltcmalloc -pthread -lprofiler -lfuse
-#CFLAGS=-g -Wall $ -D_FILE_OFFSET_BITS=64 -I/usr/local/include/fuse3
-#LDFLAGS=-lz -ltcmalloc -pthread -L/usr/local/lib -lfuse3
+#CFLAGS=-g -Wall -D_FILE_OFFSET_BITS=64 -I/usr/include/fuse3 -I/usr/local/include/fuse3
+#LDFLAGS=-lz -ltcmalloc -pthread -lprofiler -L/usr/local/lib -lfuse3
 
 ifdef STATIC
 LCFSSTATICLIBS="libtcmalloc_and_profiler.a libfuse.a libunwind.a"
@@ -47,6 +47,6 @@ test: lcfs testxattr
 	sudo ./test.sh
 
 rpm:
-	@cd rpm && VERSION="`VERSION="$(VERSION)" ../version_gen.sh -p`" REVISION=$(REVISION) ./buildrpm.sh
+	@cd rpm && ./buildrpm.sh
 
 .PHONY: rpm version clean

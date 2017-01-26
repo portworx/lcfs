@@ -112,7 +112,7 @@ void lc_removefs(struct gfs *gfs, struct fs *fs);
 void lc_lock(struct fs *fs, bool exclusive);
 int lc_tryLock(struct fs *fs, bool exclusive);
 void lc_unlock(struct fs *fs);
-int lc_mount(char *device, struct gfs **gfsp);
+int lc_mount(char *device, struct gfs *gfs);
 void lc_newInodeBlock(struct gfs *gfs, struct fs *fs);
 void lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs);
 void lc_invalidateInodeBlocks(struct gfs *gfs, struct fs *fs);
