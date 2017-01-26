@@ -261,7 +261,7 @@ lc_removeLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
 #ifdef FUSE3
                                 gfs->gfs_se[LC_LAYER_MOUNT],
 #else
-                                gfs->gfs_ch,
+                                gfs->gfs_ch[LC_LAYER_MOUNT],
 #endif
                                 ino, root, name, strlen(name));
     lc_invalidateDirtyPages(gfs, fs);

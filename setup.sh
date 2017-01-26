@@ -88,3 +88,4 @@ rm -fr $WDIR
 
 # pkill dockerd
 # fusermount -u $MNT2
+# fusermount -u $MNT

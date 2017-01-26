@@ -89,7 +89,7 @@ system_docker_stop
 if [ "$1" != "-stop-docker" ]; then
     clean_mount "${PLUGIN_MNT}"
     clean_mount "${DOCKER_MNT}"
-    killprocess lcsf
+    killprocess lcfs
 fi
 
 if [ "$1" == "-stop" -o "$1" ==  "-stop-docker" ]; then

@@ -6,12 +6,8 @@ LCFS=$PWD/lcfs
 XATTR=$PWD/testxattr
 CSTAT=$PWD/cstat
 
-fusermount -u $MNT2 2>/dev/null
-fusermount -u $MNT 2>/dev/null
-umount -f $MNT 2>/dev/null
-umount -f $MNT2 2>/dev/null
-fusermount -u $MNT2 2>/dev/null
-fusermount -u $MNT 2>/dev/null
+umount -f $MNT $MNT2 2>/dev/null
+sleep 10
 rm -fr $MNT $MNT2 2>/dev/null
 mkdir $MNT $MNT2
 
@@ -19,7 +15,7 @@ DEVICE=/tmp/lcfs-testdevice
 rm $DEVICE 2>/dev/null
 dd if=/dev/zero of=$DEVICE count=100000 bs=4096
 
-$LCFS $DEVICE $MNT $MNT2 &
+$LCFS $DEVICE $MNT $MNT2
 sleep 10
 cd $MNT
 
@@ -138,7 +134,6 @@ docker ps --all --format {{.ID}} | xargs docker rm
 docker rmi hello-world
 pkill dockerd
 sleep 10
-service docker start
 
 rmdir $MNT/lcfs
 mkdir $MNT/lcfs/dir
@@ -160,11 +155,11 @@ done
 set -x
 cd -
 
-fusermount -u $MNT2
-fusermount -u $MNT
+umount -f $MNT/plugins/*/rootfs/lcfs
+umount -f $MNT $MNT2 2>/dev/null
 sleep 10
 
-$LCFS $DEVICE $MNT $MNT2 &
+$LCFS $DEVICE $MNT $MNT2
 sleep 10
 cd $MNT
 ls -ltRi > /dev/null
@@ -181,11 +176,10 @@ set -x
 rmdir dir
 cd -
 
-fusermount -u $MNT2
-fusermount -u $MNT
+umount -f $MNT $MNT2 2>/dev/null
 sleep 10
 
-$LCFS $DEVICE $MNT $MNT2 &
+$LCFS $DEVICE $MNT $MNT2
 sleep 10
 cd $MNT
 
@@ -197,9 +191,8 @@ cd -
 
 df -k $MNT
 df -i $MNT
-fusermount -u $MNT2
-fusermount -u $MNT
-sleep 10
 
+umount -f $MNT $MNT2 2>/dev/null
+sleep 10
 rm -fr $MNT $MNT2 $DEVICE
 wait

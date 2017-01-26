@@ -34,3 +34,4 @@ sudo dd if=/dev/zero of=$DEVICE count=1 bs=4096
 sudo ./lcfs $DEVICE $MNT $MNT2
 
 # sudo fusermount -u $MNT2
+# sudo fusermount -u $MNT

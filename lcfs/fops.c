@@ -1061,7 +1061,7 @@ lc_release(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
 #ifdef FUSE3
                                          gfs->gfs_se[LC_LAYER_MOUNT],
 #else
-                                         gfs->gfs_ch,
+                                         gfs->gfs_ch[LC_LAYER_MOUNT],
 #endif
                                          ino, 0, -1);
     }
@@ -1453,6 +1453,7 @@ lc_readdirplus(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 static void
 lc_init(void *userdata, struct fuse_conn_info *conn) {
     struct gfs *gfs = (struct gfs *)userdata;
+    uint32_t count;
 
 #ifdef FUSE3
 
@@ -1466,19 +1467,26 @@ lc_init(void *userdata, struct fuse_conn_info *conn) {
     /* Need to support ioctls on directories */
     conn->want |= FUSE_CAP_IOCTL_DIR;
 #endif
-    if (gfs) {
+    count = __sync_add_and_fetch(&gfs->gfs_mcount, 1);
+    if (count == LC_MAX_MOUNTS) {
 #ifdef LC_PROFILING
         ProfilerStart("/tmp/lcfs");
 #endif
+    } else {
+        pthread_mutex_lock(&gfs->gfs_lock);
+        pthread_cond_signal(&gfs->gfs_mountCond);
+        pthread_mutex_unlock(&gfs->gfs_lock);
     }
 }
 
-/* Destroy a file system */
+/* Unmount file system when both filesystems are unmounted */
 static void
 lc_destroy(void *fsp) {
     struct gfs *gfs = (struct gfs *)fsp;
+    uint32_t count;
 
-    if (gfs) {
+    count = __sync_sub_and_fetch(&gfs->gfs_mcount, 1);
+    if (count == 0) {
 #ifdef LC_PROFILING
         ProfilerStop();
 #endif

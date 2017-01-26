@@ -11,13 +11,16 @@ enum lc_mountId {
     LC_LAYER_MOUNT = 1, /* Mount for layer management */
 
     LC_MAX_MOUNTS = 2, /* Number of mount points device mounted at */
-};
+} __attribute__((packed));
 
 /* Global file system */
 struct gfs {
 
     /* File descriptor of the underlying device */
     int gfs_fd;
+
+    /* Last index in use in gfs_fs/gfs_roots */
+    int gfs_scount;
 
     /* Global File system super block */
     struct super *gfs_super;
@@ -46,7 +49,10 @@ struct gfs {
     /* Lock used by cleaner */
     pthread_mutex_t gfs_clock;
 
-    /* background flusher */
+    /* Thread serving base mount */
+    pthread_t gfs_mountThread;
+
+    /* Background flusher */
     pthread_t gfs_flusher;
 
     /* Zero page */
@@ -56,8 +62,14 @@ struct gfs {
     struct fuse_session *gfs_se[LC_MAX_MOUNTS];
 #ifndef FUSE3
     /* fuse channel */
-    struct fuse_chan *gfs_ch;
+    struct fuse_chan *gfs_ch[LC_MAX_MOUNTS];
 #endif
+
+    /* Mount points */
+    char *gfs_mountpoint[LC_MAX_MOUNTS];
+
+    /* pipe to communicate with parent */
+    int *gfs_waiter;
 
     /* Number of blocks reserved */
     uint64_t gfs_blocksReserved;
@@ -68,7 +80,10 @@ struct gfs {
     /* Lock protecting allocations */
     pthread_mutex_t gfs_alock;
 
-    /* condition on threads wait on low memory */
+    /* Condition to wait for mount to finish */
+    pthread_cond_t gfs_mountCond;
+
+    /* Condition on threads wait on low memory */
     pthread_cond_t gfs_mcond;
 
     /* Condition variable flusher thread is waiting on */
@@ -110,9 +125,6 @@ struct gfs {
     /* Pages reused */
     uint64_t gfs_preused;
 
-    /* Last index in use in gfs_fs/gfs_roots */
-    int gfs_scount;
-
     /* Layer from pages being purged */
     int gfs_cleanerIndex;
 
@@ -127,7 +139,7 @@ struct gfs {
 
     /* Set if extended attributes are enabled */
     bool gfs_xattr_enabled;
-};
+} __attribute__((packed));
 
 /* A file system structure created for each layer */
 struct fs {

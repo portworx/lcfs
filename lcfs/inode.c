@@ -693,7 +693,7 @@ lc_invalidateLayerPages(struct gfs *gfs, struct fs *fs) {
 #ifdef FUSE3
                                                  gfs->gfs_se[LC_LAYER_MOUNT],
 #else
-                                                 gfs->gfs_ch,
+                                                 gfs->gfs_ch[LC_LAYER_MOUNT],
 #endif
                                                  inode->i_ino, 0, -1);
             }
@@ -729,7 +729,7 @@ lc_destroyInodes(struct fs *fs, bool remove) {
 #ifdef FUSE3
                                                  gfs->gfs_se[LC_LAYER_MOUNT],
 #else
-                                                 gfs->gfs_ch,
+                                                 gfs->gfs_ch[LC_LAYER_MOUNT],
 #endif
                                                  inode->i_ino, 0, -1);
             }

@@ -514,7 +514,7 @@ lc_removeTree(struct fs *fs, struct inode *dir) {
 #ifdef FUSE3
                                                  gfs->gfs_se[LC_LAYER_MOUNT],
 #else
-                                                 gfs->gfs_ch,
+                                                 gfs->gfs_ch[LC_LAYER_MOUNT],
 #endif
                                                  dirent->di_ino, 0, -1);
             }
