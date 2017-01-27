@@ -14,7 +14,7 @@ LCFS_IMG=${LCFS_IMG:-"portworx/lcfs:latest"}
 DOCKER_MNT=${DOCKER_MNT:-"/var/lib/docker"}
 PLUGIN_MNT=${PLUGIN_MNT:-"/lcfs"}
 DEVFL=${DEVFL:-"/lcfs-dev-file"}
-DEV=${DEV:-"/dev/sdz"}
+DEV=${DEV:-"/dev/sdNN"}
 DSZ=${DSZ:-"500M"}
 
 LOCAL_DNLD=/opt/pwx/dnld
