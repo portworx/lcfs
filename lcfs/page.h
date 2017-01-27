@@ -18,8 +18,11 @@
 /* XXX Adjust this with size of the file */
 #define LC_PAGECACHE_SIZE  32
 
-/* Maximum number of blocks grouped in a single I/O request */
-#define LC_CLUSTER_SIZE    256
+/* Maximum number of blocks grouped in a single read request */
+#define LC_READ_CLUSTER_SIZE    32
+
+/* Maximum number of blocks grouped in a single write request */
+#define LC_WRITE_CLUSTER_SIZE   256
 
 /* Maximum memory in bytes allowed for data pages */
 #define LC_PCACHE_MEMORY        (512ull * 1024ull * 1024ull)

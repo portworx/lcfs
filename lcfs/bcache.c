@@ -116,10 +116,16 @@ lc_pcUnLockHash(struct fs *fs, uint32_t lhash) {
     pthread_mutex_unlock(&fs->fs_bcache->lb_pcacheLocks[lhash]);
 }
 
+/* Return the read cluster block number */
+static inline uint64_t
+lc_clusterBlock(uint64_t block) {
+    return block / LC_READ_CLUSTER_SIZE;
+}
+
 /* Lock taken while reading a page */
 static inline uint32_t
 lc_lockPageRead(struct fs *fs, uint64_t block) {
-    uint32_t lhash = lc_lockHash(fs, block);
+    uint32_t lhash = lc_lockHash(fs, lc_clusterBlock(block));
 
     pthread_mutex_lock(&fs->fs_bcache->lb_pioLocks[lhash]);
     return lhash;
@@ -260,11 +266,14 @@ lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head) {
 /* Release pages */
 void
 lc_releaseReadPages(struct gfs *gfs, struct fs *fs,
-                    struct page **pages, uint64_t pcount) {
+                    struct page **pages, uint64_t pcount, bool nocache) {
     uint64_t i;
 
     for (i = 0; i < pcount; i++) {
-        lc_releasePage(gfs, fs, pages[i], true);
+        if (nocache) {
+            pages[i]->p_nocache = nocache;
+        }
+        lc_releasePage(gfs, fs, pages[i], !nocache);
     }
 }
 
@@ -347,9 +356,9 @@ struct page *
 lc_getPage(struct fs *fs, uint64_t block, bool read) {
     int hash = lc_pageBlockHash(fs, block);
     struct pcache *pcache = fs->fs_bcache->lb_pcache;
+    bool hit = false, missed = false;
     struct page *page, *new = NULL;
     struct gfs *gfs = fs->fs_gfs;
-    bool hit = false;
     uint32_t lhash;
 
     assert(block);
@@ -404,10 +413,13 @@ retry:
     if (read && !page->p_dvalid) {
         lhash = lc_lockPageRead(fs, block);
         if (!page->p_dvalid) {
-            lc_mallocBlockAligned(fs->fs_rfs, (void **)&page->p_data,
-                                  LC_MEMTYPE_DATA);
+            if (page->p_data == NULL) {
+                lc_mallocBlockAligned(fs->fs_rfs, (void **)&page->p_data,
+                                      LC_MEMTYPE_DATA);
+            }
             lc_readBlock(gfs, fs, block, page->p_data);
             page->p_dvalid = 1;
+            missed = true;
         }
         lc_unlockPageRead(fs, lhash);
     }
@@ -415,10 +427,10 @@ retry:
     assert(!read || page->p_data);
     assert(!read || page->p_dvalid);
     assert(page->p_block == block);
-    if (hit) {
-        __sync_add_and_fetch(&gfs->gfs_phit, 1);
-    } else if (read) {
+    if (missed) {
         __sync_add_and_fetch(&gfs->gfs_pmissed, 1);
+    } else if (hit) {
+        __sync_add_and_fetch(&gfs->gfs_phit, 1);
     }
     return page;
 }
@@ -460,16 +472,124 @@ lc_getPageNoBlock(struct gfs *gfs, struct fs *fs, char *data,
  * page by the caller.
  */
 struct page *
-lc_getPageNewData(struct fs *fs, uint64_t block) {
+lc_getPageNewData(struct fs *fs, uint64_t block, bool lock) {
     struct page *page;
+    uint32_t lhash;
 
     page = lc_getPage(fs, block, false);
     if (page->p_data == NULL) {
-        lc_mallocBlockAligned(fs->fs_rfs, (void **)&page->p_data,
-                              LC_MEMTYPE_DATA);
+        if (lock) {
+
+            /* Lock is required when multiple threads read the pages of a
+             * file.
+             */
+            lhash = lc_lockPageRead(fs, block);
+            if (page->p_data == NULL) {
+                lc_mallocBlockAligned(fs->fs_rfs, (void **)&page->p_data,
+                                      LC_MEMTYPE_DATA);
+            }
+            lc_unlockPageRead(fs, lhash);
+        } else {
+            lc_mallocBlockAligned(fs->fs_rfs, (void **)&page->p_data,
+                                  LC_MEMTYPE_DATA);
+        }
     }
     page->p_hitCount = 0;
     return page;
+}
+
+/* Read in a cluster of blocks */
+void
+lc_readPages(struct gfs *gfs, struct fs *fs, struct page **pages,
+             uint32_t count) {
+    uint32_t i, iovcnt = 0, j = 0, rcount = 0;
+    uint64_t sblock, pblock = 0, cblock;
+    struct page *page = pages[0];
+    struct iovec *iovec;
+    uint32_t lhash;
+
+    /* Use pread(2) interface if there is just one block to read */
+    if (count == 1) {
+
+        /* Check if the page has valid data after racing with another thread */
+        if (!page->p_dvalid) {
+            sblock = page->p_block;
+            lhash = lc_lockPageRead(fs, sblock);
+            if (!page->p_dvalid) {
+                lc_readBlock(gfs, fs, sblock, page->p_data);
+                page->p_dvalid = 1;
+                rcount = 1;
+            }
+            lc_unlockPageRead(fs, lhash);
+        }
+    } else {
+        iovec = alloca(count * sizeof(struct iovec));
+        sblock = page->p_block;
+        cblock = lc_clusterBlock(sblock);
+        lhash = lc_lockPageRead(fs, sblock);
+        for (i = 0; i < count; i++) {
+            page = pages[i];
+
+            /* Skip pages with valid data (raced with another thread) */
+            if (page->p_dvalid) {
+                continue;
+            }
+
+            /* Issue if pages are not contiguous on disk, spanning across
+             * read clusters or iov accumulated maximum allowed.
+             */
+            if (iovcnt &&
+                (((pblock + 1) != page->p_block) ||
+                (cblock != lc_clusterBlock(page->p_block)) ||
+                (iovcnt >= LC_READ_CLUSTER_SIZE))) {
+                lc_readBlocks(gfs, fs, iovec, iovcnt, sblock);
+
+                /* Mark pages having valid data */
+                for (; j < i; j++) {
+                    pages[j]->p_dvalid = 1;
+                }
+                rcount += iovcnt;
+                iovcnt = 0;
+            }
+
+            /* When a new iovec is started, get the right lock */
+            if (i && (iovcnt == 0)) {
+                sblock = page->p_block;
+                if (cblock != lc_clusterBlock(sblock)) {
+                    lc_unlockPageRead(fs, lhash);
+                    lhash = lc_lockPageRead(fs, sblock);
+                    if (page->p_dvalid) {
+                        continue;
+                    }
+                }
+                cblock = lc_clusterBlock(sblock);
+            }
+
+            /* Add the page to iovec */
+            assert((page->p_block == sblock) ||
+                   (page->p_block == (pblock + 1)));
+            pblock = page->p_block;
+            assert(cblock == lc_clusterBlock(pblock));
+            iovec[iovcnt].iov_base = page->p_data;
+            iovec[iovcnt].iov_len = LC_BLOCK_SIZE;
+            iovcnt++;
+        }
+
+        /* Issue I/O on any remaining pages */
+        if (iovcnt) {
+            lc_readBlocks(gfs, fs, iovec, iovcnt, sblock);
+            for (; j < count; j++) {
+                pages[j]->p_dvalid = 1;
+            }
+            rcount += iovcnt;
+        }
+        lc_unlockPageRead(fs, lhash);
+    }
+    if (rcount) {
+
+        /* Consider all the pages read as missed in the cache */
+        __sync_add_and_fetch(&gfs->gfs_pmissed, rcount);
+    }
 }
 
 /* Release any blocks freed, pending in progress writes to complete */
@@ -524,7 +644,7 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
              * concurrently OR files flushed concurrently.
              */
             if ((i && ((page->p_block + 1) != block)) ||
-                (bcount >= LC_CLUSTER_SIZE)) {
+                (bcount >= LC_WRITE_CLUSTER_SIZE)) {
                 //lc_printf("Not contigous, block %ld previous block %ld i %ld count %ld\n", block, page->p_block, i, count);
                 lc_writeBlocks(gfs, fs, &iovec[j + 1], bcount, block);
                 bcount = 0;
@@ -562,7 +682,7 @@ lc_addPageForWriteBack(struct gfs *gfs, struct fs *fs, struct page *head,
     fs->fs_dpcount += pcount;
 
     /* Issue write when a certain number of dirty pages accumulated */
-    if (fs->fs_dpcount >= LC_CLUSTER_SIZE) {
+    if (fs->fs_dpcount >= LC_WRITE_CLUSTER_SIZE) {
         page = fs->fs_dpages;
         fs->fs_dpages = NULL;
         count = fs->fs_dpcount;

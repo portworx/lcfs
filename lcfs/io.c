@@ -13,6 +13,20 @@ lc_readBlock(struct gfs *gfs, struct fs *fs, off_t block, void *dbuf) {
     __sync_add_and_fetch(&fs->fs_reads, 1);
 }
 
+/* Read into a scatter gather list of buffers */
+void
+lc_readBlocks(struct gfs *gfs, struct fs *fs,
+              struct iovec *iov, int iovcnt, off_t block) {
+    size_t size;
+
+    //lc_printf("lc_readBlocks: Reading %d blocks %ld\n", iovcnt, block);
+    assert((block + iovcnt) < gfs->gfs_super->sb_tblocks);
+    size = preadv(gfs->gfs_fd, iov, iovcnt, block * LC_BLOCK_SIZE);
+    assert(size == (iovcnt * LC_BLOCK_SIZE));
+    __sync_add_and_fetch(&gfs->gfs_reads, 1);
+    __sync_add_and_fetch(&fs->fs_reads, 1);
+}
+
 /* Write a file system block */
 void
 lc_writeBlock(struct gfs *gfs, struct fs *fs, void *buf, off_t block) {
@@ -32,8 +46,8 @@ lc_writeBlocks(struct gfs *gfs, struct fs *fs,
                struct iovec *iov, int iovcnt, off_t block) {
     ssize_t count;
 
-    //lc_printf("lc_writeBlocks: Writing %d block %ld\n", iovcnt, block);
-    assert(block < gfs->gfs_super->sb_tblocks);
+    //lc_printf("lc_writeBlocks: Writing %d blocks %ld\n", iovcnt, block);
+    assert((block + iovcnt) < gfs->gfs_super->sb_tblocks);
     count = pwritev(gfs->gfs_fd, iov, iovcnt, block * LC_BLOCK_SIZE);
     assert(count == (iovcnt * LC_BLOCK_SIZE));
     __sync_add_and_fetch(&gfs->gfs_writes, 1);

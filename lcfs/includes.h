@@ -62,6 +62,8 @@ void lc_displayGlobalMemStats();
 void lc_displayMemStats(struct fs *fs);
 
 void lc_readBlock(struct gfs *gfs, struct fs *fs, off_t block, void *dbuf);
+void lc_readBlocks(struct gfs *gfs, struct fs *fs, struct iovec *iov,
+                   int iovcnt, off_t block);
 void lc_writeBlock(struct gfs *gfs, struct fs *fs, void *buf, off_t block);
 void lc_writeBlocks(struct gfs *gfs, struct fs *fs,
                     struct iovec *iov, int iovcnt, off_t block);
@@ -190,12 +192,14 @@ struct page *lc_getPageNoBlock(struct gfs *gfs, struct fs *fs, char *data,
                                struct page *prev);
 struct page *lc_getPageNew(struct gfs *gfs, struct fs *fs,
                            uint64_t block, char *data);
+void lc_readPages(struct gfs *gfs, struct fs *fs, struct page **pages,
+                  uint32_t count);
 void lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page,
                     bool read);
 void lc_releaseReadPages(struct gfs *gfs, struct fs *fs,
-                         struct page **pages, uint64_t pcount);
+                         struct page **pages, uint64_t pcount, bool nocache);
 int lc_invalPage(struct gfs *gfs, struct fs *fs, uint64_t block);
-struct page *lc_getPageNewData(struct fs *fs, uint64_t block);
+struct page *lc_getPageNewData(struct fs *fs, uint64_t blocki, bool lock);
 void lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
                          struct page *page, uint64_t block);
 void lc_freeBlocksAfterFlush(struct fs *fs, uint64_t count);
@@ -211,9 +215,9 @@ uint64_t lc_copyPages(struct fs *fs, off_t off, size_t size,
                       struct fuse_bufvec *dst);
 uint64_t lc_addPages(struct inode *inode, off_t off, size_t size,
                      struct dpage *dpages, uint64_t pcount);
-void lc_readPages(fuse_req_t req, struct inode *inode, off_t soffset,
-                  off_t endoffset, uint64_t asize, struct page **pages,
-                  struct fuse_bufvec *bufv);
+void lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode,
+                 off_t soffset, off_t endoffset, uint64_t asize,
+                 struct page **pages, struct fuse_bufvec *bufv);
 void lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
                    bool release, bool unlock);
 void lc_truncateFile(struct inode *inode, off_t size, bool remove);

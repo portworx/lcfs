@@ -79,7 +79,7 @@ lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs) {
 /* Allocate a new inode block */
 void
 lc_newInodeBlock(struct gfs *gfs, struct fs *fs) {
-    if (fs->fs_inodeBlockCount >= LC_CLUSTER_SIZE) {
+    if (fs->fs_inodeBlockCount >= LC_WRITE_CLUSTER_SIZE) {
         lc_flushInodeBlocks(gfs, fs);
     }
 

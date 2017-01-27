@@ -580,7 +580,7 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             //lc_printf("Writing inode %ld to block %ld\n", inode->i_ino, inode->i_block);
             if (allocated) {
                 assert(offset == 0);
-                page = lc_getPageNewData(fs, block);
+                page = lc_getPageNewData(fs, block, false);
 
                 /* Zero out rest of the block */
                 memset(&page->p_data[sizeof(struct dinode)], 0,
@@ -614,7 +614,7 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
                 page->p_dnext = fs->fs_inodePages;
                 fs->fs_inodePages = page;
                 fs->fs_inodePagesCount++;
-                if (fs->fs_inodePagesCount >= LC_CLUSTER_SIZE) {
+                if (fs->fs_inodePagesCount >= LC_WRITE_CLUSTER_SIZE) {
                     lc_flushInodePages(gfs, fs);
                 }
             } else {

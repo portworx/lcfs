@@ -13,7 +13,7 @@
 #define LC_FILENAME_MAX 255
 
 /* Attempt to cluster these many inodes together */
-#define LC_INODE_CLUSTER_SIZE   LC_CLUSTER_SIZE
+#define LC_INODE_CLUSTER_SIZE   LC_WRITE_CLUSTER_SIZE
 
 /* Inode cache header */
 struct icache {

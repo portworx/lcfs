@@ -948,7 +948,7 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     if (endoffset > fsize) {
         endoffset = fsize;
     }
-    lc_readPages(req, inode, off, endoffset, pcount, pages, bufv);
+    lc_readFile(req, fs, inode, off, endoffset, pcount, pages, bufv);
     lc_inodeUnlock(inode);
 
 out:

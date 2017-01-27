@@ -303,7 +303,7 @@ lc_fillPage(struct gfs *gfs, struct inode *inode, struct dpage *dpage,
 /* Remove a dirty page from the inode's list */
 static inline char *
 lc_removeDirtyPage(struct gfs *gfs, struct inode *inode, uint64_t pg,
-                   bool release, bool *cached) {
+                   bool release, bool *read) {
     struct dhpage *dhpage = NULL, **prev;
     struct fs *fs = inode->i_fs;
     struct dpage *page;
@@ -337,8 +337,8 @@ lc_removeDirtyPage(struct gfs *gfs, struct inode *inode, uint64_t pg,
     }
     if (page) {
         pdata = page->dp_data;
-        if (cached) {
-            *cached = page->dp_pread;
+        if (read) {
+            *read = page->dp_pread;
         }
     } else {
         pdata = NULL;
@@ -728,20 +728,20 @@ lc_addPages(struct inode *inode, off_t off, size_t size,
 
 /* Read specified pages of a file */
 void
-lc_readPages(fuse_req_t req, struct inode *inode, off_t soffset,
-             off_t endoffset, uint64_t asize, struct page **pages,
-             struct fuse_bufvec *bufv) {
+lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode, off_t soffset,
+            off_t endoffset, uint64_t asize, struct page **pages,
+            struct fuse_bufvec *bufv) {
     uint64_t block, pg = soffset / LC_BLOCK_SIZE, pcount = 0, i = 0;
     size_t psize, rsize = endoffset - soffset;
+    struct page *page = NULL, **rpages = NULL;
     struct extent *extent = inode->i_emap;
     off_t poffset, off = soffset;
-    struct fs *fs = inode->i_fs;
     struct gfs *gfs = fs->fs_gfs;
-    struct page *page = NULL;
+    uint32_t count, rcount = 0;
     char *data;
 
-    /* XXX Issue a single read if pages are not present in cache */
     assert(S_ISREG(inode->i_mode));
+    count = (rsize / LC_BLOCK_SIZE) + 2;
     while (rsize) {
         assert(pg == (off / LC_BLOCK_SIZE));
         if (off == soffset) {
@@ -770,14 +770,30 @@ lc_readPages(fuse_req_t req, struct inode *inode, off_t soffset,
             } else {
 
                 /* Get the page */
-                page = lc_getPage(fs, block, true);
+                if ((off == soffset) && (rsize == psize)) {
+                    page = lc_getPage(fs, block, true);
+                } else {
+                    page = lc_getPageNewData(fs, block, true);
+                }
                 bufv->buf[i].mem = &page->p_data[poffset];
                 pages[pcount++] = page;
+
+                /* If page does not have valid data, add the page to the list
+                 * for reading from disk.
+                 */
+                if (!page->p_dvalid) {
+                    if (rpages == NULL) {
+                        rpages = alloca(count * sizeof(struct page *));
+                    }
+                    rpages[rcount] = page;
+                    rcount++;
+                }
             }
         } else {
             bufv->buf[i].mem = &data[poffset];
         }
         bufv->buf[i].size = psize;
+        count--;
         i++;
         pg++;
         off += psize;
@@ -786,8 +802,17 @@ lc_readPages(fuse_req_t req, struct inode *inode, off_t soffset,
     assert(i <= asize);
     assert(pcount <= asize);
     bufv->count = i;
+
+    /* Read in any pages without valid data associated with */
+    if (rcount) {
+        lc_readPages(gfs, fs, rpages, rcount);
+    }
     fuse_reply_data(req, bufv, FUSE_BUF_SPLICE_MOVE);
-    lc_releaseReadPages(fs->fs_gfs, fs, pages, pcount);
+    lc_releaseReadPages(gfs, fs, pages, pcount, false);
+#if 0
+                        ((inode->i_fs == fs) && inode->i_private) ||
+                        (fs->fs_parent && fs->fs_parent->fs_single));
+#endif
 }
 
 /* Flush dirty pages of an inode */
@@ -800,7 +825,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
     struct page *page, *dpage = NULL, *tpage = NULL;
     uint64_t fcount = 0, block = LC_INVALID_BLOCK;
     struct extent *extents = NULL, *extent, *tmp;
-    bool single, cached;
+    bool single, read;
     char *pdata;
     int64_t i;
 
@@ -910,7 +935,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
         assert(count < rcount);
 
         /* Find the next dirty page */
-        pdata = lc_removeDirtyPage(gfs, inode, i, false, &cached);
+        pdata = lc_removeDirtyPage(gfs, inode, i, false, &read);
         if (pdata) {
             assert(count < rcount);
             if (!single) {
@@ -946,10 +971,9 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
             }
             page = lc_getPageNew(gfs, fs, block + count, pdata);
 
-            /* Invalidate the page after flush if it is cached in kernel page
-             * cache.
-             */
-            page->p_nocache = cached ? 1 : 0;
+            if (read) {
+                page->p_hitCount++;
+            }
             if (tpage == NULL) {
                 tpage = page;
             }
