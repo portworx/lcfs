@@ -1,4 +1,3 @@
-sloc)  2.05 KB
 package main
 
 import (
@@ -51,8 +50,8 @@ func main() {
 			Value: 0,
 		},
 	}
-         
-    // XXX Specifying All argument for tests/driver does not seem to work.
+
+	// XXX Specifying All argument for tests/driver does not seem to work.
 	app.Commands = []cli.Command{
 		{
 			Name:    "run",
