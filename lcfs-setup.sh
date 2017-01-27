@@ -82,8 +82,12 @@ function dockerd_manual_start()
     local out_fl=/tmp/ldocker.out.$$
 
     ${dcmd[@]} >> ${out_fl} 2>&1 &
-    while [ ! -e ${out_fl} ] || tail -n 1 ${out_fl} | egrep -q 'listen on .*docker.sock$'; do echo "checking docker start..."; sleep 0.5; done
+    ${SUDO} timeout 15 bash -c "while [ ! -e ${out_fl} ] || ! (tail -n 5 ${out_fl} | egrep -q 'listen on .*docker.sock\".*$') ; do echo 'checking docker start...' ; sleep 1; done"
+    local status=$?
+
+    [ ${status} -ne 0 ] && echo "Error: failed to start docker." && cat ${out_fl}
     ${SUDO} \rm ${out_fl}
+    [ ${status} -ne 0 ] && cleanup_and_exit 1
 }
 
 function system_docker_stop()
@@ -125,16 +129,18 @@ function lcfs_configure()
     if [ ! -e "${ldev}" ]; then
 	read -p  "LCFS device/file does not exist. Create file (y/n)? " dyn
         if [ "${dyn,,}" = "y" ]; then
-	    echo "LCFS device file [${DEVFL}]: " ldev
-	    echo "LCFS device file size [${DSZ}]: " lsz
-            ${SUDO} dd if=/dev/zero of=${ldev} count=1 bs=${lsz}
+	    read -p "LCFS file: ${ldev} size [${DSZ}]: " lsz
+	    [ -z "${lsz}" ] && lsz="${DSZ}"
+            ${SUDO} dd if=/dev/zero of=${ldev} count=1 bs=${lsz} &> /dev/null
 	    [ $? -ne 0 ] && echo "Error: Failed to create LCFS device file ${ldev}." && cleanup_and_exit 0
+#	    DEVFL="${ldev}"
 	    DSZ="${lsz}"
 	else
 	    echo "LCFS device or file required." && cleanup_and_exit 0
         fi
     fi
     [ -n "${ldev}" ] && DEV="${ldev}"
+    [ -f "${ldev}" ] && DEVFL="${ldev}"
 
     read -p "LCFS mount point [${PLUGIN_MNT}]: " lmnt
     [ -n "${lmnt}" ] && PLUGIN_MNT="${lmnt}"
@@ -146,8 +152,10 @@ function lcfs_configure()
     lcfs_configure_save
 }
 
-function reset_remove_lcfs
+function stop_remove_lcfs
 {
+    local rcode=$1
+
     system_docker_stop
 
     # Stop docker && cleanup
@@ -157,18 +165,20 @@ function reset_remove_lcfs
 	killprocess lcfs
     fi
 
-    if [ -n "${STOP}" -o -n "${REMOVE}" -o -n "${STOP_DOCKER}" ]; then
-	if [  -n "${REMOVE}" ]; then
-	    dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN} -s vfs"
-	    remove_lcfs_plugin
-	    killprocess ${DOCKER_SRV_BIN}
-	    [ -z "${ZERODEV}" ] && read -p "Initialize the lcfs device (y/n)? " yn
-	    if [ "${yn,,}" = "y" -o -n "${ZERODEV}"  ]; then
-		[ "${DEV}" != "/dev/sdNN" ] && ${SUDO} dd if=/dev/zero of=${DEV} count=1 bs=4096
-		${SUDO} \rm -f ${DEVFL}
-	    fi
+    if [ -n "${REMOVE}" ]; then
+	dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN} -s vfs"
+	remove_lcfs_plugin
+	killprocess ${DOCKER_SRV_BIN}
+	[ -z "${ZERODEV}" ] && read -p "Initialize the lcfs device (y/n)? " yn
+	if [ "${yn,,}" = "y" -o -n "${ZERODEV}"  ]; then
+	    [ "${DEV}" != "/dev/sdNN" ] && ${SUDO} dd if=/dev/zero of=${DEV} count=1 bs=4096 &> /dev/null
+	    ${SUDO} \rm -f ${DEVFL}
 	fi
     fi
+    [ -z "${rcode}" ] && rcode=0
+    [ -n "${STOP}" -o -n "${REMOVE}" -o -n "${STOP_DOCKER}" ] && cleanup_and_exit ${rcode}
+
+    return 0
 }
 
 function help()
@@ -193,12 +203,15 @@ while [ "$1" != "" ]; do
             ;;
         --stop)
 	    STOP="$1"
+	    stop_remove_lcfs
             ;;
         --remove)
 	    REMOVE="$1"
+	    stop_remove_lcfs
             ;;
         --stop-docker)
 	    STOP_DOCKER="$1"
+	    stop_remove_lcfs
             ;;
 	--configure)
 	    lcfs_configure
@@ -212,13 +225,15 @@ while [ "$1" != "" ]; do
 done
 
 # Install lcfs binary
-if [ -z "${START}" -a -z "${STOP}" -a -z "${REMOVE}" -a -z "${STOP_DOCKER}" ]; then
+if [ -z "${START}" ]; then
     download_lcfs_binary
     install_lcfs_binary
+elif [ ! -e "${LCFS_ENV_FL}" ]; then # --start was executed. Check config
+    echo "LCFS not configured.  Re-execute this command with no options for a default configuration or with the '--configure' option."
+    cleanup_and_exit 1
 fi
 
-reset_remove_lcfs
-[ -n "${STOP}" -o -n "${REMOVE}" -o -n "${STOP_DOCKER}" ] && cleanup_and_exit 0
+stop_remove_lcfs  # Stop existing docker if setup or --configure.
 
 # * Setup LCFS and start *
 
@@ -248,6 +263,6 @@ dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN} --experimental -s ${LCFS_IMG}"
 ${SUDO} ${DOCKER_BIN} info
 if [ -z "${START}" ]; then
     lcfs_configure_save
-    [ $? -ne 0 ] && echo "Error: LCFS save configuration failed. Setup failed." && REMOVE=yes && reset_remove_lcfs && cleanup_and_exit 1
+    [ $? -ne 0 ] && echo "Error: LCFS save configuration failed. Setup failed." && REMOVE=yes && stop_remove_lcfs 1  # exit(1)
 fi
 cleanup_and_exit $?
