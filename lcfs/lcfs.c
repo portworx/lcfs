@@ -30,7 +30,7 @@ lc_notifyParent(int *waiter) {
     int err;
 
     err = write(waiter[1], &completed, sizeof(completed));
-    assert(err == 0);
+    assert(err == sizeof(completed));
     close(waiter[0]);
     close(waiter[1]);
 }
@@ -418,7 +418,9 @@ main(int argc, char *argv[]) {
 
 out:
     if (err) {
-        lc_notifyParent(waiter);
+        if (daemon) {
+            lc_notifyParent(waiter);
+        }
     } else {
         printf("%s unmounted\n", argv[1]);
     }

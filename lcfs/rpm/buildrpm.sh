@@ -9,8 +9,8 @@ if [ "x$1" == "x" ] ; then
 else
 	NAME=lcfs-$1
 fi
-SUMMARY="PX-Graph driver"
-DESCRIPTION="PX-Graph is a graph driver for Docker that uses a new filesystem built specifically for container image management."
+SUMMARY="LCFS storage driver"
+DESCRIPTION="LCFS is a storage driver for Docker that uses a new filesystem built specifically for container image management."
 
 export PLATFORM=$(/bin/uname -m)
 export PROCESSOR=$(/bin/uname -p)

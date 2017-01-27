@@ -293,5 +293,5 @@
 			"revisionTime": "2017-01-04T12:27:03Z"
 		}
 	],
-	"rootPath": "github.com/portworx/px-graph/plugin"
+	"rootPath": "github.com/portworx/lcfs/plugin"
 }
