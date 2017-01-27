@@ -31,7 +31,7 @@ function clean_mount()
     [ -z "$1" ] && return 0
     mountpoint -q "$1"
     [ $? -eq 0 ] && ${SUDO} fusermount -q -u "$1" && sleep 3
-    for mnt in $(cat /proc/mounts | awk '{print $2}' | egrep ".*$1$"); do ${SUDO} umount -f "${mnt}"; done
+    for mnt in $(cat /proc/mounts | awk '{print $2}' | egrep "^$1"); do ${SUDO} umount -f "${mnt}"; done
     return 0
 }
 
@@ -146,28 +146,62 @@ function lcfs_configure()
     lcfs_configure_save
 }
 
+function reset_remove_lcfs
+{
+    system_docker_stop
+
+    # Stop docker && cleanup
+    if [ -z "${STOP_DOCKER}" ]; then
+	cat /proc/mounts
+	clean_mount "${PLUGIN_MNT}"
+	clean_mount "${DOCKER_MNT}"
+	killprocess lcfs
+    fi
+
+    if [ -n "${STOP}" -o -n "${REMOVE}" -o -n "${STOP_DOCKER}" ]; then
+	if [  -n "${REMOVE}" ]; then
+	    dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN} -s vfs"
+	    remove_lcfs_plugin
+	    killprocess ${DOCKER_SRV_BIN}
+	    [ -z "${ZERODEV}" ] && read -p "Initialize the lcfs device (y/n)? " yn
+	    if [ "${yn,,}" = "y" -o -n "${ZERODEV}"  ]; then
+		[ "${DEV}" != "/dev/sdNN" ] && ${SUDO} dd if=/dev/zero of=${DEV} count=1 bs=4096
+		${SUDO} \rm -f ${DEVFL}
+	    fi
+	fi
+    fi
+}
+
 function help()
 {
-    echo "Usage: $0 [--help] [--stop] [--stop-docker] [--setup]"
-    echo -e "\t--stop: Stop and remove lcfs."
-    echo -e "\t--stop-docker: Stop the docker process."
-    echo -e "\t--setup: Create and use configuration file."
-    echo -e "\t--help:  Display this message."
+    echo "Usage: $0 [--help] [--configure] [--start] [--stop] [--stop-docker] [--remove]"
+    echo -e "\t--configure: \tCreate and use configuration file."
+    echo -e "\t--start: \tStart docker and lcfs."
+    echo -e "\t--stop: \tStop docker and lcfs."
+    echo -e "\t--stop-docker: \tStop the docker process."
+    echo -e "\t--remove: \tStop and remove lcfs."
+    echo -e "\t--help: \tDisplay this message."
     cleanup_and_exit $?
 }
 
 while [ "$1" != "" ]; do
     case $1 in
         -h |--help)
-        help
-        ;;
+            help
+            ;;
+        --start)
+	    START="$1"
+            ;;
         --stop)
 	    STOP="$1"
+            ;;
+        --remove)
+	    REMOVE="$1"
             ;;
         --stop-docker)
 	    STOP_DOCKER="$1"
             ;;
-	--setup)
+	--configure)
 	    lcfs_configure
             ;;
         *)
@@ -179,33 +213,15 @@ while [ "$1" != "" ]; do
 done
 
 # Install lcfs binary
-if [ -z "${STOP}" -a -z "${STOP_DOCKER}" ]; then
+if [ -z "${START}" -a -z "${STOP}" -a -z "${REMOVE}" -a -z "${STOP_DOCKER}" ]; then
     download_lcfs_binary
     install_lcfs_binary
 fi
 
-system_docker_stop
+reset_remove_lcfs
+[ -n "${STOP}" -o -n "${REMOVE}" -o -n "${STOP_DOCKER}" ] && cleanup_and_exit 0
 
-# Stop docker && cleanup
-if [ -z "${STOP_DOCKER}" ]; then
-    clean_mount "${PLUGIN_MNT}"
-    clean_mount "${DOCKER_MNT}"
-    killprocess lcfs
-fi
-
-if [ -n "${STOP}" -o -n "${STOP_DOCKER}" ]; then
-    if [  -n "${STOP}" ]; then
-	dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN} -s vfs"
-	remove_lcfs_plugin
-	killprocess ${DOCKER_SRV_BIN}
-	read -p "Initialize the lcfs device: ${DEV} (y/n)? " yn
-	if [ "${yn,,}" = "y" -o -n "${ZERODEV}" ]; then
-	    ${SUDO} dd if=/dev/zero of=${DEV} count=1 bs=4096
-	    ${SUDO} \rm -f ${DEVFL}
-	fi
-    fi
-    cleanup_and_exit 0
-fi
+# * Setup LCFS and start *
 
 if [ ! -e "${DEV}" ]; then
     echo "LCFS device: ${DEV} not found.  Creating device file: ${DEVFL} ${DSZ}."
@@ -214,7 +230,7 @@ if [ ! -e "${DEV}" ]; then
     DEV=${DEVFL}
 fi
 
-${SUDO} \rm -rf ${PLUGIN_MNT} ${DOCKER_MNT}
+[ -z "${START}" ] && ${SUDO} \rm -rf ${PLUGIN_MNT} ${DOCKER_MNT}
 ${SUDO} mkdir -p ${PLUGIN_MNT} ${DOCKER_MNT}
 
 # Mount lcfs
@@ -223,10 +239,16 @@ sleep 3
 [ -z "$(ps -jC "lcfs" | egrep -v '^ *PID|egrep' | awk '{print $1}')" ] && echo "Failed to start LCFS binary." && cleanup_and_exit 1
 
 # Restart docker
-dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN} -s vfs"
-remove_lcfs_plugin
-${SUDO} ${DOCKER_BIN} plugin install --grant-all-permissions ${LCFS_IMG}
-killprocess ${DOCKER_SRV_BIN}
+if [ -z "${START}" ]; then
+    dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN} -s vfs"
+    remove_lcfs_plugin
+    ${SUDO} ${DOCKER_BIN} plugin install --grant-all-permissions ${LCFS_IMG}
+    killprocess ${DOCKER_SRV_BIN}
+fi
 dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN} --experimental -s ${LCFS_IMG}"
 ${SUDO} ${DOCKER_BIN} info
+if [ -z "${START}" ]; then
+    lcfs_configure_save
+    [ $? -ne 0 ] && echo "Error: LCFS save configuration failed. Setup failed." && REMOVE=yes && reset_remove_lcfs && cleanup_and_exit 1
+fi
 cleanup_and_exit $?
