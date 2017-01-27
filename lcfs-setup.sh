@@ -49,7 +49,7 @@ function killprocess()
 function download_lcfs_binary()
 {
     ${SUDO} mkdir -p ${LOCAL_DNLD}
-    ${SUDO} curl --netrc -s -o ${LOCAL_DNLD}/${LOCAL_PKG_NM} ${LCFS_PKG}
+    ${SUDO} curl --fail --netrc -s -o ${LOCAL_DNLD}/${LOCAL_PKG_NM} ${LCFS_PKG}
     [ $? -ne 0 ] && echo "Failed to download LCFS package ${LCFS_PKG}." && cleanup_and_exit 1
     LCFS_PKG="${LOCAL_DNLD}/${LOCAL_PKG_NM}"
 }
