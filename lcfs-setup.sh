@@ -152,7 +152,6 @@ function reset_remove_lcfs
 
     # Stop docker && cleanup
     if [ -z "${STOP_DOCKER}" ]; then
-	cat /proc/mounts
 	clean_mount "${PLUGIN_MNT}"
 	clean_mount "${DOCKER_MNT}"
 	killprocess lcfs
