@@ -23,10 +23,21 @@ usage(char *prog) {
                     "\t-d     - display debugging info (optional)\n");
 }
 
+/* Notify parent process completion */
+static void
+lc_notifyParent(int *waiter) {
+    char completed = 1;
+    int err;
+
+    err = write(waiter[1], &completed, sizeof(completed));
+    assert(err == 0);
+    close(waiter[0]);
+    close(waiter[1]);
+}
+
 /* Daemonize if run in background mode */
 static int
 lc_daemonize(int *waiter) {
-    char completed = 1;
     int err, nullfd;
 
     err = setsid();
@@ -49,10 +60,7 @@ lc_daemonize(int *waiter) {
     if (nullfd > 2) {
         close(nullfd);
     }
-    err = write(waiter[1], &completed, sizeof(completed));
-    close(waiter[0]);
-    close(waiter[1]);
-    err = 0;
+    lc_notifyParent(waiter);
 
 out:
     return err;
@@ -253,11 +261,12 @@ lc_start(struct gfs *gfs, char *device, enum lc_mountId id) {
 /* Mount the specified device and start serving requests */
 int
 main(int argc, char *argv[]) {
-    struct fuse_session *se = NULL;
+    int i, err = -1, waiter[2], fd;
     char *arg[argc + 1], completed;
-    int i, err = -1, waiter[2];
     bool daemon = argc == 4;
+    struct fuse_session *se;
     struct stat st;
+    size_t size;
 
     /* Validate arguments */
 #ifdef FUSE3
@@ -284,16 +293,50 @@ main(int argc, char *argv[]) {
         exit(errno);
     }
 
+    /* Open the device for mounting */
+    fd = open(argv[1], O_RDWR | O_DIRECT | O_EXCL | O_NOATIME, 0);
+    if (fd == -1) {
+        perror("open");
+        fprintf(stderr, "Failed to open %s\n", argv[1]);
+        exit(errno);
+    }
+
+    /* Find the size of the device */
+    size = lseek(fd, 0, SEEK_END);
+    if (size == -1) {
+        perror("lseek");
+        fprintf(stderr, "lseek failed on %s\n", argv[1]);
+        close(fd);
+        exit(errno);
+    }
+
+    if ((size / LC_BLOCK_SIZE) < LC_MIN_BLOCKS) {
+        fprintf(stderr,
+                "Device is too small. Minimum size required is %ldMB\n",
+                (LC_MIN_BLOCKS * LC_BLOCK_SIZE) / (1024 * 1024) + 1);
+        close(fd);
+        exit(EINVAL);
+    }
+    if ((size / LC_BLOCK_SIZE) >= LC_MAX_BLOCKS) {
+        fprintf(stderr,
+                "Device is too big. Maximum size supported is %ldMB\n",
+                (LC_MAX_BLOCKS * LC_BLOCK_SIZE) / (1024 * 1024));
+        close(fd);
+        exit(EINVAL);
+    }
+
     /* Fork a new process if run in background mode */
     if (daemon) {
         err = pipe(waiter);
         if (err) {
             perror("pipe");
+            close(fd);
             exit(errno);
         }
         switch (fork()) {
         case -1:
             perror("fork");
+            close(fd);
             exit(errno);
 
         case 0:
@@ -318,6 +361,7 @@ main(int argc, char *argv[]) {
     if (daemon) {
         gfs->gfs_waiter = waiter;
     }
+    gfs->gfs_fd = fd;
 
     /* Setup arguments for fuse mount */
     arg[0] = argv[0];
@@ -349,17 +393,12 @@ main(int argc, char *argv[]) {
     se = gfs->gfs_se[LC_LAYER_MOUNT];
     if (fuse_set_signal_handlers(se) == -1) {
         fprintf(stderr, "Error setting signal handlers\n");
-        se = NULL;
         err = EPERM;
         goto out;
     }
 
-    /* Open the device as backend for the mount points */
-    err = lc_mount(argv[1], gfs);
-    if (err) {
-        fprintf(stderr, "Mounting %s failed, err %d\n", argv[1], err);
-        goto out;
-    }
+    /* Set up the file system before starting services */
+    lc_mount(gfs, argv[1], size);
 
     /* Start file system services on the mount points */
     for (i = 0; i < LC_MAX_MOUNTS; i++) {
@@ -368,18 +407,18 @@ main(int argc, char *argv[]) {
             break;
         }
     }
-    if (!gfs->gfs_unmounting) {
-        assert(err);
-        gfs->gfs_unmounting = true;
-        lc_unmount(gfs);
+    if (err) {
+        if (!gfs->gfs_unmounting) {
+            gfs->gfs_unmounting = true;
+            lc_unmount(gfs);
+        }
+        fuse_remove_signal_handlers(se);
     }
     assert(gfs->gfs_unmounting);
 
 out:
     if (err) {
-        if (se) {
-            fuse_remove_signal_handlers(se);
-        }
+        lc_notifyParent(waiter);
     } else {
         printf("%s unmounted\n", argv[1]);
     }
@@ -393,6 +432,7 @@ out:
         }
     }
     lc_free(NULL, arg[3], LC_SIZEOF_MOUNTARGS, LC_MEMTYPE_GFS);
+    close(fd);
     lc_free(NULL, gfs, sizeof(struct gfs), LC_MEMTYPE_GFS);
     lc_displayGlobalMemStats();
     return err ? 1 : 0;

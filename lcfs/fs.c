@@ -351,7 +351,7 @@ lc_format(struct gfs *gfs, struct fs *fs, size_t size) {
 
 /* Allocate global file system */
 static void
-lc_gfsInit(struct gfs *gfs, int fd) {
+lc_gfsInit(struct gfs *gfs) {
 
     /* XXX Allocate these more dynamically when new layers are created instead
      * of allocating memory for maximum number of layers supported.
@@ -371,7 +371,6 @@ lc_gfsInit(struct gfs *gfs, int fd) {
     pthread_mutex_init(&gfs->gfs_alock, NULL);
     pthread_mutex_init(&gfs->gfs_clock, NULL);
     pthread_mutex_init(&gfs->gfs_flock, NULL);
-    gfs->gfs_fd = fd;
 }
 
 /* Free resources allocated for the global file system */
@@ -384,7 +383,6 @@ lc_gfsDeinit(struct gfs *gfs) {
     if (gfs->gfs_fd) {
         err = fsync(gfs->gfs_fd);
         assert(err == 0);
-        close(gfs->gfs_fd);
     }
     assert(gfs->gfs_count == 0);
     lc_free(NULL, gfs->gfs_zPage, LC_BLOCK_SIZE, LC_MEMTYPE_GFS);
@@ -516,39 +514,12 @@ lc_setupSpecialInodes(struct gfs *gfs, struct fs *fs) {
 }
 
 /* Mount the device */
-int
-lc_mount(char *device, struct gfs *gfs) {
+void
+lc_mount(struct gfs *gfs, char *device, size_t size) {
     struct fs *fs;
-    size_t size;
-    int i, fd;
+    int i;
 
-    /* Open the device for mounting */
-    fd = open(device, O_RDWR | O_DIRECT | O_EXCL | O_NOATIME, 0);
-    if (fd == -1) {
-        perror("open");
-        return errno;
-    }
-
-    /* Find the size of the device and calculate total blocks */
-    size = lseek(fd, 0, SEEK_END);
-    if (size == -1) {
-        perror("lseek");
-        close(fd);
-        return errno;
-    }
-    if ((size / LC_BLOCK_SIZE) < LC_MIN_BLOCKS) {
-        printf("Device is too small. Minimum size required is %ldMB\n",
-               (LC_MIN_BLOCKS * LC_BLOCK_SIZE) / (1024 * 1024) + 1);
-        close(fd);
-        return EINVAL;
-    }
-    if ((size / LC_BLOCK_SIZE) >= LC_MAX_BLOCKS) {
-        printf("Device is too big. Maximum size supported is %ldMB\n",
-               (LC_MAX_BLOCKS * LC_BLOCK_SIZE) / (1024 * 1024));
-        close(fd);
-        return EINVAL;
-    }
-    lc_gfsInit(gfs, fd);
+    lc_gfsInit(gfs);
 
     /* Initialize a file system structure in memory */
     fs = lc_newFs(gfs, true);
@@ -571,12 +542,7 @@ lc_mount(char *device, struct gfs *gfs) {
         printf("Formatting %s, size %ld\n", device, size);
         lc_format(gfs, fs, size);
     } else {
-        if (gfs->gfs_super->sb_flags & LC_SUPER_DIRTY) {
-            printf("Filesystem is dirty\n");
-            assert(!(gfs->gfs_super->sb_flags & LC_SUPER_DIRTY));
-            close(fd);
-            return EIO;
-        }
+        assert(!(gfs->gfs_super->sb_flags & LC_SUPER_DIRTY));
         assert(size == (gfs->gfs_super->sb_tblocks * LC_BLOCK_SIZE));
         gfs->gfs_super->sb_mounts++;
         printf("Mounting %s, size %ld nmounts %ld\n",
@@ -596,7 +562,6 @@ lc_mount(char *device, struct gfs *gfs) {
     /* Write out the file system super block */
     gfs->gfs_super->sb_flags |= LC_SUPER_DIRTY | LC_SUPER_MOUNTED;
     lc_superWrite(gfs, fs);
-    return 0;
 }
 
 /* Sync a dirty file system */
