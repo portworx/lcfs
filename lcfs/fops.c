@@ -1021,10 +1021,11 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
             lc_flushPages(fs->fs_gfs, fs, inode, true, true);
             return;
         } else if (!(inode->i_flags & (LC_INODE_REMOVED | LC_INODE_TMP)) &&
-                   inode->i_dpcount) {
+                   lc_inodeGetDirtyPageCount(inode)) {
 
             /* Add inode to dirty list of the layer */
-            if (inode->i_dpcount && (inode->i_dnext == NULL) &&
+            if (lc_inodeGetDirtyPageCount(inode) &&
+                (lc_inodeGetDirtyNext(inode) == NULL) &&
                 (fs->fs_dirtyInodesLast != inode)) {
                 lc_addDirtyInode(fs, inode);
             }

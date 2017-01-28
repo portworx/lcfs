@@ -83,6 +83,7 @@ static struct inode *
 lc_newInode(struct fs *fs, uint64_t block, uint64_t len, bool reg, bool new) {
     size_t size = sizeof(struct inode) + (reg ? sizeof(struct rdata) : 0);
     struct inode *inode;
+    struct rdata *rdata;
 
     if (len) {
         size += len + 1;
@@ -96,16 +97,12 @@ lc_newInode(struct fs *fs, uint64_t block, uint64_t len, bool reg, bool new) {
     inode->i_xattrData = NULL;
     inode->i_ocount = 0;
     inode->i_flags = 0;
+    inode->i_page = NULL;
     if (reg) {
 
         /* Initialize part of the inode allocated for regular files */
-        inode->i_rdata = (struct rdata *)(((char *)inode) +
-                                          sizeof(struct inode));
-        memset(inode->i_rdata, 0, sizeof(struct rdata));
-    } else {
-
-        /* This initializes fields specific to non-regular files */
-        inode->i_rdata = NULL;
+        rdata = lc_inodeGetRegData(inode);
+        memset(rdata, 0, sizeof(struct rdata));
     }
     if (new) {
         __sync_add_and_fetch(&fs->fs_gfs->gfs_super->sb_inodes, 1);
@@ -411,9 +408,9 @@ lc_freeInode(struct inode *inode) {
         /* Free pages of a regular file */
         lc_truncateFile(inode, 0, false);
         assert(inode->i_page == NULL);
-        assert(inode->i_emap == NULL);
-        assert(inode->i_pcount == 0);
-        assert(inode->i_dpcount == 0);
+        assert(lc_inodeGetEmap(inode) == NULL);
+        assert(lc_inodeGetPageCount(inode) == 0);
+        assert(lc_inodeGetDirtyPageCount(inode) == 0);
         size += sizeof(struct rdata);
     } else if (S_ISDIR(inode->i_mode)) {
 
@@ -781,7 +778,7 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino, bool exclusive) {
     pthread_mutex_unlock(&fs->fs_ilock);
     if (reg) {
         assert(parent->i_page == NULL);
-        assert(parent->i_dpcount == 0);
+        assert(lc_inodeGetDirtyPageCount(parent) == 0);
 
         /* Share emap and blocks initially */
         if (parent->i_dinode.di_blocks) {
@@ -789,8 +786,8 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino, bool exclusive) {
                 inode->i_extentBlock = parent->i_extentBlock;
                 inode->i_extentLength = parent->i_extentLength;
             } else {
-                assert(parent->i_emap);
-                inode->i_emap = parent->i_emap;
+                assert(lc_inodeGetEmap(parent));
+                lc_inodeSetEmap(inode, lc_inodeGetEmap(parent));
                 inode->i_flags |= LC_INODE_SHARED;
                 flags |= LC_INODE_EMAPDIRTY;
             }

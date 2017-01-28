@@ -68,14 +68,6 @@ struct dirent {
 /* Data specific for regular files */
 struct rdata {
 
-    union {
-        /* Array of Dirty pages */
-        struct dpage *rd_page;
-
-        /* Hash table for dirty pages */
-        struct dhpage **rd_hpage;
-    };
-
     /* Extent map */
     struct extent *rd_emap;
 
@@ -97,7 +89,7 @@ struct rdata {
     /* Count of dirty pages */
     uint32_t rd_dpcount;
 } __attribute__((packed));
-static_assert(sizeof(struct rdata) == 48, "rdata size != 48");
+static_assert(sizeof(struct rdata) == 40, "rdata size != 40");
 
 /* Extended attributes of an inode */
 struct xattr {
@@ -128,6 +120,7 @@ struct ixattr {
 } __attribute__((packed));
 
 #define LC_INODE_DIRTY          0x001  /* Inode is dirty */
+/* XXX LC_INODE_EMAPDIRTY and LC_INODE_DIRDIRTY may use the same bit. */
 #define LC_INODE_EMAPDIRTY      0x002  /* Dirty pages and Emap */
 #define LC_INODE_DIRDIRTY       0x004  /* Dirty directory */
 #define LC_INODE_XATTRDIRTY     0x008  /* Dirty extended attributes */
@@ -164,9 +157,11 @@ struct inode {
 
     union {
 
-        /* Data specific for regular files */
-        /* XXX This pointer can be eliminated with macros */
-        struct rdata *i_rdata;
+        /* Array of Dirty pages */
+        struct dpage *i_page;
+
+        /* Hash table for dirty pages */
+        struct dhpage **i_hpage;
 
         /* Directory entries of a directory */
         struct dirent *i_dirent;
@@ -199,19 +194,143 @@ static_assert((sizeof(struct inode) % sizeof(void *)) == 0,
 #define i_extentBlock   i_dinode.di_emapdir
 #define i_extentLength  i_dinode.di_extentLength
 
-#define i_page          i_rdata->rd_page
-#define i_hpage         i_rdata->rd_hpage
-#define i_emap          i_rdata->rd_emap
-#define i_pcount        i_rdata->rd_pcount
-#define i_dpcount       i_rdata->rd_dpcount
-#define i_flusher       i_rdata->rd_flusher
-#define i_dnext         i_rdata->rd_dnext
-#define i_fpage         i_rdata->rd_fpage
-#define i_lpage         i_rdata->rd_lpage
-
 #define i_xattr         i_xattrData->xd_xattr
 #define i_xsize         i_xattrData->xd_xsize
 #define i_xattrExtents  i_xattrData->xd_xattrExtents
+
+static inline struct rdata *
+lc_inodeGetRegData(struct inode *inode) {
+    return (struct rdata *)(((char *)inode) + sizeof(struct inode));
+}
+
+/* Return the first extent in the emap list */
+static inline struct extent *
+lc_inodeGetEmap(struct inode *inode) {
+    struct rdata *rdata = lc_inodeGetRegData(inode);
+
+    return rdata->rd_emap;
+}
+
+/* Return the address in inode storing emap list */
+static inline struct extent **
+lc_inodeGetEmapPtr(struct inode *inode) {
+    struct rdata *rdata = lc_inodeGetRegData(inode);
+
+    return &rdata->rd_emap;
+}
+
+/* Set the inode emap to the specified extent */
+static inline void
+lc_inodeSetEmap(struct inode *inode, struct extent *extent) {
+    struct rdata *rdata = lc_inodeGetRegData(inode);
+
+    rdata->rd_emap = extent;
+}
+
+/* Return the size of inode page array */
+static inline uint32_t
+lc_inodeGetPageCount(struct inode *inode) {
+    struct rdata *rdata = lc_inodeGetRegData(inode);
+
+    return rdata->rd_pcount;
+}
+
+/* Set the size of inode page array */
+static inline void
+lc_inodeSetPageCount(struct inode *inode, uint32_t count) {
+    struct rdata *rdata = lc_inodeGetRegData(inode);
+
+    rdata->rd_pcount = count;
+}
+
+/* Return the count of dirty pages */
+static inline uint32_t
+lc_inodeGetDirtyPageCount(struct inode *inode) {
+    struct rdata *rdata = lc_inodeGetRegData(inode);
+
+    return rdata->rd_dpcount;
+}
+
+/* Increment dirty page count */
+static inline void
+lc_inodeIncrDirtyPageCount(struct inode *inode) {
+    struct rdata *rdata = lc_inodeGetRegData(inode);
+
+    rdata->rd_dpcount++;
+}
+
+/* Decrement dirty page count */
+static inline void
+lc_inodeDecrDirtyPageCount(struct inode *inode) {
+    struct rdata *rdata = lc_inodeGetRegData(inode);
+
+    assert(rdata->rd_dpcount > 0);
+    rdata->rd_dpcount--;
+}
+
+/* Return flusher id */
+static inline uint64_t
+lc_inodeGetFlusher(struct inode *inode) {
+    struct rdata *rdata = lc_inodeGetRegData(inode);
+
+    return rdata->rd_flusher;
+}
+
+/* Set flusher id */
+static inline void
+lc_inodeSetFlusher(struct inode *inode, uint64_t id) {
+    struct rdata *rdata = lc_inodeGetRegData(inode);
+
+    rdata->rd_flusher = id;
+}
+
+/* Retrun next dirty inode after the inode */
+static inline struct inode *
+lc_inodeGetDirtyNext(struct inode *inode) {
+    struct rdata *rdata = lc_inodeGetRegData(inode);
+
+    return rdata->rd_dnext;
+}
+
+/* Set next dirty inode after the inode */
+static inline void
+lc_inodeSetDirtyNext(struct inode *inode, struct inode *next) {
+    struct rdata *rdata = lc_inodeGetRegData(inode);
+
+    rdata->rd_dnext = next;
+}
+
+/* Return first dirty page */
+static inline uint32_t
+lc_inodeGetFirstPage(struct inode *inode) {
+    struct rdata *rdata = lc_inodeGetRegData(inode);
+
+    return rdata->rd_fpage;
+}
+
+/* Set first dirty page */
+static inline void
+lc_inodeSetFirstPage(struct inode *inode, uint64_t page) {
+    struct rdata *rdata = lc_inodeGetRegData(inode);
+
+    rdata->rd_fpage = page;
+}
+
+/* Return last dirty page */
+static inline uint32_t
+lc_inodeGetLastPage(struct inode *inode) {
+    struct rdata *rdata = lc_inodeGetRegData(inode);
+
+    return rdata->rd_lpage;
+}
+
+/* Set last dirty page */
+static inline void
+lc_inodeSetLastPage(struct inode *inode, uint64_t page) {
+    struct rdata *rdata = lc_inodeGetRegData(inode);
+
+    rdata->rd_lpage = page;
+}
 
 /* Mark inode dirty for flushing to disk */
 static inline void
