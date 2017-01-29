@@ -45,10 +45,7 @@ lc_copyStat(struct stat *st, struct inode *inode) {
     st->st_blksize = LC_BLOCK_SIZE;
     st->st_blocks = dinode->di_blocks;
 
-    /* atime is not tracked */
-    st->st_atim = dinode->di_mtime;
-    st->st_mtim = dinode->di_mtime;
-    st->st_ctim = dinode->di_ctime;
+    lc_copyStatTimes(st, dinode);
 }
 
 /* Initialize a disk inode */
@@ -193,7 +190,7 @@ lc_updateInodeTimes(struct inode *inode, bool mtime, bool ctime) {
     struct timespec tv;
 
     assert(mtime || ctime);
-    clock_gettime(CLOCK_REALTIME, &tv);
+    lc_gettime(&tv);
     if (mtime) {
         inode->i_dinode.di_mtime = tv;
     }

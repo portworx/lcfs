@@ -55,12 +55,11 @@ static const char *mrequests[] = {
 /* Initialize limit based on available memory */
 void
 lc_memoryInit(void) {
-    struct sysinfo info;
+    uint64_t totalram = lc_getTotalMemory();
 
     lc_mem.m_purgeMemory = LC_PCACHE_MEMORY;
-    sysinfo(&info);
-    if (info.totalram < lc_mem.m_purgeMemory) {
-        lc_mem.m_purgeMemory = (info.totalram * LC_PCACHE_MEMORY_MIN) / 100;
+    if (totalram < lc_mem.m_purgeMemory) {
+        lc_mem.m_purgeMemory = (totalram * LC_PCACHE_MEMORY_MIN) / 100;
     }
     lc_mem.m_dataMemory = (lc_mem.m_purgeMemory * (100 + LC_PURGE_TARGET))
                           / 100;

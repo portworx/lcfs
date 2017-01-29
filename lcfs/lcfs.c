@@ -294,7 +294,7 @@ main(int argc, char *argv[]) {
     }
 
     /* Open the device for mounting */
-    fd = open(argv[1], O_RDWR | O_DIRECT | O_EXCL | O_NOATIME, 0);
+    fd = lc_deviceOpen(argv[1]);
     if (fd == -1) {
         perror("open");
         fprintf(stderr, "Failed to open %s\n", argv[1]);

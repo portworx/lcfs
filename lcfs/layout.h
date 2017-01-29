@@ -214,7 +214,11 @@ struct dinode {
     /* Block tracking extended attributes */
     uint64_t di_xattr;
 } __attribute__((packed));
+#ifdef __APPLE__
+static_assert(sizeof(struct dinode) <= 98, "dinode size != 98");
+#else
 static_assert(sizeof(struct dinode) == 104, "dinode size != 104");
+#endif
 
 /* Size of disk inode */
 #define LC_DINODE_SIZE      128

@@ -1,5 +1,7 @@
-#ifndef _INCLUDE_H
-#define _INCLUDE_H
+#ifndef _INCLUDE_H_
+#define _INCLUDE_H_
+
+//#define __APPLE__
 
 //#define FUSE3
 #ifdef FUSE3
@@ -24,13 +26,18 @@
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <sys/sysinfo.h>
 #include <sys/time.h>
 #include <sys/xattr.h>
 #include <pthread.h>
 #include <zlib.h>
 #include <assert.h>
-#include <linux/ioctl.h>
+#include <sys/ioctl.h>
+#ifdef __APPLE__
+#include <mach/clock.h>
+#include <mach/mach.h>
+#else
+#include <sys/sysinfo.h>
+#endif
 
 #ifdef LC_PROFILING
 #include <gperftools/profiler.h>
@@ -45,6 +52,11 @@
 #include "page.h"
 #include "stats.h"
 #include "inlines.h"
+#ifdef __APPLE__
+#include "apple.h"
+#else
+#include "linux.h"
+#endif
 
 struct gfs *getfs();
 
@@ -69,6 +81,9 @@ void lc_writeBlocks(struct gfs *gfs, struct fs *fs,
                     struct iovec *iov, int iovcnt, off_t block);
 void lc_updateCRC(void *buf, uint32_t *crc);
 void lc_verifyBlock(void *buf, uint32_t *crc);
+
+int lc_deviceOpen(char *device);
+uint64_t lc_getTotalMemory();
 
 void lc_addExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
                   uint64_t start, uint64_t block, uint64_t count, bool sort);

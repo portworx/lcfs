@@ -178,8 +178,16 @@ struct inode {
 
     /* Various flags */
     uint32_t i_flags;
+#ifdef __APPLE__
+    /* Padding for darwin */
+#define DARWIN_DINODE_SIZE 6
+    char opaque[DARWIN_INODE_SIZE];
+}  __attribute__((packed));
+static_assert(sizeof(struct inode) <= 472, "inode size <= 472");
+#else
 }  __attribute__((packed));
 static_assert(sizeof(struct inode) == 216, "inode size != 216");
+#endif
 static_assert((sizeof(struct inode) % sizeof(void *)) == 0,
               "Inode size is not aligned");
 

@@ -410,7 +410,7 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
 
     /* Modify mtime */
     if (to_set & FUSE_SET_ATTR_MTIME) {
-        inode->i_dinode.di_mtime = attr->st_mtim;
+        inode->i_dinode.di_mtime = lc_statGetTime(attr, true);
         mtime = false;
     } else if (to_set & FUSE_SET_ATTR_MTIME_NOW) {
 
@@ -421,7 +421,7 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
 
     /* Modify ctime */
     if (to_set & FUSE_SET_ATTR_CTIME) {
-        inode->i_dinode.di_ctime = attr->st_ctim;
+        inode->i_dinode.di_ctime = lc_statGetTime(attr, false);
         ctime = false;
     }
 #endif
@@ -1175,7 +1175,7 @@ lc_statfs(fuse_req_t req, fuse_ino_t ino) {
     buf.f_blocks = super->sb_tblocks;
     buf.f_bfree = buf.f_blocks - super->sb_blocks;
     buf.f_bavail = buf.f_bfree;
-    buf.f_files = LC_FH_INODE - 1;
+    buf.f_files = (fsfilcnt_t)(LC_FH_INODE - 1);
     buf.f_ffree = buf.f_files - super->sb_inodes;
     buf.f_favail = buf.f_ffree;
     buf.f_namemax = LC_FILENAME_MAX;
@@ -1188,14 +1188,24 @@ lc_statfs(fuse_req_t req, fuse_ino_t ino) {
  */
 static void
 lc_setxattr(fuse_req_t req, fuse_ino_t ino, const char *name,
-             const char *value, size_t size, int flags) {
+            const char *value, size_t size, int flags
+#ifdef __APPLE__
+            , uint32_t position) {
+#else
+             ) {
+#endif
     lc_displayEntry(__func__, ino, 0, name);
     lc_xattrAdd(req, ino, name, value, size, flags);
 }
 
 /* Get extended attributes of the specified inode */
 static void
-lc_getxattr(fuse_req_t req, fuse_ino_t ino, const char *name, size_t size) {
+lc_getxattr(fuse_req_t req, fuse_ino_t ino, const char *name, size_t size
+#ifdef __APPLE__
+            , uint32_t position) {
+#else
+             ) {
+#endif
     struct gfs *gfs = getfs();
 
     lc_displayEntry(__func__, ino, 0, name);

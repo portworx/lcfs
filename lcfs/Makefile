@@ -1,9 +1,15 @@
 # lcfs Makefile -- 201701.06MeV
 CC=gcc
-CFLAGS=-g -Wall -D_FILE_OFFSET_BITS=64 -I/usr/include/fuse -I/usr/local/include/fuse
-LDFLAGS=-lz -ltcmalloc -pthread -lprofiler -lfuse
-#CFLAGS=-g -Wall -D_FILE_OFFSET_BITS=64 -I/usr/include/fuse3 -I/usr/local/include/fuse3
-#LDFLAGS=-lz -ltcmalloc -pthread -lprofiler -L/usr/local/lib -lfuse3
+UNAME=$(shell uname)
+ifeq ($(UNAME),Linux)
+	CFLAGS=-g -Wall -D_FILE_OFFSET_BITS=64 -I/usr/include/fuse -I/usr/local/include/fuse
+	LDFLAGS=-lz -ltcmalloc -pthread -lprofiler -lfuse
+	#CFLAGS=-g -Wall -D_FILE_OFFSET_BITS=64 -I/usr/include/fuse3 -I/usr/local/include/fuse3
+	#LDFLAGS=-lz -ltcmalloc -pthread -lprofiler -L/usr/local/lib -lfuse3
+else
+	CFLAGS=-g -Wno-format $ -D_FILE_OFFSET_BITS=64 -I/usr/local/include/osxfuse/fuse -I/usr/local/include/osxfuse
+	LDFLAGS=-ltcmalloc -lprofiler -losxfuse -lz
+endif
 
 ifdef STATIC
 LCFSSTATICLIBS="libtcmalloc_and_profiler.a libfuse.a libunwind.a"
@@ -24,7 +30,11 @@ endif  # test CHECK_LZMA_LIBS
 LDFLAGS=-lz -pthread $(LCFS_STATIC_LIBS) -lstdc++ -lm -ldl $(LCFS_LZMA_LIBS)
 endif  # STATIC
 
-OBJ=lcfs.o memory.o fops.o super.o io.o extent.o block.o fs.o inode.o dir.o emap.o bcache.o page.o xattr.o layer.o stats.o
+ifeq ($(UNAME),Linux)
+OBJ=lcfs.o memory.o fops.o super.o io.o extent.o block.o fs.o inode.o dir.o emap.o bcache.o page.o xattr.o layer.o stats.o linux.o
+else
+OBJ=lcfs.o memory.o fops.o super.o io.o extent.o block.o fs.o inode.o dir.o emap.o bcache.o page.o xattr.o layer.o stats.o apple.o
+endif
 
 all: lcfs cstat
 
