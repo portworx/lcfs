@@ -1,6 +1,8 @@
 # LCFS Storage Driver for Docker
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/portworx/lcfs)](https://goreportcard.com/report/github.com/portworx/lcfs)
+[![Docker Pulls](https://img.shields.io/docker/pulls/portworx/lcfs.svg)](https://hub.docker.com/r/portworx/lcfs)
+
 
 **_tl;dr:_** containers can be made faster to build, spin-up, spin-down, and to not bloat the host-- by innovating at the layer that boots-up containers. By designing the LCFS filesystem for Docker containers, the aim is to improve the speed of use, remove the manual maintenence and [workarounds](https://github.com/AkihiroSuda/issues-docker), and be available everywhere as a user-mode alternative. 
 
