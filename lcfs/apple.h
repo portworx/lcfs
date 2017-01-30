@@ -35,8 +35,8 @@ lc_gettime(struct timespec *tv) {
     host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
     clock_get_time(cclock, &mach_ts);
     mach_port_deallocate(mach_task_self(), cclock);
-    tv.tv_sec = mach_ts.tv_sec;
-    tv.tv_nsec = mach_ts.tv_nsec;
+    tv->tv_sec = mach_ts.tv_sec;
+    tv->tv_nsec = mach_ts.tv_nsec;
 }
 
 /* Implement pwritev equivalent using writev */
@@ -44,11 +44,25 @@ static inline ssize_t
 lc_pwritev(int fd, struct iovec *iov, int iovcnt, off_t offset) {
     ssize_t count = 0;
 
-    for (i = 0; i < iovcnt; i++) {
-        assert(iovec[i].iov_len == LC_BLOCK_SIZE);
-        count += pwrite(fd, iovec[i].iov_base, LC_BLOCK_SIZE, offset);
+    for (int i = 0; i < iovcnt; i++) {
+        assert(iov[i].iov_len == LC_BLOCK_SIZE);
+        count += pwrite(fd, iov[i].iov_base, LC_BLOCK_SIZE, offset);
         offset += LC_BLOCK_SIZE;
     }
     return count;
 }
+
+/*Implement preadv equivalent using readv */
+static inline ssize_t
+lc_preadv(int fd, struct iovec *iov, int iovcnt, off_t offset) {
+    ssize_t count = 0;
+
+    for (int i = 0; i < iovcnt; i++) {
+      assert(iov[i].iov_len == LC_BLOCK_SIZE);
+      count += pread(fd, iov[i].iov_base, LC_BLOCK_SIZE, offset);
+      offset += LC_BLOCK_SIZE;
+    }
+    return count;
+}
+
 #endif

@@ -5,9 +5,9 @@ int
 lc_deviceOpen(char *device) {
     int fd;
 
-    fd = open(device, O_RDWR | O_DIRECT | O_EXCL | O_NOATIME, 0);
+    fd = open(device, O_RDWR | O_EXCL, 0);
     if (fd != -1) {
-        err = fcntl(fd, F_NOCACHE);
+        int err = fcntl(fd, F_NOCACHE);
         if (err == -1) {
             perror("fcntl");
             close(fd);

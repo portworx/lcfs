@@ -368,9 +368,17 @@ main(int argc, char *argv[]) {
     arg[1] = argv[2];
     arg[2] = "-o";
     arg[3] = lc_malloc(NULL, LC_SIZEOF_MOUNTARGS, LC_MEMTYPE_GFS);
+#ifdef __APPLE__
+    sprintf(arg[3], "allow_other,noatime,default_permissions,"
+#else
     sprintf(arg[3], "allow_other,auto_unmount,noatime,default_permissions,"
+#endif
 #ifndef FUSE3
+#ifdef __APPLE__
+                    "atomic_o_trunc,big_writes,"
+#else
                     "nonempty,atomic_o_trunc,big_writes,"
+#endif
                     "splice_move,splice_read,splice_write,"
 #endif
                     "subtype=lcfs,fsname=%s", argv[1]);

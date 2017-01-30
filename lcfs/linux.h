@@ -28,4 +28,10 @@ static inline ssize_t
 lc_pwritev(int fd, struct iovec *iov, int iovcnt, off_t offset) {
     return pwritev(fd, iov, iovcnt, offset);
 }
+
+/* Invoke preadv(2) */
+static inline ssize_t
+lc_preadv(int fd, struct iovec *iov, int iovcnt, off_t offset) {
+  return preadv(fd, iov, iovcnt, offset);
+}
 #endif

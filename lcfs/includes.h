@@ -1,8 +1,6 @@
 #ifndef _INCLUDE_H_
 #define _INCLUDE_H_
 
-//#define __APPLE__
-
 //#define FUSE3
 #ifdef FUSE3
 #define FUSE_USE_VERSION 30
@@ -35,6 +33,7 @@
 #ifdef __APPLE__
 #include <mach/clock.h>
 #include <mach/mach.h>
+#include <sys/sysctl.h>
 #else
 #include <sys/sysinfo.h>
 #endif

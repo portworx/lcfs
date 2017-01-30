@@ -21,7 +21,7 @@ lc_readBlocks(struct gfs *gfs, struct fs *fs,
 
     //lc_printf("lc_readBlocks: Reading %d blocks %ld\n", iovcnt, block);
     assert((block + iovcnt) < gfs->gfs_super->sb_tblocks);
-    size = preadv(gfs->gfs_fd, iov, iovcnt, block * LC_BLOCK_SIZE);
+    size = lc_preadv(gfs->gfs_fd, iov, iovcnt, block * LC_BLOCK_SIZE);
     assert(size == (iovcnt * LC_BLOCK_SIZE));
     __sync_add_and_fetch(&gfs->gfs_reads, 1);
     __sync_add_and_fetch(&fs->fs_reads, 1);
