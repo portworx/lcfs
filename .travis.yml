@@ -13,6 +13,7 @@ script:
 notifications:
   email:
     recipients:
-      - aditya@portworx.com
+      - eng@portworx.com
+      - jobi@portworx.com
     on_success: always
     on_failure: always
