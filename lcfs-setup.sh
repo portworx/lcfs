@@ -30,7 +30,7 @@ function clean_mount()
 {
     [ -z "$1" ] && return 0
     mountpoint -q "$1"
-    [ $? -eq 0 ] && ${SUDO} fusermount -q -u "$1" && sleep 3
+#    [ $? -eq 0 ] && ${SUDO} fusermount -q -u "$1" && sleep 3
     for mnt in $(cat /proc/mounts | awk '{print $2}' | egrep "^$1"); do ${SUDO} umount -f "${mnt}"; done
     return 0
 }
