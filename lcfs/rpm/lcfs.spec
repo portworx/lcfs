@@ -44,6 +44,7 @@ make clean all
 mkdir -p ${RPM_BUILD_ROOT}/opt/pwx/bin
 cp -f cstat ${RPM_BUILD_ROOT}/opt/pwx/bin
 cp -f lcfs ${RPM_BUILD_ROOT}/opt/pwx/bin
+cp -f lcfs-setup.sh ${RPM_BUILD_ROOT}/opt/pwx/bin
 
 %check
 
@@ -54,6 +55,7 @@ cp -f lcfs ${RPM_BUILD_ROOT}/opt/pwx/bin
 #%defattr(-,root,root,0755)
 /opt/pwx/bin/cstat
 /opt/pwx/bin/lcfs
+/opt/pwx/bin/lcfs-setup.sh
 
 %pre
 

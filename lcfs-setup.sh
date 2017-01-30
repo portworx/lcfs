@@ -9,7 +9,7 @@ LCFS_ENV_FL=${LCFS_ENV_FL:-"/etc/pwx/lcfs.env"}
 
 [ -e "${LCFS_ENV_FL}" ] && source ${LCFS_ENV_FL}
 
-LCFS_PKG=${LCFS_PKG:-"http://yum.portworx.com/repo/rpms/lcfs/lcfs.rpm"}
+LCFS_PKG=${LCFS_PKG:-"http://lcfs.portworx.com/latest/lcfs.rpm"}
 LCFS_IMG=${LCFS_IMG:-"portworx/lcfs:latest"}
 DOCKER_MNT=${DOCKER_MNT:-"/var/lib/docker"}
 PLUGIN_MNT=${PLUGIN_MNT:-"/lcfs"}
@@ -37,11 +37,11 @@ function clean_mount()
 
 function killprocess()
 {
-    local pid=$(ps -jC "$1" | egrep -v '^ *PID|egrep' | awk '{print $1}')
+    local pid=$(ps -C "$1" -o pid --no-header)
     [ -z "${pid}" ] && return 0
     ${SUDO} pkill "$1"
     timeout 60 bash -c "while ${SUDO} kill -0 \"${pid}\"; do sleep 0.5; done" &> /dev/null
-    pid=$(ps -jC "$1" | egrep -v '^ *PID|egrep' | awk '{print $1}')
+    pid=$(ps -C "$1" -o pid --no-header)
     [ -n "${pid}" ] && echo "Failed to kill process for $1." && cleanup_and_exit 1
     return 0
 }
@@ -58,7 +58,7 @@ function install_lcfs_binary()
 {
     local flg_fl=/opt/pwx/.lcfs
 
-    [ -z "$(ps -jC "dockerd" | egrep -v '^ *PID|egrep' | awk '{print $1}')" ] && dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN}"
+    [ -z "$(ps -C "dockerd" -o pid --no-header)" ] && dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN}"
 
     local centos_exists=$(${SUDO} ${DOCKER_BIN} images -q centos:latest)
 
@@ -92,7 +92,7 @@ function dockerd_manual_start()
 
 function system_docker_stop()
 {
-    local sysd_pid=$(ps -jC "systemd" | egrep -v '^ *PID|egrep' | awk '{print $1}')
+    local sysd_pid=$(ps -C  "systemd" -o pid --no-header)
     local sysV_docker="/etc/init.d/docker"
 
     [ -n "${sysd_pid}" ] && sudo systemctl stop docker          # Systemd stop
@@ -102,15 +102,17 @@ function system_docker_stop()
 
 function lcfs_configure_save()
 {
+    local tmp_cfg=/tmp/.lcfs.env
+
+    echo 'LCFS_IMG=${LCFS_IMG:-"'${LCFS_IMG}'"}' > ${tmp_cfg}
+    echo 'DOCKER_MNT=${DOCKER_MNT:-"'${DOCKER_MNT}'"}' >> ${tmp_cfg}
+    echo 'PLUGIN_MNT=${PLUGIN_MNT:-"'${PLUGIN_MNT}'"}' >> ${tmp_cfg}
+    echo 'DEVFL=${DEVFL:-"'${DEVFL}'"}' >> ${tmp_cfg}
+    echo 'DEV=${DEV:-"'${DEV}'"}' >> ${tmp_cfg}
+    echo 'DSZ=${DSZ:-"'${DSZ}'"}' >> ${tmp_cfg}
+
     ${SUDO} mkdir -p /etc/pwx
-    ${SUDO} bash -c "cat <<EOF > ${LCFS_ENV_FL}
-LCFS_IMG=${LCFS_IMG}
-DOCKER_MNT=${DOCKER_MNT}
-PLUGIN_MNT=${PLUGIN_MNT}
-DEVFL=${DEVFL}
-DEV=${DEV}
-DSZ=${DSZ}
-EOF"
+    ${SUDO} \mv ${tmp_cfg} ${LCFS_ENV_FL}
 }
 
 function lcfs_configure()
@@ -129,6 +131,7 @@ function lcfs_configure()
     if [ ! -e "${ldev}" ]; then
 	read -p  "LCFS device/file does not exist. Create file (y/n)? " dyn
         if [ "${dyn,,}" = "y" ]; then
+	    [ "${DEV}" == "/dev/sdNN" ] && ldev=${DEVFL}
 	    read -p "LCFS file: ${ldev} size [${DSZ}]: " lsz
 	    [ -z "${lsz}" ] && lsz="${DSZ}"
             ${SUDO} dd if=/dev/zero of=${ldev} count=1 bs=${lsz} &> /dev/null
@@ -174,6 +177,7 @@ function stop_remove_lcfs
 	    [ "${DEV}" != "/dev/sdNN" ] && ${SUDO} dd if=/dev/zero of=${DEV} count=1 bs=4096 &> /dev/null
 	    ${SUDO} \rm -f ${DEVFL}
 	fi
+	${SUDO} \mv -f ${LCFS_ENV_FL} ${LCFS_ENV_FL}.save
     fi
     [ -z "${rcode}" ] && rcode=0
     [ -n "${STOP}" -o -n "${REMOVE}" -o -n "${STOP_DOCKER}" ] && cleanup_and_exit ${rcode}
@@ -181,12 +185,43 @@ function stop_remove_lcfs
     return 0
 }
 
+function status_lcfs()
+{
+    local lpid="" lcmd="" ldev="" ldmnt="" lpmnt="" lstatus=0
+    local ldpid="" lfcmd="" dstatus
+
+    read lpid lcmd ldev ldmnt lpmnt<<<$(ps -C lcfs -o pid,command --no-header)
+    lstatus=$?
+
+    read ldpid lfcmd<<<$(ps -C ${DOCKER_SRV_BIN} -o pid,command --no-header)
+    dstatus=$?
+
+    if [ ${lstatus} -eq 0 -a -n "${lpid}" ]; then
+	echo "LCFS (pid ${lpid}) is running..."
+	echo "LCFS device or file: ${ldev}"
+	echo "LCFS docker mnt: ${ldmnt}"
+	echo "LCFS plugin mnt: ${lpmnt}"
+    else
+	echo "LCFS is stopped."
+    fi
+
+    if [ ${dstatus} -eq 0 -a -n "${ldpid}" ]; then
+	echo "Docker (pid ${ldpid}) is running..."
+	echo "Docker command: $lfcmd"
+    else
+	echo "Docker is stopped."
+    fi
+
+    cleanup_and_exit $((lstatus+${dstatus}));
+}
+
 function help()
 {
-    echo "Usage: $0 [--help] [--configure] [--start] [--stop] [--stop-docker] [--remove]"
+    echo "Usage: $0 [--help] [--configure] [--start] [--stop] [--status] [--stop-docker] [--remove]"
     echo -e "\t--configure: \tCreate and use configuration file."
     echo -e "\t--start: \tStart docker and lcfs."
     echo -e "\t--stop: \tStop docker and lcfs."
+    echo -e "\t--status: \tStatus docker and lcfs."
     echo -e "\t--stop-docker: \tStop the docker process."
     echo -e "\t--remove: \tStop and remove lcfs."
     echo -e "\t--help: \tDisplay this message."
@@ -205,6 +240,9 @@ while [ "$1" != "" ]; do
 	    STOP="$1"
 	    stop_remove_lcfs
             ;;
+	--status)
+	    status_lcfs
+	    ;;
         --remove)
 	    REMOVE="$1"
 	    stop_remove_lcfs
@@ -250,7 +288,7 @@ ${SUDO} mkdir -p ${PLUGIN_MNT} ${DOCKER_MNT}
 # Mount lcfs
 ${SUDO} /opt/pwx/bin/lcfs ${DEV} ${DOCKER_MNT} ${PLUGIN_MNT} &
 sleep 3
-[ -z "$(ps -jC "lcfs" | egrep -v '^ *PID|egrep' | awk '{print $1}')" ] && echo "Failed to start LCFS binary." && cleanup_and_exit 1
+[ -z "$(ps -C lcfs -o pid,command --no-header)" ] && echo "Failed to start LCFS binary." && cleanup_and_exit 1
 
 # Restart docker
 if [ -z "${START}" ]; then
