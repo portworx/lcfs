@@ -1,5 +1,6 @@
 # LCFS Storage Driver for Docker
 
+[![Travis branch](https://img.shields.io/travis/portworx/lcfs/master.svg)](https://travis-ci.org/portworx/lcfs)
 [![Go Report Card](https://goreportcard.com/badge/github.com/portworx/lcfs)](https://goreportcard.com/report/github.com/portworx/lcfs)
 [![Docker Pulls](https://img.shields.io/docker/pulls/portworx/lcfs.svg)](https://hub.docker.com/r/portworx/lcfs)
 
