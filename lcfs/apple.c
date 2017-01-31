@@ -3,11 +3,11 @@
 /* Open a device */
 int
 lc_deviceOpen(char *device) {
-    int fd;
+    int fd, err;
 
     fd = open(device, O_RDWR | O_EXCL, 0);
     if (fd != -1) {
-        int err = fcntl(fd, F_NOCACHE);
+        err = fcntl(fd, F_NOCACHE);
         if (err == -1) {
             perror("fcntl");
             close(fd);
