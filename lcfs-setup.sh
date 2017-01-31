@@ -301,6 +301,8 @@ dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN} --experimental -s ${LCFS_IMG}"
 ${SUDO} ${DOCKER_BIN} info
 if [ -z "${START}" ]; then
     lcfs_configure_save
-    [ $? -ne 0 ] && echo "Error: LCFS save configuration failed. Setup failed." && REMOVE=yes && stop_remove_lcfs 1  # exit(1)
+    if [ $? -ne 0 ]; then
+	echo "Error: LCFS save configuration failed. Setup failed." && REMOVE=yes && stop_remove_lcfs 1  # exit(1)
+    fi
 fi
 cleanup_and_exit $?
