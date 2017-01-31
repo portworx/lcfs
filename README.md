@@ -1,9 +1,7 @@
 # LCFS Storage Driver for Docker
 
-[![Travis branch](https://img.shields.io/travis/portworx/lcfs/master.svg)](https://travis-ci.org/portworx/lcfs)
+[![Build Status](https://travis-ci.org/portworx/lcfs.svg?branch=master)](https://travis-ci.org/portworx/lcfs)
 [![Go Report Card](https://goreportcard.com/badge/github.com/portworx/lcfs)](https://goreportcard.com/report/github.com/portworx/lcfs)
-[![Docker Pulls](https://img.shields.io/docker/pulls/portworx/lcfs.svg)](https://hub.docker.com/r/portworx/lcfs)
-
 
 **_tl;dr:_** Every time you build, pull or destroy a Docker container, you are using a storage driver. Current storage drivers like Device Mapper, AUFS and Overlay2 implement container behavior using file systems designed to run a full OS. We are open-sourcing a file system that is purpose-built for the container lifecycle.  We call this new file system Layer Cloning File System (LCFS).  Because it is designed only for containers, it is up to 2.5x faster to build an image and up to almost 2x faster to pull an image.  We're looking forward to working with the container community to improve and expand this new tool.
  
