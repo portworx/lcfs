@@ -84,7 +84,7 @@ You can install LCFS by executing the script below (assuming your storage device
 # sudo curl -fsSL http://lcfs.portworx.com/lcfs-setup.sh | DEV=/dev/sdb bash
 ```
 
-For detailed LCFS instructions, you must first install the LCFS filesystem and then the LCFS v2 graph driver plugin, as described [here](INSTALL.md).
+For detailed instructions, you must first install the LCFS filesystem and then the LCFS v2 graph driver plugin, as described [here](INSTALL.md).
 
 # Licensing
 The Layer Cloning Filesystem (LCFS) is licensed under the Apache License, Version 2.0. See [LICENSE](https://github.com/portworx/lcfs/blob/master/LICENSE) for the full license text.
