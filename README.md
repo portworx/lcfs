@@ -5,7 +5,8 @@
 [![Docker Pulls](https://img.shields.io/docker/pulls/portworx/lcfs.svg)](https://hub.docker.com/r/portworx/lcfs)
 
 
-**_tl;dr:_** containers can be made faster to build, spin-up, spin-down, and to not bloat the host-- by innovating at the layer that boots-up containers. By designing the LCFS filesystem for Docker containers, the aim is to improve the speed of use, remove the manual maintenence and [workarounds](https://github.com/AkihiroSuda/issues-docker), and be available everywhere as a user-mode alternative. 
+**_tl;dr:_** Every time you build, pull or destroy a Docker container, you are using a storage driver. Current storage drivers like Device Mapper, AUFS and Overlay2 implement container behavior using file systems designed to run a full OS. We are open-sourcing a file system that is purpose-built for the container lifecycle.  We call this new file system Layer Cloning File System (LCFS).  Because it is designed only for containers, it is up to 2.5x faster to build an image and up to almost 2x faster to pull an image.  We're looking forward to working with the container community to improve and expand this new tool.
+ 
 
 # Overview
 Layer Cloning FileSystem (LCFS) is a new filesystem purpose-built to be a Docker [storage driver](https://docs.docker.com/engine/userguide/storagedriver/selectadriver/). All Docker images are constructed of layers using storage drivers (graph drivers) like AUFS, OverlayFS, and Device Mapper. As a design principle, LCFS focuses on layers as the first-class citizen. The LCFS filesystem operates directly on top of block devices, as opposed to over two filesystems that are then merged. Thereby, LCFS aims to directly manage at the container image’s layer level, eliminate the overhead of having a second filesystem that then is merged, and to optimize for density.
@@ -39,13 +40,13 @@ Additional performance considerations:
 ## Measured Performance
 The current experimental release of LCFS is shown against several of the top storage drivers.
 
-The below table shows a quick comparison of some common Docker operations; a `docker pull` and a `docker build` of a few images on an Ubuntu 14.04 system with a single SATA disk:
+The below table shows a quick comparison of how long it takes LCFS to complete some common Docker operations compared to other storage drivers, using an Ubuntu 14.04 system with a single SATA disk.  Times are measured in seconds, and % improvement shows the decrease in time compared to the comparison driver.
 
-| test                             | LCFS      | AUFS      | %age difference | DEVICE MAPPER | %age difference |
-|----------------------------------|-----------|-----------|-----------------|---------------|-----------------|
-| docker pull gourao/fio           | 0m13.643s | 0m15.522s | ~15%            | 0m14.555s     | ~12%            |
-| docker pull mysql                | 0m8.953s  | 0m10.286s | ~15%            | 0m21.077s     | ~53%            |
-| docker build <ComplexDockerfile> | 3m17.994s | 8m36.224s | ~62%            | 4m26.70s      | ~26%            |
+| test                             | LCFS      | AUFS  (% improvement)      | DEVICE MAPPER    | Overlay        | Overlay2
+|----------------------------------|-----------|----------------------------|------------------|----------------|-----------------|
+| docker pull gourao/fio           | 8.831s    | 10.413s   (18%)            | 13.520s (53%)    | 11.301s  (28%) | 10.523s (19%)   |
+| docker pull mysql                | 13.359s   | 16.438s   (23%)            | 24.998s (87%)    | 19.170s  (43%) | 16.252s (22%)   |
+| docker build <ComplexDockerfile> | 221.539s  | 572.677s  (159%)           | 561.403s (153%)  | 549.851s (148%)| 551.893s (149%) |
 
 **Create / Destroy**: The diagram below depicts the time to [create](https://docs.docker.com/engine/reference/run/) and [destroy](https://docs.docker.com/engine/reference/commandline/rm/) 100 fedora/apache containers. The cumulative time measured: LCFS at 44 seconds, Overlay at 237 sec, Overlay2 at 245 sec, and Device Mapper at 556 sec. 
 ![alt text](http://i.imgur.com/JSUeqLc.png "create and destroy times")
