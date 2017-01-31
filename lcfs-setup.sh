@@ -177,7 +177,7 @@ function stop_remove_lcfs
 	    [ "${DEV}" != "/dev/sdNN" ] && ${SUDO} dd if=/dev/zero of=${DEV} count=1 bs=4096 &> /dev/null
 	    ${SUDO} \rm -f ${DEVFL}
 	fi
-	${SUDO} \mv -f ${LCFS_ENV_FL} ${LCFS_ENV_FL}.save
+	[ -e ${LCFS_ENV_FL} ] && ${SUDO} \mv -f ${LCFS_ENV_FL} ${LCFS_ENV_FL}.save
     fi
     [ -z "${rcode}" ] && rcode=0
     [ -n "${STOP}" -o -n "${REMOVE}" -o -n "${STOP_DOCKER}" ] && cleanup_and_exit ${rcode}
