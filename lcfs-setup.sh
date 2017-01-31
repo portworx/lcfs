@@ -68,6 +68,27 @@ function install_lcfs_binary()
     [ ! -f ${flg_fl} ] && echo "Failed to install LCFS binaries." && cleanup_and_exit 1
 }
 
+function install_fuse()
+{
+    ${SUDO} which fusermount &> /dev/null
+    if [ $? -ne 0 ]; then
+	local ltype=$(cat /proc/version | sed -e s'/(GCC) //' -e 's/.*(\(.*)\) ).*/\1/' -e 's/ [0-9].*$//' | tr -d ' ')
+
+	case "${ltype,,}" in
+            *redhat*)
+		${SUDO} yum install --quiet -y fuse
+		;;
+	    *ubuntu*|*debian*)
+		${SUDO} apt-get install -y fuse
+		;;
+            *)
+		echo "Fuse fusermount is required please install fuse and try again."
+		cleanup_and_exit 1
+		;;
+	esac
+     fi
+}
+
 function remove_lcfs_plugin()
 {
     ${SUDO} ${DOCKER_BIN} plugin ls | egrep -q "${LCFS_IMG}"
@@ -264,6 +285,7 @@ done
 
 # Install lcfs binary
 if [ -z "${START}" ]; then
+    install_fuse
     download_lcfs_binary
     install_lcfs_binary
 elif [ ! -e "${LCFS_ENV_FL}" ]; then # --start was executed. Check config
