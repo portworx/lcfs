@@ -51,7 +51,7 @@ The below table shows a quick comparison of some common Docker operations; a `do
 ![alt text](http://i.imgur.com/JSUeqLc.png "create and destroy times")
 
 
-**Build**: The diagram below depicts the time to build containers using various storage drivers. The individual times measured: Device Mapper at 1511 sec, Overlay at 913 seconds, Overlayv2 at 567 seconds, and LCFS at 819 seconds. Future work for LCFS is improving the differencing mechanism to improve this scenario. 
+**Build**: The diagram below depicts the time to build docker sources using various storage drivers. The individual times measured: Device Mapper at 1511 sec, Overlay at 913 seconds, Overlayv2 at 567 seconds, and LCFS at 819 seconds. Future work for LCFS is improving the differencing mechanism to improve this scenario. 
 ![alt text](http://i.imgur.com/QAUsMI4.jpg "build times")
 
 ## Architecture 
