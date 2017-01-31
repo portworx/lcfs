@@ -21,7 +21,7 @@ LCFS filesystem is an open source project, and we welcome feedback and collabora
 # Design Principles 
 Today, running containers on the same server is often limited by side effects that come from mapping container behavior over general filesystems. The approach impacts the entire lifecycle: building, launching, reading data, and exiting containers. 
 
-Historically, filesystems were built with the expectation that content is read/writeable. However, Docker images are constructed using many read-only layers and a single read-write layer. As more containers are launched of the same image (like Apache/Fedora), reading a file within a container requires traversing (up to) all the other containers running that image. 
+Historically, filesystems were built with the expectation that content is read/writeable. However, Docker images are constructed using many read-only layers and a single read-write layer. As more containers are launched of the same image (like fedora/apache), reading a file within a container requires traversing (up to) all the other containers running that image. 
 
 The design principles are:
 * **layers are managed directly**: inherently understand layers, their different states, and be able to directly track and manage layers.
@@ -47,7 +47,7 @@ The below table shows a quick comparison of some common Docker operations; a `do
 | docker pull mysql                | 0m8.953s  | 0m10.286s | ~15%            | 0m21.077s     | ~53%            |
 | docker build <ComplexDockerfile> | 3m17.994s | 8m36.224s | ~62%            | 4m26.70s      | ~26%            |
 
-**Create / Destroy**: The diagram below depicts the time to [create](https://docs.docker.com/engine/reference/run/) and [destroy](https://docs.docker.com/engine/reference/commandline/rm/) 100 Apache/Fedora containers. The cumulative time measured: LCFS at 44 seconds, Overlay at 237 sec, Overlay2 at 245 sec, and Device Mapper at 556 sec. 
+**Create / Destroy**: The diagram below depicts the time to [create](https://docs.docker.com/engine/reference/run/) and [destroy](https://docs.docker.com/engine/reference/commandline/rm/) 100 fedora/apache containers. The cumulative time measured: LCFS at 44 seconds, Overlay at 237 sec, Overlay2 at 245 sec, and Device Mapper at 556 sec. 
 ![alt text](http://i.imgur.com/JSUeqLc.png "create and destroy times")
 
 
