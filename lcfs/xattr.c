@@ -50,7 +50,7 @@ lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
     int err = 0;
 
     lc_statsBegin(&start);
-    fs = lc_getfs(ino, false);
+    fs = lc_getLayerLocked(ino, false);
     if (fs->fs_child) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
@@ -152,7 +152,7 @@ lc_xattrGet(fuse_req_t req, ino_t ino, const char *name,
     int err = 0;
 
     lc_statsBegin(&start);
-    fs = lc_getfs(ino, false);
+    fs = lc_getLayerLocked(ino, false);
 
     /* If the file system does not have any extended attributes, return without
      * looking up the inode.
@@ -217,7 +217,7 @@ lc_xattrList(fuse_req_t req, ino_t ino, size_t size) {
     char *buf;
 
     lc_statsBegin(&start);
-    fs = lc_getfs(ino, false);
+    fs = lc_getLayerLocked(ino, false);
 
     /* If the file system does not have any extended attributes, return without
      * looking up the inode.
@@ -312,7 +312,7 @@ lc_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
     struct fs *fs;
 
     lc_statsBegin(&start);
-    fs = lc_getfs(ino, false);
+    fs = lc_getLayerLocked(ino, false);
     if (fs->fs_child) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);

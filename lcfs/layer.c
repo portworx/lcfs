@@ -51,8 +51,8 @@ lc_invalidateFirstLayer(struct gfs *gfs, struct fs *pfs) {
 
 /* Create a new layer */
 void
-lc_newLayer(fuse_req_t req, struct gfs *gfs, const char *name,
-            const char *parent, size_t size, bool rw) {
+lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
+               const char *parent, size_t size, bool rw) {
     struct fs *fs = NULL, *pfs = NULL, *rfs = NULL;
     struct inode *dir, *pdir;
     bool base, init, inval;
@@ -85,7 +85,7 @@ lc_newLayer(fuse_req_t req, struct gfs *gfs, const char *name,
     }
 
     /* Get the global file system */
-    rfs = lc_getfs(LC_ROOT_INODE, false);
+    rfs = lc_getLayerLocked(LC_ROOT_INODE, false);
 
     /* Do not allow new layers when low on space */
     if (!lc_hasSpace(gfs, true)) {
@@ -116,7 +116,7 @@ lc_newLayer(fuse_req_t req, struct gfs *gfs, const char *name,
     lc_inodeUnlock(pdir);
 
     /* Initialize the new layer */
-    fs = lc_newFs(gfs, rw);
+    fs = lc_newLayer(gfs, rw);
     lc_lock(fs, true);
 
     /* Initialize super block for the layer */
@@ -127,7 +127,7 @@ lc_newLayer(fuse_req_t req, struct gfs *gfs, const char *name,
     if (base) {
         fs->fs_rfs = fs;
     } else {
-        pfs = lc_getfs(pinum, false);
+        pfs = lc_getLayerLocked(pinum, false);
         assert(pfs->fs_pcount == 0);
 
         /* Mark the layer as immutable */
@@ -137,7 +137,7 @@ lc_newLayer(fuse_req_t req, struct gfs *gfs, const char *name,
     }
 
     /* Add this file system to global list of file systems */
-    err = lc_addfs(gfs, fs, pfs, &inval);
+    err = lc_addLayer(gfs, fs, pfs, &inval);
 
     /* If new layer could not be added, undo everything done so far */
     if (err) {
@@ -192,7 +192,7 @@ out:
             /* Shared locks on the parent layer and root layer are held to keep
              * things stable.
              */
-            lc_destroyFs(fs, true);
+            lc_destroyLayer(fs, true);
         } else {
             lc_unlock(fs);
         }
@@ -214,12 +214,12 @@ lc_removeRoot(struct fs *rfs, struct inode *dir, ino_t ino, bool rmdir,
 
     /* There should be a file system rooted on this directory */
     root = lc_setHandle(lc_getIndex(rfs, dir->i_ino, ino), ino);
-    return lc_getfsForRemoval(rfs->fs_gfs, root, (struct fs **)fsp);
+    return lc_getLayerForRemoval(rfs->fs_gfs, root, (struct fs **)fsp);
 }
 
 /* Remove a layer */
 void
-lc_removeLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
+lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
     struct fs *fs = NULL, *rfs, *bfs = NULL;
     ino_t ino = gfs->gfs_layerRoot;
     struct inode *pdir = NULL;
@@ -229,7 +229,7 @@ lc_removeLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
 
     /* Find the inode in layer directory */
     lc_statsBegin(&start);
-    rfs = lc_getfs(LC_ROOT_INODE, false);
+    rfs = lc_getLayerLocked(LC_ROOT_INODE, false);
     pdir = gfs->gfs_layerRootInode;
     lc_inodeLock(pdir, true);
 
@@ -270,7 +270,7 @@ lc_removeLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
     lc_blockFree(gfs, fs, fs->fs_sblock, 1, true);
     lc_freeLayerBlocks(gfs, fs, true, true, fs->fs_parent);
     lc_unlock(fs);
-    lc_destroyFs(fs, true);
+    lc_destroyLayer(fs, true);
     if (bfs) {
         lc_unlock(bfs);
     }
@@ -290,7 +290,7 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
     int err;
 
     lc_statsBegin(&start);
-    rfs = lc_getfs(LC_ROOT_INODE, false);
+    rfs = lc_getLayerLocked(LC_ROOT_INODE, false);
 
     /* Unmount all layers */
     if (cmd == UMOUNT_ALL) {
@@ -309,7 +309,7 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
         /* Mark a layer as mounted */
         if (err == 0) {
             fuse_reply_ioctl(req, 0, NULL, 0);
-            fs = lc_getfs(root, true);
+            fs = lc_getLayerLocked(root, true);
             fs->fs_super->sb_flags |= LC_SUPER_DIRTY | LC_SUPER_MOUNTED;
             lc_unlock(fs);
         }
@@ -320,7 +320,7 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
         if (err == 0) {
 
             /* Display stats of a layer */
-            fs = lc_getfs(root, false);
+            fs = lc_getLayerLocked(root, false);
             fuse_reply_ioctl(req, 0, NULL, 0);
             lc_displayLayerStats(fs);
             lc_unlock(fs);
@@ -338,7 +338,7 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
 
         /* Unmount a layer */
         if (err == 0) {
-            fs = lc_getfs(root, false);
+            fs = lc_getLayerLocked(root, false);
 
             /* Sync all dirty data for read only image layers and readwrite
              * init layer so that new layers could be created on top of those.
@@ -347,7 +347,7 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
                 (fs->fs_readOnly ||
                  (fs->fs_super->sb_flags & LC_SUPER_INIT))) {
                 lc_unlock(fs);
-                fs = lc_getfs(root, true);
+                fs = lc_getLayerLocked(root, true);
                 assert(fs->fs_child == NULL);
                 assert(!fs->fs_frozen);
                 fuse_reply_ioctl(req, 0, NULL, 0);
@@ -366,7 +366,7 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
         /* XXX Do this without locking the layer exclusive */
         if (err == 0) {
             fuse_reply_ioctl(req, 0, NULL, 0);
-            fs = lc_getfs(root, true);
+            fs = lc_getLayerLocked(root, true);
             lc_statsDeinit(fs);
             lc_statsNew(fs);
             lc_unlock(fs);

@@ -2,7 +2,7 @@
 
 /* Allocate a new file system structure */
 struct fs *
-lc_newFs(struct gfs *gfs, bool rw) {
+lc_newLayer(struct gfs *gfs, bool rw) {
     struct fs *fs = lc_malloc(NULL, sizeof(struct fs), LC_MEMTYPE_GFS);
     time_t t;
 
@@ -142,7 +142,7 @@ lc_freeLayer(struct fs *fs, bool remove) {
 
 /* Delete a file system */
 void
-lc_destroyFs(struct fs *fs, bool remove) {
+lc_destroyLayer(struct fs *fs, bool remove) {
     lc_destroyInodes(fs, remove);
     lc_processFreedBlocks(fs, false);
     lc_freeLayer(fs, remove);
@@ -198,7 +198,7 @@ lc_getIndex(struct fs *nfs, ino_t parent, ino_t ino) {
 
 /* Return the file system in which the inode belongs to */
 struct fs *
-lc_getfs(ino_t ino, bool exclusive) {
+lc_getLayerLocked(ino_t ino, bool exclusive) {
     int gindex = lc_getFsHandle(ino);
     struct gfs *gfs = getfs();
     struct fs *fs;
@@ -215,7 +215,7 @@ lc_getfs(ino_t ino, bool exclusive) {
  * list.
  */
 uint64_t
-lc_getfsForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
+lc_getLayerForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
     ino_t ino = lc_getInodeHandle(root);
     int gindex = lc_getFsHandle(root);
     struct fs *fs, *pfs, *nfs;
@@ -278,7 +278,7 @@ lc_getfsForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
 
 /* Add a file system to global list of file systems */
 int
-lc_addfs(struct gfs *gfs, struct fs *fs, struct fs *pfs, bool *inval) {
+lc_addLayer(struct gfs *gfs, struct fs *fs, struct fs *pfs, bool *inval) {
     struct fs *child, *rfs = fs->fs_rfs;
     int i;
 
@@ -401,14 +401,14 @@ lc_gfsDeinit(struct gfs *gfs) {
 
 /* Initialize a file system after reading its super block */
 static struct fs *
-lc_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
+lc_initLayer(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
     uint64_t icsize;
     struct fs *fs;
     int i;
 
     /* XXX Size the icache based on inodes allocated in layer */
     icsize = (child || pfs->fs_parent) ? LC_ICACHE_SIZE : LC_ICACHE_SIZE_MAX;
-    fs = lc_newFs(gfs, true);
+    fs = lc_newLayer(gfs, true);
     lc_icache_init(fs, icsize);
     lc_statsNew(fs);
     fs->fs_sblock = block;
@@ -454,9 +454,6 @@ lc_initfs(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
         gfs->gfs_scount = i;
     }
     fs->fs_gindex = i;
-    if (i > fs->fs_rfs->fs_hgindex) {
-        fs->fs_rfs->fs_hgindex = i;
-    }
     lc_printf("Added fs with parent %ld root %ld index %d block %ld\n",
                fs->fs_parent ? fs->fs_parent->fs_root : - 1,
                fs->fs_root, fs->fs_gindex, block);
@@ -472,7 +469,7 @@ lc_initLayers(struct gfs *gfs, struct fs *pfs) {
     /* Initialize all layers of the same parent */
     block = pfs->fs_super->sb_nextLayer;
     while (block) {
-        fs = lc_initfs(gfs, nfs, block, false);
+        fs = lc_initLayer(gfs, nfs, block, false);
         nfs = fs;
         block = fs->fs_super->sb_nextLayer;
     }
@@ -482,7 +479,7 @@ lc_initLayers(struct gfs *gfs, struct fs *pfs) {
     while (nfs) {
         block = nfs->fs_super->sb_childLayer;
         if (block) {
-            fs = lc_initfs(gfs, nfs, block, true);
+            fs = lc_initLayer(gfs, nfs, block, true);
             lc_initLayers(gfs, fs);
         }
         nfs = nfs->fs_next;
@@ -522,7 +519,7 @@ lc_mount(struct gfs *gfs, char *device, size_t size) {
     lc_gfsInit(gfs);
 
     /* Initialize a file system structure in memory */
-    fs = lc_newFs(gfs, true);
+    fs = lc_newLayer(gfs, true);
     lc_icache_init(fs, LC_ICACHE_SIZE);
     lc_statsNew(fs);
     fs->fs_root = LC_ROOT_INODE;
@@ -668,7 +665,7 @@ lc_unmount(struct gfs *gfs) {
             lc_freeLayerBlocks(gfs, fs, true, false, false);
             lc_superWrite(gfs, fs);
             lc_unlock(fs);
-            lc_destroyFs(fs, false);
+            lc_destroyLayer(fs, false);
             pthread_mutex_lock(&gfs->gfs_lock);
         }
     }

@@ -239,7 +239,7 @@ lc_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, parent, 0, name);
-    fs = lc_getfs(parent, false);
+    fs = lc_getLayerLocked(parent, false);
     dir = lc_getInode(fs, parent, NULL, false, false);
     if (dir == NULL) {
         lc_reportError(__func__, __LINE__, parent, ENOENT);
@@ -265,7 +265,7 @@ lc_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
         /* Return the index of the actual layer */
         gindex = lc_getIndex(fs, parent, ino);
         if (fs->fs_gindex != gindex) {
-            nfs = lc_getfs(lc_setHandle(gindex, ino), false);
+            nfs = lc_getLayerLocked(lc_setHandle(gindex, ino), false);
         }
     } else {
         gindex = fs->fs_gindex;
@@ -304,7 +304,7 @@ lc_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, 0, ino, NULL);
-    fs = lc_getfs(ino, false);
+    fs = lc_getLayerLocked(ino, false);
     inode = lc_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
@@ -345,7 +345,7 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
                | FUSE_SET_ATTR_CTIME
 #endif
                ));
-    fs = lc_getfs(ino, false);
+    fs = lc_getLayerLocked(ino, false);
     if (fs->fs_frozen) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
@@ -457,7 +457,7 @@ lc_readlink(fuse_req_t req, fuse_ino_t ino) {
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, 0, ino, NULL);
-    fs = lc_getfs(ino, false);
+    fs = lc_getLayerLocked(ino, false);
     inode = lc_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
@@ -490,7 +490,7 @@ lc_mknod(fuse_req_t req, fuse_ino_t parent, const char *name,
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, parent, 0, name);
-    fs = lc_getfs(parent, false);
+    fs = lc_getLayerLocked(parent, false);
     err = lc_createInode(fs, parent, name, mode & ~ctx->umask,
                          ctx->uid, ctx->gid, rdev, NULL, NULL, &e);
     if (err) {
@@ -514,7 +514,7 @@ lc_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, parent, 0, name);
-    fs = lc_getfs(parent, false);
+    fs = lc_getLayerLocked(parent, false);
     err = lc_createInode(fs, parent, name, S_IFDIR | (mode & ~ctx->umask),
                          ctx->uid, ctx->gid, 0, NULL, NULL, &e);
     if (err) {
@@ -550,7 +550,7 @@ lc_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, parent, 0, name);
-    fs = lc_getfs(parent, false);
+    fs = lc_getLayerLocked(parent, false);
     err = lc_remove(fs, parent, name, (void **)&inode, false);
     fuse_reply_err(req, err);
 
@@ -580,7 +580,7 @@ lc_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name) {
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, parent, 0, name);
-    fs = lc_getfs(parent, false);
+    fs = lc_getLayerLocked(parent, false);
     err = lc_remove(fs, parent, name, (void **)&dir, true);
     fuse_reply_err(req, err);
     if (dir) {
@@ -607,7 +607,7 @@ lc_symlink(fuse_req_t req, const char *link, fuse_ino_t parent,
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, parent, 0, name);
-    fs = lc_getfs(parent, false);
+    fs = lc_getLayerLocked(parent, false);
     err = lc_createInode(fs, parent, name, S_IFLNK | (0777 & ~ctx->umask),
                          ctx->uid, ctx->gid, 0, link, NULL, &e);
     if (err) {
@@ -635,7 +635,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, parent, newparent, name);
-    fs = lc_getfs(parent, false);
+    fs = lc_getLayerLocked(parent, false);
     if (fs->fs_frozen) {
         lc_reportError(__func__, __LINE__, parent, EROFS);
         fuse_reply_err(req, EROFS);
@@ -766,7 +766,7 @@ lc_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, newparent, ino, newname);
-    fs = lc_getfs(ino, false);
+    fs = lc_getLayerLocked(ino, false);
     if (fs->fs_frozen) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
@@ -886,7 +886,7 @@ lc_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, 0, ino, NULL);
-    fs = lc_getfs(ino, false);
+    fs = lc_getLayerLocked(ino, false);
     err = lc_openInode(fs, ino, fi);
     if (err) {
         fuse_reply_err(req, err);
@@ -925,7 +925,7 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     bufv = alloca(fsize);
     pages = alloca(sizeof(struct page *) * pcount);
     memset(bufv, 0, fsize);
-    fs = lc_getfs(ino, false);
+    fs = lc_getLayerLocked(ino, false);
     inode = lc_getInode(fs, ino, (struct inode *)fi->fh, false, false);
     if (inode == NULL) {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
@@ -1051,7 +1051,7 @@ lc_release(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, ino, 0, NULL);
-    fs = lc_getfs(ino, false);
+    fs = lc_getLayerLocked(ino, false);
     lc_releaseInode(req, fs, ino, fi, &inval);
     if (inval) {
 
@@ -1093,7 +1093,7 @@ lc_opendir(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, ino, 0, NULL);
-    fs = lc_getfs(ino, false);
+    fs = lc_getLayerLocked(ino, false);
     err = lc_openInode(fs, ino, fi);
     if (err) {
         fuse_reply_err(req, err);
@@ -1117,7 +1117,7 @@ lc_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     lc_statsBegin(&start);
     lc_displayEntry(__func__, ino, 0, NULL);
     memset(&st, 0, sizeof(struct stat));
-    fs = lc_getfs(ino, false);
+    fs = lc_getLayerLocked(ino, false);
     dir = lc_getInode(fs, ino, (struct inode *)fi->fh, false, false);
     if (dir) {
         err = lc_dirReaddir(req, fs, dir, ino, size, off, &st);
@@ -1139,7 +1139,7 @@ lc_releasedir(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, ino, 0, NULL);
-    fs = lc_getfs(ino, false);
+    fs = lc_getLayerLocked(ino, false);
     lc_releaseInode(req, fs, ino, fi, NULL);
     lc_statsAdd(fs, LC_RELEASEDIR, false, &start);
     lc_unlock(fs);
@@ -1271,7 +1271,7 @@ lc_create(fuse_req_t req, fuse_ino_t parent, const char *name,
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, parent, 0, name);
-    fs = lc_getfs(parent, false);
+    fs = lc_getLayerLocked(parent, false);
     err = lc_createInode(fs, parent, name, S_IFREG | (mode & ~ctx->umask),
                          ctx->uid, ctx->gid, 0, NULL, fi, &e);
     if (err) {
@@ -1324,11 +1324,11 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
             len = 0;
             layer = name;
         }
-        lc_newLayer(req, gfs, layer, parent, len, op == LAYER_CREATE_RW);
+        lc_createLayer(req, gfs, layer, parent, len, op == LAYER_CREATE_RW);
         return;
 
     case LAYER_REMOVE:
-        lc_removeLayer(req, gfs, name);
+        lc_deleteLayer(req, gfs, name);
         return;
 
     case LAYER_MOUNT:
@@ -1367,7 +1367,7 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
     dst = alloca(wsize);
     memset(dst, 0, wsize);
     dpages = alloca(pcount * sizeof(struct dpage));
-    fs = lc_getfs(ino, false);
+    fs = lc_getLayerLocked(ino, false);
     gfs = fs->fs_gfs;
     if (fs->fs_frozen) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
@@ -1445,7 +1445,7 @@ lc_readdirplus(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, ino, 0, NULL);
-    fs = lc_getfs(ino, false);
+    fs = lc_getLayerLocked(ino, false);
     dir = lc_getInode(fs, ino, (struct inode *)fi->fh, false, false);
     if (dir) {
         err = lc_dirReaddir(req, fs, dir, ino, size, off, NULL);

@@ -120,11 +120,11 @@ void lc_superWrite(struct gfs *gfs, struct fs *fs);
 void lc_superInit(struct super *super, uint64_t root, size_t size,
                   uint32_t flags, bool global);
 
-struct fs *lc_getfs(ino_t ino, bool exclusive);
-uint64_t lc_getfsForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp);
+struct fs *lc_getLayerLocked(ino_t ino, bool exclusive);
+uint64_t lc_getLayerForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp);
 int lc_getIndex(struct fs *nfs, ino_t parent, ino_t ino);
-int lc_addfs(struct gfs *gfs, struct fs *fs, struct fs *pfs, bool *inval);
-void lc_removefs(struct gfs *gfs, struct fs *fs);
+int lc_addLayer(struct gfs *gfs, struct fs *fs, struct fs *pfs, bool *inval);
+void lc_removeLayer(struct gfs *gfs, struct fs *fs);
 void lc_lock(struct fs *fs, bool exclusive);
 int lc_tryLock(struct fs *fs, bool exclusive);
 void lc_unlock(struct fs *fs);
@@ -135,8 +135,8 @@ void lc_invalidateInodeBlocks(struct gfs *gfs, struct fs *fs);
 void lc_sync(struct gfs *gfs, struct fs *fs, bool super);
 void lc_unmount(struct gfs *gfs);
 void lc_syncAllLayers(struct gfs *gfs);
-struct fs *lc_newFs(struct gfs *gfs, bool rw);
-void lc_destroyFs(struct fs *fs, bool remove);
+struct fs *lc_newLayer(struct gfs *gfs, bool rw);
+void lc_destroyLayer(struct fs *fs, bool remove);
 
 void lc_icache_init(struct fs *fs, size_t size);
 void lc_icache_deinit(struct icache *icache);
@@ -261,11 +261,11 @@ void lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
 void lc_xattrFree(struct inode *inode);
 
 void lc_linkParent(struct fs *fs, struct fs *pfs);
-void lc_newLayer(fuse_req_t req, struct gfs *gfs, const char *name,
-                 const char *parent, size_t size, bool rw);
-void lc_removeLayer(fuse_req_t req, struct gfs *gfs, const char *name);
+void lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
+                    const char *parent, size_t size, bool rw);
+void lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name);
 void lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
-                  enum ioctl_cmd cmd);
+                   enum ioctl_cmd cmd);
 
 void lc_statsNew(struct fs *fs);
 void lc_statsBegin(struct timeval *start);
