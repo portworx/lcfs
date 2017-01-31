@@ -9,7 +9,7 @@
 /* Initial size of the page hash table */
 /* XXX This needs to consider available memory */
 #define LC_PCACHE_SIZE_MIN  1024
-#define LC_PCACHE_SIZE      (1024 * 1024)
+#define LC_PCACHE_SIZE      (128 * 1024)
 
 /* Number of locks for the block cache hash lists */
 #define LC_PCLOCK_COUNT     1024
