@@ -13,7 +13,7 @@ These four steps are detailed below.  However, a convenience script which can be
 # sudo curl -fsSL http://lcfs.portworx.com/lcfs-setup.sh | DEV=/dev/sdb bash. 
 ```
 
-Note: The convenience script will start dockerd with -s portworx/lcfs --experimental but it will not setup the systemd service script.
+Note: The convenience script will start dockerd with `-s portworx/lcfs --experimental` but it will not setup the systemd service script.
 
 ##  Step 1 - Install the LCFS file system
 1. Build and install LCFS file system following the instructions in [that directory](https://github.com/portworx/lcfs/blob/master/lcfs/README.md).
