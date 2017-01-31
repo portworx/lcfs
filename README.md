@@ -41,11 +41,11 @@ The current experimental release of LCFS is shown against several of the top sto
 
 The below table shows a quick comparison of some common Docker operations; a `docker pull` and a `docker build` of a few images on an Ubuntu 14.04 system with a single SATA disk:
 
-| test                             | LCFS      | AUFS      | %age difference |
-|----------------------------------|-----------|-----------|-----------------|
-| docker pull gourao/fio           | 0m13.643s | 0m15.522s | ~15%            |
-| docker pull mysql                | 0m8.953s  | 0m10.286s | ~15%            |
-| docker build <ComplexDockerfile> | 3m17.994s | 8m36.224s | ~62%            |
+| test                             | LCFS      | AUFS      | %age difference | DEVICE MAPPER | %age difference |
+|----------------------------------|-----------|-----------|-----------------|---------------|-----------------|
+| docker pull gourao/fio           | 0m13.643s | 0m15.522s | ~15%            | 0m14.555s     | ~12%            |
+| docker pull mysql                | 0m8.953s  | 0m10.286s | ~15%            | 0m21.077s     | ~53%            |
+| docker build <ComplexDockerfile> | 3m17.994s | 8m36.224s | ~62%            | 4m26.70s      | ~26%            |
 
 **Create / Destroy**: The diagram below depicts the time to [create](https://docs.docker.com/engine/reference/run/) and [destroy](https://docs.docker.com/engine/reference/commandline/rm/) 100 Apache/Fedora containers. The cumulative time measured: LCFS at 44 seconds, Overlay at 237 sec, Overlay2 at 245 sec, and Device Mapper at 556 sec. 
 ![alt text](http://i.imgur.com/JSUeqLc.png "create and destroy times")
