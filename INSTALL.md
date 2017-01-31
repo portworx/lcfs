@@ -7,7 +7,9 @@ To install LCFS, there are four actions you must perform:
 3. Build and install the LCFS plugin.
 4. Now you can restart Docker to use the LCFS plugin.
 
-These four steps are detailed below.
+These four steps are detailed below. However a quick start installation script is available which can be used to install and start docker using LCFS.  The script can downloaded and executed using the following command (assuming your LCFS device is /devsdb):
+
+sudo curl -fsSL http://lcfs.portworx.com/lcfs-setup.sh | DEV=/dev/sdb bash. 
 
 ##  Step 1 - Install the LCFS file system
 1. Build and install LCFS file system following the instructions in [that directory](https://github.com/portworx/lcfs/blob/master/lcfs/README.md).
