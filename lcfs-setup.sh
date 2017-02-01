@@ -224,6 +224,7 @@ function status_lcfs()
 	echo "LCFS plugin mnt: ${lpmnt}"
     else
 	echo "LCFS is stopped."
+	lstatus=1
     fi
 
     if [ ${dstatus} -eq 0 -a -n "${ldpid}" ]; then
@@ -231,6 +232,7 @@ function status_lcfs()
 	echo "Docker command: $lfcmd"
     else
 	echo "Docker is stopped."
+	dstatus=1
     fi
 
     cleanup_and_exit $((lstatus+${dstatus}));
