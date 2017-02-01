@@ -306,7 +306,6 @@ if [ ! -e "${DEV}" ]; then
     DEV=${DEVFL}
 fi
 
-[ -z "${START}" ] && ${SUDO} \rm -rf ${PLUGIN_MNT} ${DOCKER_MNT}
 ${SUDO} mkdir -p ${PLUGIN_MNT} ${DOCKER_MNT}
 
 # Mount lcfs
