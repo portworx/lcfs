@@ -36,8 +36,6 @@ RUN mkdir /tmp/pkgs
 RUN \cp -a rpm/lcfs/RPMS/x86_64/*.deb /tmp/pkgs
 RUN \cp -a rpm/lcfs/RPMS/x86_64/*.rpm /tmp/pkgs
 RUN \cp -a rpm/lcfs/RPMS/x86_64/*.tgz /tmp/pkgs
-RUN tar -xzvf /tmp/pkgs/lcfs.binaries.tgz opt/pwx/bin/lcfs
-RUN mv opt/pwx/bin/lcfs /tmp/lcfs.bin
 
 WORKDIR /go/src/github.com/portworx/lcfs/plugin
 RUN make

@@ -41,7 +41,6 @@ gr-plugin:
 	 docker build -t $(GR_CONTAINER) $(BUILD_ARGS) -f Dockerfile.build .
 	 docker run --name $(GR_CONTAINER) $(GR_CONTAINER) ls -l /tmp
 	 docker cp $(GR_CONTAINER):/tmp/lcfs_plugin.bin .
-	 docker cp $(GR_CONTAINER):/tmp/lcfs.bin .
 	 docker cp $(GR_CONTAINER):/tmp/pkgs .
 	 docker rm $(GR_CONTAINER)
 
