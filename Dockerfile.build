@@ -12,6 +12,9 @@ ENV VERSION ${VERSION}
 ARG REVISION
 ENV REVISION ${REVISION}
 
+ARG BUILD_FLAGS
+ENV BUILD_FLAGS ${BUILD_FLAGS}
+
 # tools to build libfuse for lcfs
 RUN apt-get update && \
  	apt-get install -y build-essential util-linux libcurl4-openssl-dev \
@@ -27,14 +30,14 @@ WORKDIR fuse-2.9.7
 RUN ./configure && make -j8 && make install
 
 WORKDIR /go/src/github.com/portworx/lcfs/lcfs
-RUN make STATIC=y
-RUN mv lcfs /tmp/lcfs.bin
-
 RUN make clean
-RUN make STATIC=y VERSION=${VERSION} REVISION=${REVISION} rpm
+RUN make STATIC=y BUILD_FLAGS="${BUILD_FLAGS}" VERSION="${VERSION}" REVISION="${REVISION}" rpm
 RUN mkdir /tmp/pkgs
-RUN mv rpm/lcfs/RPMS/x86_64/*.deb /tmp/pkgs
-RUN mv rpm/lcfs/RPMS/x86_64/*.rpm /tmp/pkgs
+RUN \cp -a rpm/lcfs/RPMS/x86_64/*.deb /tmp/pkgs
+RUN \cp -a rpm/lcfs/RPMS/x86_64/*.rpm /tmp/pkgs
+RUN \cp -a rpm/lcfs/RPMS/x86_64/*.tgz /tmp/pkgs
+RUN tar -xzvf /tmp/pkgs/lcfs.binaries.tgz opt/pwx/bin/lcfs
+RUN mv opt/pwx/bin/lcfs /tmp/lcfs.bin
 
 WORKDIR /go/src/github.com/portworx/lcfs/plugin
 RUN make

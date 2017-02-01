@@ -1,13 +1,18 @@
 # lcfs Makefile -- 201701.06MeV
 CC=gcc
+
+ifndef BUILD_FLAGS
+	override BUILD_FLAGS := $(BUILD_FLAGS) -g
+endif
+
 UNAME=$(shell uname)
 ifeq ($(UNAME),Linux)
-	CFLAGS=-g -Wall -D_FILE_OFFSET_BITS=64 -I/usr/include/fuse -I/usr/local/include/fuse
+	CFLAGS=$(BUILD_FLAGS) -Wall -D_FILE_OFFSET_BITS=64 -I/usr/include/fuse -I/usr/local/include/fuse
 	LDFLAGS=-lz -ltcmalloc -pthread -lprofiler -lfuse
-	#CFLAGS=-g -Wall -D_FILE_OFFSET_BITS=64 -I/usr/include/fuse3 -I/usr/local/include/fuse3
+	#CFLAGS=$(BUILD_FLAGS) -Wall -D_FILE_OFFSET_BITS=64 -I/usr/include/fuse3 -I/usr/local/include/fuse3
 	#LDFLAGS=-lz -ltcmalloc -pthread -lprofiler -L/usr/local/lib -lfuse3
 else
-	CFLAGS=-g -Wno-format $ -D_FILE_OFFSET_BITS=64 -I/usr/local/include/osxfuse/fuse -I/usr/local/include/osxfuse
+	CFLAGS=$(BUILD_FLAGS) -Wno-format $ -D_FILE_OFFSET_BITS=64 -I/usr/local/include/osxfuse/fuse -I/usr/local/include/osxfuse
 	LDFLAGS=-ltcmalloc -lprofiler -losxfuse -lz
 endif
 
@@ -57,6 +62,6 @@ test: lcfs testxattr
 	sudo ./test.sh
 
 rpm:
-	@cd rpm && VERSION="`VERSION="$(VERSION)" ../version_gen.sh -p`" REVISION=$(REVISION) ./buildrpm.sh
+	@cd rpm && BUILD_FLAGS="${BUILD_FLAGS}" VERSION="`VERSION="$(VERSION)" ../version_gen.sh -p`" REVISION="$(REVISION)" ./buildrpm.sh
 
 .PHONY: rpm version clean

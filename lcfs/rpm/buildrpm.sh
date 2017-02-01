@@ -64,27 +64,50 @@ cd ${SOURCE_ROOT} && tar --exclude .git --exclude rpm -czf - * | (cd ${MBUILDROO
 cd ${SOURCE_ROOT} && cp -a ../lcfs-setup.sh ${MBUILDROOT}/${RPM_NAME}-src
 cd ${MBUILDROOT} && tar -czf ${RPMSRCROOT}/${RPM_NAME}-${RPMVERSION}.tar.gz ${RPM_NAME}-src
 cd ${RPMSPECSROOT} && eval rpmbuild -vv -ba ${BLD_MACROS[@]} ${RPMVERSION_DEFINES[@]} ${RPM_DEFINES[@]} ${SPEC}
-
 if [ $? -eq 0 ]; then
     ALIEN=$(which alien)
     [ -z "${ALIEN}" ] && echo "Error: Debian 'alien' package not installed.  Please install using apt-get install alien and rerun this script." && exit 1;
     cd ${RPMRPMSROOT}/${PLATFORM} && DEBPKG=$(sudo ${ALIEN} -k ${RPM_NAME}-${VERSION}-${REVISION}.${PLATFORM}.rpm --scripts)
     [ $? -ne 0 ] && echo "Error: Failed to build debian package." && exit 1
     DEBPKG=$(echo "${DEBPKG}" | /bin/sed 's/ generated.*//')
+else
+    echo "Error: Failed to build rpm package." && exit 1
 fi
 
 RPMPATH="${RPMRPMSROOT}/${PLATFORM}/${RPM_NAME}-${VERSION}-${REVISION}.${PLATFORM}.rpm"
-[ -e ${RPMPATH} ] && cd ${RPMRPMSROOT}/${PLATFORM} && ln -s ${RPM_NAME}-${VERSION}-${REVISION}.${PLATFORM}.rpm ${RPM_NAME}.rpm
+if [ -e ${RPMPATH} ]; then
+    [ -e ${RPMRPMSROOT}/${PLATFORM}/${RPM_NAME}.rpm ] && \rm -f ${RPMRPMSROOT}/${PLATFORM}/${RPM_NAME}.rpm
+    cd ${RPMRPMSROOT}/${PLATFORM} && ln -s ${RPM_NAME}-${VERSION}-${REVISION}.${PLATFORM}.rpm ${RPM_NAME}.rpm
+    cd ${MBUILDROOT} && rpm2cpio ${RPMPATH} | cpio -ivd && tar -czvf ${RPMRPMSROOT}/${PLATFORM}/${RPM_NAME}-${VERSION}-${REVISION}.${PLATFORM}.binaries.tgz opt
+    if [ $? -eq 0 ]; then
+	[ -e ${RPMRPMSROOT}/${PLATFORM}/${RPM_NAME}.binaries.tgz ] && \rm -f ${RPMRPMSROOT}/${PLATFORM}/${RPM_NAME}.binaries.tgz
+	cd ${RPMRPMSROOT}/${PLATFORM} && ln -s ${RPM_NAME}-${VERSION}-${REVISION}.${PLATFORM}.binaries.tgz ${RPM_NAME}.binaries.tgz
+    fi
+    \rm -rf ${MBUILDROOT}/opt
+fi
+
 DPKGPATH="${RPMRPMSROOT}/${PLATFORM}/${DEBPKG}"
-[ -e ${DPKGPATH} ] && cd ${RPMRPMSROOT}/${PLATFORM} && ln -s ${DEBPKG} ${RPM_NAME}.deb
+if [ -e ${DPKGPATH} ]; then
+    [ -e ${RPMRPMSROOT}/${PLATFORM}/${RPM_NAME}.deb ] && \rm -f ${RPMRPMSROOT}/${PLATFORM}/${RPM_NAME}.deb
+    cd ${RPMRPMSROOT}/${PLATFORM} && ln -s ${DEBPKG} ${RPM_NAME}.deb
+fi
 
 if [ ! -z "${OUTPATH}" ]; then
-	cp  ${RPMPATH} ${OUTPATH}
-	RPMPATH="$OUTPATH/${RPM_NAME}-${VERSION}-${REVISION}.${PLATFORM}.rpm"
+	cp -a ${RPMPATH} ${OUTPATH}
+	RPMPATH="${OUTPATH}/${RPM_NAME}-${VERSION}-${REVISION}.${PLATFORM}.rpm"
+	[ -e ${OUTPATH}/${RPM_NAME}.rpm ] && \rm -f ${OUTPATH}/${RPM_NAME}.rpm
 	[ -e ${RPMPATH} ] && cd ${OUTPATH} && ln -s ${RPM_NAME}-${VERSION}-${REVISION}.${PLATFORM}.rpm ${RPM_NAME}.rpm
-	if [ -n "${DEBPKG}" ]; then
-		cp ${RPMRPMSROOT}/${PLATFORM}/${DEBPKG} ${OUTPATH}
+
+	if [ -e ${RPMRPMSROOT}/${PLATFORM}/${RPM_NAME}-${VERSION}-${REVISION}.${PLATFORM}.binaries.tgz ]; then
+	    cp -a ${RPMRPMSROOT}/${PLATFORM}/${RPM_NAME}-${VERSION}-${REVISION}.${PLATFORM}.binaries.tgz ${OUTPATH}
+	    [ -e ${OUTPATH}/${RPM_NAME}.binaries.tgz ] && \rm -f ${OUTPATH}/${RPM_NAME}.binaries.tgz
+	    cd ${OUTPATH} && ln -s ${RPM_NAME}-${VERSION}-${REVISION}.${PLATFORM}.binaries.tgz ${RPM_NAME}.binaries.tgz
+	fi
+
+	if [ -n "${DPKPKG}" ]; then
+		cp -a ${DPKGPATH} ${OUTPATH}
 		DPKGPATH="${OUTPATH}/${DEBPKG}"
+		[ -e ${OUTPATH}/${RPM_NAME}.deb ] && \rm -f ${OUTPATH}/${RPM_NAME}.deb
 		[ -e ${DPKGPATH} ] && cd ${OUTPATH} && ln -s ${DEBPKG} ${RPM_NAME}.deb
 	fi
 fi

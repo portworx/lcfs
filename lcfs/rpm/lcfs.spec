@@ -49,7 +49,7 @@ cp -f lcfs-setup.sh ${RPM_BUILD_ROOT}/opt/pwx/bin
 %check
 
 %clean
-#/bin/rm -rf $RPM_BUILD_ROOT
+/bin/rm -rf $RPM_BUILD_ROOT
 
 %files
 #%defattr(-,root,root,0755)

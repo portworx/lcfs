@@ -7,11 +7,15 @@
 GR_CONTAINER:=lcfs
 
 ifdef VERSION
-BUILD_ARGS := $(BUILD_ARGS) --build-arg VERSION=$(VERSION)
+override BUILD_ARGS := $(BUILD_ARGS) --build-arg VERSION="$(VERSION)"
 endif
 
 ifdef REVISION
-BUILD_ARGS := $(BUILD_ARGS) --build-arg REVISION=$(REVISION)
+override BUILD_ARGS := $(BUILD_ARGS) --build-arg REVISION="$(REVISION)"
+endif
+
+ifdef BUILD_FLAGS
+override BUILD_ARGS := $(BUILD_ARGS) --build-arg BUILD_FLAGS="$(BUILD_FLAGS)"
 endif
 
 TARGETS := gr-plugin
