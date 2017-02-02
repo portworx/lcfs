@@ -131,7 +131,10 @@ lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
         assert(pfs->fs_pcount == 0);
 
         /* Mark the layer as immutable */
-        pfs->fs_frozen = true;
+        if (!pfs->fs_frozen) {
+            pfs->fs_super->sb_lastInode = gfs->gfs_super->sb_ninode;
+            pfs->fs_frozen = true;
+        }
         assert(pfs->fs_root == lc_getInodeHandle(pinum));
         lc_linkParent(fs, pfs);
     }
