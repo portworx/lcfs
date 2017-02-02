@@ -9,7 +9,7 @@ LCFS_ENV_FL=${LCFS_ENV_FL:-"/etc/pwx/lcfs.env"}
 
 [ -e "${LCFS_ENV_FL}" ] && source ${LCFS_ENV_FL}
 
-LCFS_PKG=${LCFS_PKG:-"http://lcfs.portworx.com/latest/lcfs.rpm"}
+LCFS_PKG=${LCFS_PKG:-"http://lcfs.portworx.com/lcfs.rpm"}
 LCFS_IMG=${LCFS_IMG:-"portworx/lcfs:latest"}
 DOCKER_MNT=${DOCKER_MNT:-"/var/lib/docker"}
 PLUGIN_MNT=${PLUGIN_MNT:-"/lcfs"}
@@ -37,10 +37,12 @@ function clean_mount()
 
 function killprocess()
 {
-    local pid=$(ps -C "$1" -o pid --no-header)
+    local pid=$(ps -C "$1" -o pid --no-header | tr '\n' ' ')
     [ -z "${pid}" ] && return 0
-    ${SUDO} pkill "$1"
-    timeout 60 bash -c "while ${SUDO} kill -0 \"${pid}\"; do sleep 0.5; done" &> /dev/null
+    for pd in ${pid}; do
+	${SUDO} kill -s 15 ${pd} &> /dev/null
+	timeout 60 bash -c "while ${SUDO} kill -0 \"${pd}\"; do sleep 0.5; done" &> /dev/null
+    done
     pid=$(ps -C "$1" -o pid --no-header)
     [ -n "${pid}" ] && echo "Failed to kill process for $1." && cleanup_and_exit 1
     return 0
@@ -51,19 +53,18 @@ function download_lcfs_binary()
     ${SUDO} mkdir -p ${LOCAL_DNLD}
     ${SUDO} curl --fail --netrc -s -o ${LOCAL_DNLD}/${LOCAL_PKG_NM} ${LCFS_PKG}
     [ $? -ne 0 ] && echo "Failed to download LCFS package ${LCFS_PKG}." && cleanup_and_exit 1
-    LCFS_PKG="${LOCAL_DNLD}/${LOCAL_PKG_NM}"
 }
 
 function install_lcfs_binary()
 {
     local flg_fl=/opt/pwx/.lcfs
 
-    [ -z "$(ps -C "dockerd" -o pid --no-header)" ] && dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN}"
+    [ -z "$(ps -C ${DOCKER_SRV_BIN} -o pid --no-header)" ] && dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN}"
 
     local centos_exists=$(${SUDO} ${DOCKER_BIN} images -q centos:latest)
 
     ${SUDO} \rm -f ${flg_fl}
-    ${SUDO} ${DOCKER_BIN} run --rm --name centos -v /opt:/opt centos bash -c "rpm -Uvh --nodeps ${LCFS_PKG} && touch ${flg_fl}"
+    ${SUDO} ${DOCKER_BIN} run --rm --name centos -v /opt:/opt centos bash -c "rpm -Uvh --nodeps ${LOCAL_DNLD}/${LOCAL_PKG_NM} && touch ${flg_fl}"
     [ -z "${centos_exists}" ] && ${SUDO} ${DOCKER_BIN} rmi centos:latest &> /dev/null
     [ ! -f ${flg_fl} ] && echo "Failed to install LCFS binaries." && cleanup_and_exit 1
 }
@@ -113,7 +114,7 @@ function dockerd_manual_start()
 
 function system_docker_stop()
 {
-    local sysd_pid=$(ps -C  "systemd" -o pid --no-header)
+    local sysd_pid=$(ps -C systemd -o pid --no-header)
     local sysV_docker="/etc/init.d/docker"
 
     [ -n "${sysd_pid}" ] && sudo systemctl stop docker          # Systemd stop
@@ -125,7 +126,8 @@ function lcfs_configure_save()
 {
     local tmp_cfg=/tmp/.lcfs.env
 
-    echo 'LCFS_IMG=${LCFS_IMG:-"'${LCFS_IMG}'"}' > ${tmp_cfg}
+    echo 'LCFS_PKG=${LCFS_PKG:-"'${LCFS_PKG}'"}' > ${tmp_cfg}
+    echo 'LCFS_IMG=${LCFS_IMG:-"'${LCFS_IMG}'"}' >> ${tmp_cfg}
     echo 'DOCKER_MNT=${DOCKER_MNT:-"'${DOCKER_MNT}'"}' >> ${tmp_cfg}
     echo 'PLUGIN_MNT=${PLUGIN_MNT:-"'${PLUGIN_MNT}'"}' >> ${tmp_cfg}
     echo 'DEVFL=${DEVFL:-"'${DEVFL}'"}' >> ${tmp_cfg}
@@ -309,9 +311,10 @@ fi
 ${SUDO} mkdir -p ${PLUGIN_MNT} ${DOCKER_MNT}
 
 # Mount lcfs
-${SUDO} /opt/pwx/bin/lcfs ${DEV} ${DOCKER_MNT} ${PLUGIN_MNT} &
+${SUDO} /opt/pwx/bin/lcfs ${DEV} ${DOCKER_MNT} ${PLUGIN_MNT}
+LSTATUS=$?
 sleep 3
-[ -z "$(ps -C lcfs -o pid,command --no-header)" ] && echo "Failed to start LCFS binary." && cleanup_and_exit 1
+[ -z "$(ps -C lcfs -o pid,command --no-header)" -o ${LSTATUS} -ne 0 ] && echo "Failed to start LCFS binary [${LSTATUS}]." && cleanup_and_exit ${LSTATUS}
 
 # Restart docker
 if [ -z "${START}" ]; then
