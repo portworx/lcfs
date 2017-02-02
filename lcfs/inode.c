@@ -382,6 +382,7 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
                 read = false;
                 continue;
             }
+            lc_updateCRC(buf, &buf->ib_crc);
             lc_writeBlock(gfs, fs, buf, block);
             flush = false;
         }

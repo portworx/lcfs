@@ -590,6 +590,7 @@ lc_sync(struct gfs *gfs, struct fs *fs, bool super) {
 static void
 lc_umountSync(struct gfs *gfs) {
     struct fs *fs = lc_getGlobalFs(gfs);
+    int err;
 
     lc_lock(fs, true);
 
@@ -608,6 +609,9 @@ lc_umountSync(struct gfs *gfs) {
     lc_blockAllocatorDeinit(gfs, fs);
 
     lc_freeLayer(fs, false);
+
+    err = fsync(gfs->gfs_fd);
+    assert(err == 0);
 
     /* Finally update superblock */
     fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
