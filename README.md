@@ -38,7 +38,7 @@ Additional performance considerations:
 * **space management**: a lot can be done to improve garbage collection and space management, automatically removing orphaned layers. We should do this. 
 
 ## Measured Performance
-The current experimental release of LCFS is shown against several of the top storage drivers.
+The current experimental release of LCFS is shown against several of the top storage drivers.  These tests were run against a local repository to remove network variablity.
 
 The below table shows a quick comparison of how long it takes LCFS to complete some common Docker operations compared to other storage drivers, using an Ubuntu 14.04 system with a single SATA disk.  Times are measured in seconds, and the number in () shows the % decrease in time with respect to the comparison driver.
 
@@ -48,7 +48,7 @@ The below table shows a quick comparison of how long it takes LCFS to complete s
 | docker pull mysql                | 13.359s   | 16.438s   (23%)   | 24.998s (87%)    | 19.170s  (43%) | 16.252s (22%)   |
 | docker build <ComplexDockerfile> | 221.539s  | 572.677s  (159%)  | 561.403s (153%)  | 549.851s (148%)| 551.893s (149%) |
 
-**Create / Destroy**: The diagram below depicts the time to [create](https://docs.docker.com/engine/reference/run/) and [destroy](https://docs.docker.com/engine/reference/commandline/rm/) 100 fedora/apache containers. The cumulative time measured: LCFS at 44 seconds, Overlay at 237 sec, Overlay2 at 245 sec, and Device Mapper at 556 sec. 
+**Create / Destroy**: The diagram below depicts the time to [create](https://docs.docker.com/engine/reference/run/) and [destroy](https://docs.docker.com/engine/reference/commandline/rm/) 100 fedora/apache containers. The image was [pulled](https://docs.docker.com/engine/commandline/pull/) before the test. The cumulative time measured: LCFS at 44 seconds, Overlay at 237 sec, Overlay2 at 245 sec, and Device Mapper at 556 sec. 
 ![alt text](http://i.imgur.com/JSUeqLc.png "create and destroy times")
 
 
