@@ -78,4 +78,4 @@ To uninstall the LCFS plugin, run the following commands after stopping docker
 ```
 # sudo umount -f /var/lib/docker /lcfs 2>/dev/null
 ```
-At this point, docker can be restarted with original storage driver.
+At this point, Docker can be restarted with the original storage driver.
