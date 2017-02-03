@@ -71,6 +71,13 @@ touch file1
 mv file1 dir/file1
 ls -liR
 
+mkdir -p rdir rdir1/rdir
+mv rdir1/rdir .
+
+mkdir -p rdir2 rdir1/rdir2
+touch rdir2/file
+mv rdir1/rdir2 .
+
 rm -fr $MNT/*
 
 mkdir -p dir/dir1/dir2

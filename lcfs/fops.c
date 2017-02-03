@@ -135,13 +135,15 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
     }
     lc_inodeLock(inode, true);
     assert(inode->i_nlink);
-    if (rmdir) {
+    if (rmdir || S_ISDIR(inode->i_mode)) {
         assert(inode->i_parent == dir->i_ino);
+        assert(S_ISDIR(inode->i_mode));
 
         /* Allow directory removals from the root file system even when
-         * directories are not empty.
+         * directories are not empty.  Skip this for target of a rename
+         * operation.
          */
-        if (inode->i_size && (fs == lc_getGlobalFs(fs->fs_gfs))) {
+        if (inode->i_size && rmdir && (fs == lc_getGlobalFs(fs->fs_gfs))) {
             if (inodep) {
 
                 /* Let caller do this processing after responding */
@@ -160,6 +162,10 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
                 return EEXIST;
             }
             lc_removeDir(fs, inode);
+        }
+        if (!rmdir) {
+            assert(dir->i_nlink > 2);
+            dir->i_nlink--;
         }
         inode->i_flags |= LC_INODE_REMOVED;
         removed = true;
@@ -219,10 +225,8 @@ lc_remove(struct fs *fs, ino_t parent, const char *name, void **inodep,
     /* Lookup and remove the specified entry from the directory */
     err = lc_dirRemoveName(fs, dir, name, rmdir, inodep, lc_removeInode);
     lc_inodeUnlock(dir);
-    if (err) {
-        if (err != EEXIST) {
-            lc_reportError(__func__, __LINE__, parent, err);
-        }
+    if (err && (err != EEXIST)) {
+        lc_reportError(__func__, __LINE__, parent, err);
     }
     return err;
 }
@@ -709,11 +713,25 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
     } else {
         inode = NULL;
     }
-    fuse_reply_err(req, 0);
 
     /* Remove if target exists */
-    lc_dirRemoveName(fs, tdir ? tdir : sdir, newname, false,
-                     NULL, lc_removeInode);
+    err = lc_dirRemoveName(fs, tdir ? tdir : sdir, newname, false,
+                           NULL, lc_removeInode);
+    if (err && (err != ENOENT)) {
+
+        /* Target is a non-empty directory */
+        lc_inodeUnlock(sdir);
+        if (tdir) {
+            lc_inodeUnlock(tdir);
+        }
+        if (inode) {
+            lc_inodeUnlock(inode);
+        }
+        lc_reportError(__func__, __LINE__, parent, err);
+        fuse_reply_err(req, err);
+        goto out;
+    }
+    fuse_reply_err(req, 0);
 
     /* Renaming to another directory */
     if (parent != newparent) {
@@ -748,6 +766,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
         lc_markInodeDirty(inode, 0);
         lc_inodeUnlock(inode);
     }
+    err = 0;
 
 out:
     lc_statsAdd(fs, LC_RENAME, err, &start);
