@@ -9,7 +9,7 @@ To install LCFS, there are four actions you must perform:
 
 These four steps are detailed below.  However, a convenience script which can be used to install and start docker using LCFS is available.  The script can downloaded and executed using the following command (assuming your LCFS device is `/dev/sdb`):
 
-```
+a```
 # curl -fsSL http://lcfs.portworx.com/lcfs-setup.sh | sudo DEV=/dev/sdb bash
 ```
 
@@ -19,7 +19,7 @@ Note: The convenience script will start dockerd with `-s portworx/lcfs --experim
 1. Build and install LCFS file system following the instructions in [that directory](https://github.com/portworx/lcfs/blob/master/lcfs/README.md).
 2. Stop docker - for example, `sudo systemctl stop docker`
 3. Chose a device to provide to lcfs.  lcfs requires a block device (you can also use a file, but this is not recommended due to performance reasons).  In this example, we use `/dev/sdb`.
-4. Remove `/var/lib/docker` and `/lcfs` if they are present.
+ 4. Remove `/var/lib/docker` and `/lcfs` if they are present.
 5. Start lcfs
 ```
 # sudo rm -fr /var/lib/docker /lcfs
@@ -28,6 +28,7 @@ Note: The convenience script will start dockerd with `-s portworx/lcfs --experim
 ```
 
 ## Step 2 - Start Docker using VFS
+
 Restart the Docker daemon and instruct it to use vfs as the graph driver.  We will restart docker to use lcfs after in step #4.
 ```
 # sudo dockerd -s vfs
@@ -67,18 +68,16 @@ If for any reason you need to reset the LCFS file system, stop docker and do thi
 
 
 ```
-# rm -rf /var/lib/docker
-# rm -rf /lcfs
-# dd if=/dev/zero of=/dev/sdb count=1 bs=4k
+# sudo umount -f /var/lib/docker /lcfs 2>/dev/null
+# sudo dd if=/dev/zero of=/dev/sdb count=1 bs=4k
 ```
 
 You can now restart LCFS and docker as per the previous steps.
 
 ## Uninstalling LCFS
-To uninstall the LCFS plugin, run the following commands
+To uninstall the LCFS plugin, run the following commands after stopping docker
 
 ```
-# sudo docker plugin disable portworx/lcfs
-# sudo docker plugin rm portworx/lcfs
+# sudo umount -f /var/lib/docker /lcfs 2>/dev/null
 ```
-
+At this point, docker can be restarted with original storage driver.
