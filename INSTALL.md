@@ -9,7 +9,7 @@ To install LCFS, there are four actions you must perform:
 
 These four steps are detailed below.  However, a convenience script which can be used to install and start docker using LCFS is available.  The script can downloaded and executed using the following command (assuming your LCFS device is `/dev/sdb`):
 
-a```
+```
 # curl -fsSL http://lcfs.portworx.com/lcfs-setup.sh | sudo DEV=/dev/sdb bash
 ```
 
@@ -19,10 +19,8 @@ Note: The convenience script will start dockerd with `-s portworx/lcfs --experim
 1. Build and install LCFS file system following the instructions in [that directory](https://github.com/portworx/lcfs/blob/master/lcfs/README.md).
 2. Stop docker - for example, `sudo systemctl stop docker`
 3. Chose a device to provide to lcfs.  lcfs requires a block device (you can also use a file, but this is not recommended due to performance reasons).  In this example, we use `/dev/sdb`.
- 4. Remove `/var/lib/docker` and `/lcfs` if they are present.
-5. Start lcfs
+4. Start lcfs
 ```
-# sudo rm -fr /var/lib/docker /lcfs
 # sudo mkdir -p /lcfs /var/lib/docker
 # sudo lcfs /dev/sdb /var/lib/docker /lcfs
 ```
