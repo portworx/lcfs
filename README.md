@@ -69,12 +69,12 @@ In the above  diagram, the right side shows that LCFS also presents a unified vi
 
 Separately, LCFS itself is implemented as a single filesystem. It takes in (hardware) devices and puts one filesystem over those drives. For more on the LCFS architecture and future TODOs, please see: 
 
-* [*caching*](https://github.com/portworx/lcfs/blob/master/docs/caching_overview.md): how LCFS caches and accesses metadata (inodes, directories, etc) and future work. 
-* [*crash consistency*](https://github.com/portworx/lcfs/blob/master/docs/crashconsistency_overview.md): work in progress. 
-* [*file operations*](https://github.com/portworx/lcfs/blob/master/docs/file_operations.md): how LCFS supports file operations and file locking.
-* [*layers*](https://github.com/portworx/lcfs/blob/master/docs/layers_overview.md): how layers are created, differenced, locked, and cloned/snapshotted. 
 * [*layout*](https://github.com/portworx/lcfs/blob/master/docs/layout_overview.md): how LCFS formats devices, handles inodes, and handles internal data structures. 
+* [*layers*](https://github.com/portworx/lcfs/blob/master/docs/layers_overview.md): how layers are created, differenced, locked, and cloned/snapshotted. 
+* [*file operations*](https://github.com/portworx/lcfs/blob/master/docs/file_operations.md): how LCFS supports file operations and file locking.
+* [*caching*](https://github.com/portworx/lcfs/blob/master/docs/caching_overview.md): how LCFS caches and accesses metadata (inodes, directories, etc) and future work. 
 * [*space management*](https://github.com/portworx/lcfs/blob/master/docs/spacemanagement_overview.md): how LCFS handles allocation, tracking, placement, and I/O coalescing. 
+* [*crash consistency*](https://github.com/portworx/lcfs/blob/master/docs/crashconsistency_overview.md): work in progress. 
 * [*stats*](https://github.com/portworx/lcfs/blob/master/docs/stats_overview.md): how to access stats and future work. 
 
 
@@ -82,7 +82,7 @@ Separately, LCFS itself is implemented as a single filesystem. It takes in (hard
 You can install LCFS by executing the script below (assuming your storage device is `/dev/sdb`):
 
 ```
-# sudo curl -fsSL http://lcfs.portworx.com/lcfs-setup.sh | DEV=/dev/sdb bash
+# curl -fsSL http://lcfs.portworx.com/lcfs-setup.sh | sudo DEV=/dev/sdb bash
 ```
 
 For detailed instructions, you must first install the LCFS filesystem and then the LCFS v2 graph driver plugin, as described [here](INSTALL.md).

@@ -124,16 +124,23 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
 
     assert(S_ISDIR(dir->i_mode));
 
-    /* Need to remove the inode only if it is copied to this layer */
-    inode = lc_lookupInode(fs, lc_getInodeHandle(ino));
+    /* Need to remove the inode only if it is already copied to this layer */
+    inode = lc_getInode(fs, ino, NULL, false, true);
     if (inode == NULL) {
-        if (fs->fs_parent == NULL) {
-            lc_reportError(__func__, __LINE__, ino, ESTALE);
-            return ESTALE;
+        lc_reportError(__func__, __LINE__, ino, ESTALE);
+        return ESTALE;
+    }
+    if (inode->i_fs != fs) {
+
+        /* Do not allow removing a directory not empty */
+        if (S_ISDIR(inode->i_mode) && inode->i_size) {
+            lc_inodeUnlock(inode);
+            //lc_reportError(__func__, __LINE__, ino, EEXIST);
+            return EEXIST;
         }
+        lc_inodeUnlock(inode);
         return 0;
     }
-    lc_inodeLock(inode, true);
     assert(inode->i_nlink);
     if (rmdir || S_ISDIR(inode->i_mode)) {
         assert(inode->i_parent == dir->i_ino);
