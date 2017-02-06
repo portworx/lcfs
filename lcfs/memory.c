@@ -49,6 +49,9 @@ static const char *mrequests[] = {
     "XATTRVALUE",
     "XATTRBUF",
     "XATTRINODE",
+    "CFILE",
+    "CDIR",
+    "PATH",
     "STATS",
 };
 

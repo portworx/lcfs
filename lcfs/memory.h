@@ -22,8 +22,11 @@ enum lc_memTypes {
     LC_MEMTYPE_XATTRVALUE = 16,     /* Extended attribute values */
     LC_MEMTYPE_XATTRBUF = 17,       /* Extended attributes buffers */
     LC_MEMTYPE_XATTRINODE = 18,     /* Extended attribute portion in inode */
-    LC_MEMTYPE_STATS = 19,          /* Request stats */
-    LC_MEMTYPE_MAX = 20,
+    LC_MEMTYPE_CFILE = 19,          /* Tracking a file change */
+    LC_MEMTYPE_CDIR = 20,           /* Tracking a directory change */
+    LC_MEMTYPE_PATH = 21,           /* Path to a directory */
+    LC_MEMTYPE_STATS = 22,          /* Request stats */
+    LC_MEMTYPE_MAX = 23,
 };
 
 #endif

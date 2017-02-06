@@ -248,6 +248,9 @@ struct fs {
     /* Lock protecting extent lists */
     pthread_mutex_t fs_alock;
 
+    /* Changes in this layer compared to parent */
+    struct cdir *fs_changes;
+
     /* Free extents */
     struct extent *fs_extents;
 

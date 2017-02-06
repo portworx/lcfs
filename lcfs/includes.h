@@ -49,6 +49,7 @@
 #include "fs.h"
 #include "extent.h"
 #include "page.h"
+#include "diff.h"
 #include "stats.h"
 #include "inlines.h"
 #ifdef __APPLE__
@@ -148,7 +149,9 @@ void lc_readInodes(struct gfs *gfs, struct fs *fs);
 void lc_destroyInodes(struct fs *fs, bool remove);
 struct inode *lc_lookupInode(struct fs *fs, ino_t ino);
 struct inode *lc_getInode(struct fs *fs, ino_t ino, struct inode *handle,
-                           bool copy, bool exclusive);
+                          bool copy, bool exclusive);
+struct inode *lc_getInodeParent(struct fs *fs, ino_t inum, bool copy,
+                                 bool exclusive);
 struct inode *lc_inodeInit(struct fs *fs, mode_t mode,
                             uid_t uid, gid_t gid, dev_t rdev, ino_t parent,
                             const char *target);
@@ -260,12 +263,17 @@ void lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
                   void *buf);
 void lc_xattrFree(struct inode *inode);
 
+ino_t lc_getRootIno(struct fs *fs, const char *name, struct inode *pdir,
+                    bool err);
 void lc_linkParent(struct fs *fs, struct fs *pfs);
 void lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
                     const char *parent, size_t size, bool rw);
 void lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name);
 void lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
                    enum ioctl_cmd cmd);
+
+void lc_layerDiff(fuse_req_t req, const char *name, size_t size);
+void lc_freeChangeList(struct fs *fs);
 
 void lc_statsNew(struct fs *fs);
 void lc_statsBegin(struct timeval *start);

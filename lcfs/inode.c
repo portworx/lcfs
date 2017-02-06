@@ -833,8 +833,10 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino, bool exclusive) {
     return inode;
 }
 
-/* Lookup the requested inode in the parent chain */
-static struct inode *
+/* Lookup the requested inode in the parent chain.  Inode is locked only if
+ * cloned to the layer
+ */
+struct inode *
 lc_getInodeParent(struct fs *fs, ino_t inum, bool copy, bool exclusive) {
     struct inode *inode = NULL, *parent;
     uint64_t csize = 0;
@@ -843,6 +845,7 @@ lc_getInodeParent(struct fs *fs, ino_t inum, bool copy, bool exclusive) {
 
     pfs = fs->fs_parent;
     while (pfs) {
+        assert(pfs->fs_frozen);
 
         /* Hash changes with inode cache size */
         if (pfs->fs_icacheSize != csize) {
@@ -867,7 +870,6 @@ lc_getInodeParent(struct fs *fs, ino_t inum, bool copy, bool exclusive) {
                     inode = lc_cloneInode(fs, parent, inum, exclusive);
                 } else {
                     pthread_mutex_unlock(&fs->fs_ilock);
-                    lc_inodeLock(inode, exclusive);
                 }
             } else {
                 /* XXX Remember this for future lookup */

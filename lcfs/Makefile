@@ -36,9 +36,9 @@ LDFLAGS=-lz -pthread $(LCFS_STATIC_LIBS) -lstdc++ -lm -ldl $(LCFS_LZMA_LIBS)
 endif  # STATIC
 
 ifeq ($(UNAME),Linux)
-OBJ=lcfs.o memory.o fops.o super.o io.o extent.o block.o fs.o inode.o dir.o emap.o bcache.o page.o xattr.o layer.o stats.o linux.o
+OBJ=lcfs.o memory.o fops.o super.o io.o extent.o block.o fs.o inode.o dir.o emap.o bcache.o page.o xattr.o layer.o diff.o stats.o linux.o
 else
-OBJ=lcfs.o memory.o fops.o super.o io.o extent.o block.o fs.o inode.o dir.o emap.o bcache.o page.o xattr.o layer.o stats.o apple.o
+OBJ=lcfs.o memory.o fops.o super.o io.o extent.o block.o fs.o inode.o dir.o emap.o bcache.o page.o xattr.o layer.o diff.o stats.o apple.o
 endif
 
 all: lcfs cstat

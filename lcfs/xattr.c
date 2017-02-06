@@ -49,6 +49,12 @@ lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
     struct fs *fs;
     int err = 0;
 
+    /* Do not allow creating extended attributes on the layer root directory */
+    if (ino == gfs->gfs_layerRoot) {
+        lc_reportError(__func__, __LINE__, ino, EPERM);
+        fuse_reply_err(req, EPERM);
+        return;
+    }
     lc_statsBegin(&start);
     fs = lc_getLayerLocked(ino, false);
     if (fs->fs_child) {

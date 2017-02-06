@@ -113,6 +113,7 @@ lc_freeLayer(struct fs *fs, bool remove) {
     assert(fs->fs_inodeBlockCount == 0);
     assert(fs->fs_inodeBlockPages == NULL);
     assert(fs->fs_inodeBlocks == NULL);
+    assert(fs->fs_changes == NULL);
     assert(fs->fs_extents == NULL);
     assert(fs->fs_aextents == NULL);
     assert(fs->fs_fextents == NULL);
@@ -143,6 +144,7 @@ lc_freeLayer(struct fs *fs, bool remove) {
 /* Delete a file system */
 void
 lc_destroyLayer(struct fs *fs, bool remove) {
+    lc_freeChangeList(fs);
     lc_destroyInodes(fs, remove);
     lc_processFreedBlocks(fs, false);
     lc_freeLayer(fs, remove);

@@ -130,6 +130,7 @@ struct ixattr {
 #define LC_INODE_HASHED         0x080  /* Hashed directory */
 #define LC_INODE_DHASHED        0x080  /* Dirty pages in a hash table */
 #define LC_INODE_NOTRUNC        0x100  /* Do not truncate this file */
+#define LC_INODE_CTRACKED       0x200  /* Inode in the change list */
 
 /* Inode structure */
 struct inode {

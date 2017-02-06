@@ -1236,6 +1236,12 @@ lc_getxattr(fuse_req_t req, fuse_ino_t ino, const char *name, size_t size
 
     lc_displayEntry(__func__, ino, 0, name);
 
+    /* Check if the request is for finding changes made in a layer */
+    if (ino == gfs->gfs_layerRoot) {
+        lc_layerDiff(req, name, size);
+        return;
+    }
+
     /* If the file system does not have any extended attributes, return */
     if (!gfs->gfs_xattr_enabled) {
         //lc_reportError(__func__, __LINE__, ino, ENODATA);
