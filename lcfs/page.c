@@ -254,7 +254,7 @@ lc_fillPage(struct gfs *gfs, struct inode *inode, struct dpage *dpage,
         (((pg * LC_BLOCK_SIZE) + psize) < inode->i_size)) {
         block = lc_inodeEmapLookup(gfs, inode, pg, extents);
         if (block != LC_PAGE_HOLE) {
-            bpage = lc_getPage(inode->i_fs, block, true);
+            bpage = lc_getPage(inode->i_fs, block, NULL, true);
             data = bpage->p_data;
         } else {
             data = NULL;
@@ -728,17 +728,18 @@ lc_addPages(struct inode *inode, off_t off, size_t size,
 }
 
 /* Read specified pages of a file */
-void
+int
 lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode, off_t soffset,
-            off_t endoffset, uint64_t asize, struct page **pages,
+            off_t endoffset, uint64_t asize, struct page **pages, char **dbuf,
             struct fuse_bufvec *bufv) {
-    uint64_t block, pg = soffset / LC_BLOCK_SIZE, pcount = 0, i = 0;
+    uint64_t block, pg = soffset / LC_BLOCK_SIZE, pcount = 0, dcount = 0;
+    struct extent *extent = lc_inodeGetEmap(inode);
     size_t psize, rsize = endoffset - soffset;
     struct page *page = NULL, **rpages = NULL;
-    struct extent *extent = lc_inodeGetEmap(inode);
     off_t poffset, off = soffset;
     struct gfs *gfs = fs->fs_gfs;
     uint32_t count, rcount = 0;
+    uint64_t i = 0;
     char *data;
 
     assert(S_ISREG(inode->i_mode));
@@ -769,12 +770,17 @@ lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode, off_t soffset,
             if (block == LC_PAGE_HOLE) {
                 bufv->buf[i].mem = gfs->gfs_zPage;
             } else {
+                page = lc_getPageNewData(fs, block, dbuf ? dbuf[dcount] : NULL);
 
-                /* Get the page */
-                if ((off == soffset) && (rsize == psize)) {
-                    page = lc_getPage(fs, block, true);
-                } else {
-                    page = lc_getPageNewData(fs, block, true);
+                /* If page is missing a data buffer, allocate one after
+                 * unlocking the inode.
+                 */
+                if (!page->p_dvalid && (page->p_data == NULL)) {
+                    lc_releaseReadPages(gfs, fs, pages, pcount, false);
+                    return ENOMEM;
+                }
+                if (dbuf && (page->p_data == dbuf[dcount])) {
+                    dcount++;
                 }
                 bufv->buf[i].mem = &page->p_data[poffset];
                 pages[pcount++] = page;
@@ -809,11 +815,19 @@ lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode, off_t soffset,
         lc_readPages(gfs, fs, rpages, rcount);
     }
     fuse_reply_data(req, bufv, FUSE_BUF_SPLICE_MOVE);
+    lc_inodeUnlock(inode);
     lc_releaseReadPages(gfs, fs, pages, pcount, false);
 #if 0
                         ((inode->i_fs == fs) && inode->i_private) ||
                         (fs->fs_parent && fs->fs_parent->fs_single));
 #endif
+    if (dbuf) {
+        while (dcount < pcount) {
+            lc_freePageData(gfs, fs->fs_rfs, dbuf[dcount]);
+            dcount++;
+        }
+    }
+    return 0;
 }
 
 /* Flush dirty pages of an inode */

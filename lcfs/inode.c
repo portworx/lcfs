@@ -422,10 +422,14 @@ lc_freeInode(struct inode *inode) {
             size += inode->i_size + 1;
         }
     }
-    lc_xattrFree(inode);
+    if (inode->i_xattrData) {
+        lc_xattrFree(inode);
+    }
     assert(inode->i_xattrData == NULL);
     pthread_rwlock_destroy(&inode->i_rwlock);
-    lc_blockFreeExtents(fs, inode->i_emapDirExtents, 0);
+    if (inode->i_emapDirExtents) {
+        lc_blockFreeExtents(fs->fs_gfs, fs, inode->i_emapDirExtents, 0);
+    }
     lc_free(fs, inode, size, LC_MEMTYPE_INODE);
 }
 
@@ -542,12 +546,14 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             assert(inode->i_extentLength == 0);
 
             /* Free metadata blocks allocated to the inode */
-            lc_blockFreeExtents(fs, inode->i_emapDirExtents,
-                                LC_EXTENT_EFREE | LC_EXTENT_LAYER);
-            inode->i_emapDirExtents = NULL;
+            if (inode->i_emapDirExtents) {
+                lc_blockFreeExtents(gfs, fs, inode->i_emapDirExtents,
+                                    LC_EXTENT_EFREE | LC_EXTENT_LAYER);
+                inode->i_emapDirExtents = NULL;
+            }
             inode->i_emapDirBlock = LC_INVALID_BLOCK;
             if (inode->i_xattrData && inode->i_xattrExtents) {
-                lc_blockFreeExtents(fs, inode->i_xattrExtents,
+                lc_blockFreeExtents(gfs, fs, inode->i_xattrExtents,
                                     LC_EXTENT_EFREE | LC_EXTENT_LAYER);
                 inode->i_xattrExtents = NULL;
             }
@@ -575,13 +581,13 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             //lc_printf("Writing inode %ld to block %ld\n", inode->i_ino, inode->i_block);
             if (allocated) {
                 assert(offset == 0);
-                page = lc_getPageNewData(fs, block, false);
+                page = lc_getPageNewData(fs, block, NULL);
 
                 /* Zero out rest of the block */
                 memset(&page->p_data[sizeof(struct dinode)], 0,
                        LC_BLOCK_SIZE - sizeof(struct dinode));
             } else {
-                page = lc_getPage(fs, block, true);
+                page = lc_getPage(fs, block, NULL, true);
             }
             memcpy(&page->p_data[offset], &inode->i_dinode,
                    sizeof(struct dinode));

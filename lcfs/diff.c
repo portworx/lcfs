@@ -58,7 +58,6 @@ lc_processDirectory(struct fs *fs, struct inode *dir, struct inode *pdir,
     assert(!(dir->i_flags & LC_INODE_SHARED));
 
     /* Traverse parent directory entries looking for missing entries */
-    /* XXX Take care of directories if one is hashed and other not */
     if (hashed) {
         assert((pdir == NULL) || (pdir->i_flags & LC_INODE_DHASHED));
         max = LC_DIRCACHE_SIZE;
@@ -175,7 +174,9 @@ lc_compareDirectory(struct fs *fs, struct inode *dir, struct inode *pdir,
     struct dirent *dirent;
     uint64_t count = 0;
 
-    if (pdir && ((dir == fs->fs_rootInode) || (pdir->i_ino == dir->i_ino))) {
+    if (pdir && ((dir == fs->fs_rootInode) || (pdir->i_ino == dir->i_ino)) &&
+        ((dir->i_flags & LC_INODE_DHASHED) ==
+         (pdir->i_flags & LC_INODE_DHASHED))) {
         lc_processDirectory(fs, dir, pdir, lastIno, cdir);
         return;
     }

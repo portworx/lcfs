@@ -353,7 +353,7 @@ lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
 
 /* Lookup/Create a page in the block hash */
 struct page *
-lc_getPage(struct fs *fs, uint64_t block, bool read) {
+lc_getPage(struct fs *fs, uint64_t block, char *data, bool read) {
     int hash = lc_pageBlockHash(fs, block);
     struct pcache *pcache = fs->fs_bcache->lb_pcache;
     bool hit = false, missed = false;
@@ -413,12 +413,16 @@ retry:
     if (read && !page->p_dvalid) {
         lhash = lc_lockPageRead(fs, block);
         if (!page->p_dvalid) {
-            if (page->p_data == NULL) {
-                lc_mallocBlockAligned(fs->fs_rfs, (void **)&page->p_data,
-                                      LC_MEMTYPE_DATA);
+            if (data) {
+                page->p_data = data;
+            } else {
+                if (page->p_data == NULL) {
+                    lc_mallocBlockAligned(fs->fs_rfs, (void **)&page->p_data,
+                                          LC_MEMTYPE_DATA);
+                }
+                lc_readBlock(gfs, fs, block, page->p_data);
+                page->p_dvalid = 1;
             }
-            lc_readBlock(gfs, fs, block, page->p_data);
-            page->p_dvalid = 1;
             missed = true;
         }
         lc_unlockPageRead(fs, lhash);
@@ -438,7 +442,7 @@ retry:
 /* Link new data to the page of a file */
 struct page *
 lc_getPageNew(struct gfs *gfs, struct fs *fs, uint64_t block, char *data) {
-    struct page *page = lc_getPage(fs, block, false);
+    struct page *page = lc_getPage(fs, block, NULL, false);
 
     assert(page->p_refCount == 1);
 
@@ -472,27 +476,13 @@ lc_getPageNoBlock(struct gfs *gfs, struct fs *fs, char *data,
  * page by the caller.
  */
 struct page *
-lc_getPageNewData(struct fs *fs, uint64_t block, bool lock) {
+lc_getPageNewData(struct fs *fs, uint64_t block, char *data) {
     struct page *page;
-    uint32_t lhash;
 
-    page = lc_getPage(fs, block, false);
-    if (page->p_data == NULL) {
-        if (lock) {
-
-            /* Lock is required when multiple threads read the pages of a
-             * file.
-             */
-            lhash = lc_lockPageRead(fs, block);
-            if (page->p_data == NULL) {
-                lc_mallocBlockAligned(fs->fs_rfs, (void **)&page->p_data,
-                                      LC_MEMTYPE_DATA);
-            }
-            lc_unlockPageRead(fs, lhash);
-        } else {
-            lc_mallocBlockAligned(fs->fs_rfs, (void **)&page->p_data,
-                                  LC_MEMTYPE_DATA);
-        }
+    page = lc_getPage(fs, block, data, data);
+    if ((page->p_data == NULL) && (data == NULL)) {
+        lc_mallocBlockAligned(fs->fs_rfs, (void **)&page->p_data,
+                              LC_MEMTYPE_DATA);
     }
     page->p_hitCount = 0;
     return page;
@@ -613,7 +603,7 @@ lc_freeBlocksAfterFlush(struct fs *fs, uint64_t count) {
     }
     pthread_mutex_unlock(&fs->fs_plock);
     if (extents) {
-        lc_blockFreeExtents(fs, extents,
+        lc_blockFreeExtents(fs->fs_gfs, fs, extents,
                             fs->fs_removed ? 0 :
                             (LC_EXTENT_EFREE | LC_EXTENT_LAYER));
     }

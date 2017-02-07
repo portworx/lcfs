@@ -932,11 +932,12 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     struct timeval start;
     struct inode *inode;
     struct page **pages;
+    char **dbuf = NULL;
     off_t endoffset;
     uint64_t pcount;
+    int i, err = 0;
     struct fs *fs;
     size_t fsize;
-    int err = 0;
 
     lc_statsBegin(&start);
     lc_displayEntry(__func__, ino, 0, NULL);
@@ -961,6 +962,7 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     }
     assert(S_ISREG(inode->i_mode));
 
+retry:
     /* Reading beyond file size is not allowed */
     fsize = inode->i_size;
     if (off >= fsize) {
@@ -974,8 +976,20 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     if (endoffset > fsize) {
         endoffset = fsize;
     }
-    lc_readFile(req, fs, inode, off, endoffset, pcount, pages, bufv);
-    lc_inodeUnlock(inode);
+    err = lc_readFile(req, fs, inode, off, endoffset,
+                      pcount, pages, dbuf, bufv);
+    if (err) {
+
+        /* Retry after allocating pages */
+        lc_inodeUnlock(inode);
+        assert(dbuf == NULL);
+        dbuf = alloca(sizeof(char *) * pcount);
+        for (i = 0; i < pcount; i++) {
+            lc_mallocBlockAligned(fs, (void **)&dbuf[i], LC_MEMTYPE_DATA);
+        }
+        lc_inodeLock(inode, false);
+        goto retry;
+    }
 
 out:
     lc_statsAdd(fs, LC_READ, err, &start);
