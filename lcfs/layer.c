@@ -227,6 +227,7 @@ lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
     struct inode *pdir = NULL;
     struct timeval start;
     int err = 0;
+    ino_t root;
 
     /* Find the inode in layer directory */
     lc_statsBegin(&start);
@@ -252,8 +253,10 @@ lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
         lc_lock(bfs, false);
     }
     fuse_reply_ioctl(req, 0, NULL, 0);
+    root = fs->fs_root;
+
     lc_printf("Removing fs with parent %ld root %ld name %s\n",
-               fs->fs_parent ? fs->fs_parent->fs_root : - 1, fs->fs_root, name);
+               fs->fs_parent ? fs->fs_parent->fs_root : - 1, root, name);
     lc_invalidateDirtyPages(gfs, fs);
     lc_invalidateInodePages(gfs, fs);
     lc_invalidateInodeBlocks(gfs, fs);
@@ -264,6 +267,15 @@ lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
     if (bfs) {
         lc_unlock(bfs);
     }
+
+    /* Notify VFS about removal of a directory */
+    fuse_lowlevel_notify_delete(
+#ifdef FUSE3
+                                gfs->gfs_se[LC_LAYER_MOUNT],
+#else
+                                gfs->gfs_ch[LC_LAYER_MOUNT],
+#endif
+                                gfs->gfs_layerRoot, root, name, strlen(name));
 
 out:
     lc_statsAdd(rfs, LC_LAYER_REMOVE, err, &start);

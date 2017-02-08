@@ -225,10 +225,12 @@ lc_setLayerRoot(struct gfs *gfs, ino_t ino) {
                gfs->gfs_layerRoot, ino);
         gfs->gfs_layerRoot = 0;
     }
-    dir = lc_getInode(fs, ino, NULL, false, false);
+    dir = lc_getInode(fs, ino, NULL, false, true);
     if (dir) {
         gfs->gfs_layerRoot = ino;
-        lc_dirConvertHashed(fs, dir);
+        if (!(dir->i_flags & LC_INODE_DHASHED)) {
+            lc_dirConvertHashed(fs, dir);
+        }
         gfs->gfs_layerRootInode = dir;
         lc_inodeUnlock(dir);
 

@@ -501,10 +501,12 @@ lc_setupSpecialInodes(struct gfs *gfs, struct fs *fs) {
     }
     ino = lc_dirLookup(fs, dir, LC_LAYER_ROOT_DIR);
     if (ino != LC_INVALID_INODE) {
-        dir = lc_getInode(lc_getGlobalFs(gfs), ino, NULL, false, false);
+        dir = lc_getInode(lc_getGlobalFs(gfs), ino, NULL, false, true);
         if (dir) {
             gfs->gfs_layerRoot = ino;
-            lc_dirConvertHashed(fs, dir);
+            if (!(dir->i_flags & LC_INODE_DHASHED)) {
+                lc_dirConvertHashed(fs, dir);
+            }
             gfs->gfs_layerRootInode = dir;
             lc_inodeUnlock(dir);
         }
