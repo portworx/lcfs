@@ -19,7 +19,6 @@ lc_dirConvertHashed(struct fs *fs, struct inode *dir) {
     uint32_t hash;
 
     assert(S_ISDIR(dir->i_mode));
-    assert(!(dir->i_flags & LC_INODE_DHASHED));
     dcache = lc_malloc(fs, LC_DIRCACHE_SIZE * sizeof(struct dirent *),
                        LC_MEMTYPE_DCACHE);
     memset(dcache, 0, LC_DIRCACHE_SIZE * sizeof(struct dirent *));
