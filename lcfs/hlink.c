@@ -27,7 +27,7 @@ lc_addHlink(struct fs *fs, struct inode *inode, ino_t parent) {
     struct hldata *hldata;
 
     /* Hardlinks are not tracked after remount or for the root layer */
-    if (fs->fs_restarted || (fs == lc_getGlobalFs(fs->fs_gfs))) {
+    if (fs->fs_rfs->fs_restarted || (fs == lc_getGlobalFs(fs->fs_gfs))) {
         return;
     }
     assert(!S_ISDIR(inode->i_mode));
@@ -99,7 +99,7 @@ lc_removeHlink(struct fs *fs, struct inode *inode, ino_t parent) {
     struct hldata *hldata, **prev = &fs->fs_hlinks;
 
     /* Hardlinks are not tracked after remount */
-    if (fs->fs_restarted) {
+    if (fs->fs_rfs->fs_restarted) {
         return;
     }
     assert(!S_ISDIR(inode->i_mode));

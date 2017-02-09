@@ -11,6 +11,10 @@ enum lc_changeType {
 
     /* Removed */
     LC_REMOVED = 2,
+
+    /* No change */
+    LC_NONE = 3,
+
 } __attribute__((packed));
 
 /* A file which is added/modified/removed */

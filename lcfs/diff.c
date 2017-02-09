@@ -410,6 +410,9 @@ retry:
 out:
     if ((dir->i_fs == fs) && !(dir->i_flags & LC_INODE_CTRACKED)) {
         dir->i_flags |= LC_INODE_CTRACKED;
+        if (ino == parent) {
+            pcdir = new;
+        }
 
         /* Add the complete directory tree */
         lc_addDirectoryTree(fs, dir, new, pcdir, lastIno);
@@ -513,8 +516,72 @@ lc_addName(struct fs *fs, struct cdir *cdir, ino_t ino, char *name,
     }
 }
 
+/* Respond with diff data */
+static void
+lc_replyDiff(fuse_req_t req, struct fs *fs) {
+    char buf[LC_BLOCK_SIZE];
+    struct pchange *pchange;
+    struct cfile *cfile;
+    int size = 0, plen;
+    struct cdir *cdir;
+
+    /* Traverse change list */
+    while ((cdir = fs->fs_changes)) {
+        //lc_printf("Dir %s len %d type %d\n", cdir->cd_path, cdir->cd_len, cdir->cd_type);
+        if (cdir->cd_ino == fs->fs_root) {
+            cdir->cd_type = LC_NONE;
+        }
+
+        /* Add a record for the new or modified directory */
+        if ((cdir->cd_type != LC_NONE) || cdir->cd_file) {
+            plen = cdir->cd_len + sizeof(struct pchange);
+            if ((size + plen) >= LC_BLOCK_SIZE) {
+                break;
+            }
+            pchange = (struct pchange *)&buf[size];
+            pchange->ch_type = cdir->cd_type;
+            pchange->ch_len = cdir->cd_len;
+            memcpy(&pchange->ch_path, cdir->cd_path, cdir->cd_len);
+            cdir->cd_type = LC_NONE;
+            size += plen;
+        }
+
+        /* Add records for changes in the directory */
+        while ((cfile = cdir->cd_file)) {
+            plen = cfile->cf_len + sizeof(struct pchange);
+            if ((size + plen) >= LC_BLOCK_SIZE) {
+                goto out;
+            }
+            //lc_printf("file %s len %d type %d\n", cfile->cf_name, cfile->cf_len, cfile->cf_type);
+            pchange = (struct pchange *)&buf[size];
+            pchange->ch_type = cfile->cf_type;
+            pchange->ch_len = cfile->cf_len;
+            memcpy(&pchange->ch_path, cfile->cf_name, cfile->cf_len);
+            size += plen;
+            cdir->cd_file = cfile->cf_next;
+            lc_free(fs, cfile, sizeof(struct cfile), LC_MEMTYPE_CFILE);
+        }
+        lc_free(fs, cdir->cd_path, cdir->cd_len, LC_MEMTYPE_PATH);
+
+        /* Remove the last record after all records are returned */
+        if ((cdir->cd_next != NULL) || (size == 0)) {
+            fs->fs_changes = cdir->cd_next;
+            lc_free(fs, cdir, sizeof(struct cdir), LC_MEMTYPE_CDIR);
+        } else {
+            cdir->cd_path = NULL;
+            break;
+        }
+    }
+
+out:
+    if (size != LC_BLOCK_SIZE) {
+        memset(&buf[size], 0, LC_BLOCK_SIZE - size);
+    }
+    fuse_reply_buf(req, buf, LC_BLOCK_SIZE);
+}
+
 /* Produce diff between a layer and its parent layer */
-void
+int
 lc_layerDiff(fuse_req_t req, const char *name, size_t size) {
     struct fs *fs, *rfs;
     struct inode *inode;
@@ -524,14 +591,27 @@ lc_layerDiff(fuse_req_t req, const char *name, size_t size) {
     assert(size == LC_BLOCK_SIZE);
     rfs = lc_getLayerLocked(LC_ROOT_INODE, false);
     ino = lc_getRootIno(rfs, name, NULL, true);
+    if (ino == LC_INVALID_INODE) {
+        lc_unlock(rfs);
+        return EINVAL;
+    }
     fs = lc_getLayerLocked(ino, true);
     assert(fs->fs_root == lc_getInodeHandle(ino));
-    if (fs->fs_removed) {
+    if (fs->fs_removed || fs->fs_rfs->fs_restarted) {
         lc_unlock(fs);
         lc_unlock(rfs);
         fuse_reply_err(req, EIO);
-        return;
+        return 0;
     }
+
+    /* If this is a continuation request, respond with remaining diff data */
+    if (fs->fs_changes) {
+        lc_replyDiff(req, fs);
+        lc_unlock(fs);
+        lc_unlock(rfs);
+        return 0;
+    }
+
     lastIno = fs->fs_parent->fs_super->sb_lastInode;
 
     /* Add the root inode to the change list first */
@@ -565,8 +645,19 @@ lc_layerDiff(fuse_req_t req, const char *name, size_t size) {
             inode = inode->i_cnext;
         }
     }
+    lc_replyDiff(req, fs);
+
+    /* Reset LC_INODE_CTRACKED flags on inodes */
+    for (i = 0; i < fs->fs_icacheSize; i++) {
+        inode = fs->fs_icache[i].ic_head;
+        while (inode) {
+            inode->i_flags &= ~LC_INODE_CTRACKED;
+            inode = inode->i_cnext;
+        }
+    }
     lc_unlock(fs);
     lc_unlock(rfs);
+    return 0;
 }
 
 /* Free the list created for tracking changes in the layer */
@@ -577,10 +668,8 @@ lc_freeChangeList(struct fs *fs) {
 
     while (cdir) {
         cfile = cdir->cd_file;
-        lc_printf("Dir %s len %d type %d\n", cdir->cd_path, cdir->cd_len, cdir->cd_type);
         while (cfile) {
             file = cfile;
-            lc_printf("file %s len %d type %d\n", cfile->cf_name, cfile->cf_len, cfile->cf_type);
             cfile = cfile->cf_next;
             lc_free(fs, file, sizeof(struct cfile), LC_MEMTYPE_CFILE);
         }

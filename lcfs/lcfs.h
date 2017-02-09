@@ -13,4 +13,17 @@ enum ioctl_cmd {
     CLEAR_STAT = 108,               /* Clear stats for a layer */
 };
 
+/* Data structure used to respond to layer diff */
+struct pchange {
+
+    /* Type of change */
+    uint8_t ch_type;
+
+    /* Length of path */
+    uint16_t ch_len;
+
+    /* Path - Variable length */
+    char ch_path[0];
+} __attribute__((packed));
+
 #endif

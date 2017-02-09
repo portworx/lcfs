@@ -276,7 +276,7 @@ void lc_addHlink(struct fs *fs, struct inode *inode, ino_t parent);
 void lc_removeHlink(struct fs *fs, struct inode *inode, ino_t parent);
 void lc_freeHlinks(struct fs *fs);
 
-void lc_layerDiff(fuse_req_t req, const char *name, size_t size);
+int lc_layerDiff(fuse_req_t req, const char *name, size_t size);
 void lc_freeChangeList(struct fs *fs);
 
 void lc_statsNew(struct fs *fs);
