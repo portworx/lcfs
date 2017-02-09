@@ -826,6 +826,9 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino, bool exclusive) {
     /* Parent is different for files in root directory */
     inode->i_parent = (parent->i_parent == parent->i_fs->fs_root) ?
                       fs->fs_root : parent->i_parent;
+    if (parent->i_flags & LC_INODE_MLINKS) {
+        inode->i_flags |= LC_INODE_MLINKS;
+    }
     if (lc_xattrCopy(inode, parent)) {
         flags |= LC_INODE_XATTRDIRTY;
     }
@@ -853,6 +856,7 @@ lc_getInodeParent(struct fs *fs, ino_t inum, bool copy, bool exclusive) {
 
     pfs = fs->fs_parent;
     while (pfs) {
+        assert(inum != pfs->fs_root);
         assert(pfs->fs_frozen);
 
         /* Hash changes with inode cache size */

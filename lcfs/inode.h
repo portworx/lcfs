@@ -91,6 +91,22 @@ struct rdata {
 } __attribute__((packed));
 static_assert(sizeof(struct rdata) == 40, "rdata size != 40");
 
+/* Data tracked for hard links */
+struct hldata {
+
+    /* Inode number */
+    ino_t hl_ino;
+
+    /* Parent directory */
+    ino_t hl_parent;
+
+    /* Next in the list */
+    struct hldata *hl_next;
+
+    /* Number of links */
+    uint32_t hl_nlink;
+} __attribute__((packed));
+
 /* Extended attributes of an inode */
 struct xattr {
     /* Name of the attribute */
@@ -131,6 +147,7 @@ struct ixattr {
 #define LC_INODE_DHASHED        0x080  /* Dirty pages in a hash table */
 #define LC_INODE_NOTRUNC        0x100  /* Do not truncate this file */
 #define LC_INODE_CTRACKED       0x200  /* Inode in the change list */
+#define LC_INODE_MLINKS         0x400  /* Linked from many directories */
 
 /* Inode structure */
 struct inode {

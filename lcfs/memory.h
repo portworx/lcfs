@@ -25,8 +25,9 @@ enum lc_memTypes {
     LC_MEMTYPE_CFILE = 19,          /* Tracking a file change */
     LC_MEMTYPE_CDIR = 20,           /* Tracking a directory change */
     LC_MEMTYPE_PATH = 21,           /* Path to a directory */
-    LC_MEMTYPE_STATS = 22,          /* Request stats */
-    LC_MEMTYPE_MAX = 23,
+    LC_MEMTYPE_HLDATA = 22,         /* Hard links */
+    LC_MEMTYPE_STATS = 23,          /* Request stats */
+    LC_MEMTYPE_MAX = 24,
 };
 
 #endif

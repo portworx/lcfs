@@ -177,6 +177,9 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
         inode->i_flags |= LC_INODE_REMOVED;
         removed = true;
     } else {
+        if (inode->i_flags & LC_INODE_MLINKS) {
+            lc_removeHlink(fs, inode, dir->i_ino);
+        }
         inode->i_nlink--;
 
         /* Flag a file as removed on last unlink */
@@ -638,6 +641,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
            , unsigned int flags
 #endif
            ) {
+    bool tdirFirst = lc_getInodeHandle(parent) > lc_getInodeHandle(newparent);
     struct inode *inode, *sdir, *tdir = NULL;
     struct timeval start;
     struct fs *fs;
@@ -655,7 +659,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
     }
 
     /* Follow some locking order while locking the directories */
-    if (parent > newparent) {
+    if (tdirFirst) {
         tdir = lc_getInode(fs, newparent, NULL, true, true);
         if (tdir == NULL) {
             lc_reportError(__func__, __LINE__, newparent, ENOENT);
@@ -691,7 +695,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
     if (sdir->i_flags & LC_INODE_SHARED) {
         lc_dirCopy(sdir);
     }
-    if (parent < newparent) {
+    if (!tdirFirst) {
         tdir = lc_getInode(fs, newparent, NULL, true, true);
         if (tdir == NULL) {
             lc_inodeUnlock(sdir);
@@ -768,7 +772,12 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
     lc_markInodeDirty(sdir, LC_INODE_DIRDIRTY);
     lc_inodeUnlock(sdir);
     if (inode) {
-        inode->i_parent = lc_getInodeHandle(newparent);
+        if (inode->i_flags & LC_INODE_MLINKS) {
+            lc_removeHlink(fs, inode, lc_getInodeHandle(parent));
+            lc_addHlink(fs, inode, lc_getInodeHandle(newparent));
+        } else {
+            inode->i_parent = lc_getInodeHandle(newparent);
+        }
         lc_updateInodeTimes(inode, false, true);
         lc_markInodeDirty(inode, 0);
         lc_inodeUnlock(inode);
@@ -827,6 +836,9 @@ lc_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
     lc_updateInodeTimes(dir, true, true);
     lc_markInodeDirty(dir, LC_INODE_DIRDIRTY);
     lc_inodeUnlock(dir);
+
+    /* Track hardlinks in the layer */
+    lc_addHlink(fs, inode, lc_getInodeHandle(newparent));
 
     /* Increment link count of the inode */
     inode->i_nlink++;

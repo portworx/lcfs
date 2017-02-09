@@ -272,6 +272,10 @@ void lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name);
 void lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
                    enum ioctl_cmd cmd);
 
+void lc_addHlink(struct fs *fs, struct inode *inode, ino_t parent);
+void lc_removeHlink(struct fs *fs, struct inode *inode, ino_t parent);
+void lc_freeHlinks(struct fs *fs);
+
 void lc_layerDiff(fuse_req_t req, const char *name, size_t size);
 void lc_freeChangeList(struct fs *fs);
 

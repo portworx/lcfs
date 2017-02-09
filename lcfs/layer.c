@@ -31,6 +31,10 @@ lc_linkParent(struct fs *fs, struct fs *pfs) {
     fs->fs_parent = pfs;
     fs->fs_bcache = pfs->fs_bcache;
     fs->fs_rfs = pfs->fs_rfs;
+    if (pfs->fs_hlinks) {
+        fs->fs_hlinks = pfs->fs_hlinks;
+        fs->fs_sharedHlinks = true;
+    }
 }
 
 /* Invalidate pages of the first layer in kernel page cache */

@@ -29,9 +29,12 @@ lc_addFile(struct fs *fs, struct cdir *cdir, ino_t ino, char *name,
     /* If an entry exists already, return after updating it */
     if (cfile && (cfile->cf_len == len) &&
         !strncmp(cfile->cf_name, name, len)) {
-        assert(cfile->cf_type == LC_REMOVED);
-        assert(ctype == LC_ADDED);
-        cfile->cf_type = LC_MODIFIED;
+        if ((cfile->cf_type == LC_REMOVED) && (ctype == LC_ADDED)) {
+            cfile->cf_type = LC_MODIFIED;
+        } else {
+            assert(cfile->cf_type == LC_ADDED);
+            assert(ctype != LC_REMOVED);
+        }
         return;
     }
 
@@ -227,7 +230,7 @@ lc_compareDirectory(struct fs *fs, struct inode *dir, struct inode *pdir,
 static void
 lc_addDirectoryTree(struct fs *fs, struct inode *dir, struct cdir *cdir,
                     struct cdir *pcdir, ino_t lastIno) {
-    ino_t parent = dir->i_dinode.di_parent;
+    ino_t parent = dir->i_parent;
     struct inode *pdir;
 
     /* Check if an old directory is replaced with a new one.  In that case,
@@ -257,21 +260,28 @@ lc_addDirectoryTree(struct fs *fs, struct inode *dir, struct cdir *cdir,
 
 /* Find directory entry with the given inode number */
 static struct dirent *
-lc_getDirent(struct fs *fs, ino_t parent, ino_t ino) {
+lc_getDirent(struct fs *fs, ino_t parent, ino_t ino, int *hash,
+             struct dirent *sdirent) {
     struct inode * dir = lc_getInode(fs, parent, NULL, false, false);
+    struct dirent *dirent = sdirent ? sdirent->di_next : NULL;
     bool hashed = (dir->i_flags & LC_INODE_DHASHED);
-    int i, max = hashed ? LC_DIRCACHE_SIZE : 1;
-    struct dirent *dirent;
+    int i = hash ? *hash : 0, max = hashed ? LC_DIRCACHE_SIZE : 1;
 
-    for (i = 0; i < max; i++) {
-        dirent = hashed ? dir->i_hdirent[i] : dir->i_dirent;
+    for (; i < max; i++) {
+        if (!sdirent) {
+            dirent = (hashed ? dir->i_hdirent[i] : dir->i_dirent);
+        }
         while (dirent) {
             if (dirent->di_ino == ino) {
+                if (hash) {
+                    *hash = i;
+                }
                 i = max;
                 break;
             }
             dirent = dirent->di_next;
         }
+        sdirent = NULL;
     }
     lc_inodeUnlock(dir);
     return dirent;
@@ -310,7 +320,7 @@ lc_addDirectoryPath(struct fs *fs, ino_t ino, ino_t parent, struct cdir *new,
 
         /* Lookup name if not known */
         if (len == 0) {
-            dirent = lc_getDirent(fs, parent, ino);
+            dirent = lc_getDirent(fs, parent, ino, NULL, NULL);
             name = dirent->di_name;
             len = dirent->di_size;
         }
@@ -350,15 +360,15 @@ lc_addDirectoryPath(struct fs *fs, ino_t ino, ino_t parent, struct cdir *new,
 static struct cdir *
 lc_addDirectory(struct fs *fs, struct inode *dir, char *name, uint16_t len,
                 ino_t lastIno, enum lc_changeType ctype) {
-    ino_t ino = dir->i_ino, parent = dir->i_dinode.di_parent;
+    ino_t ino = dir->i_ino, parent = dir->i_parent;
     struct cdir *cdir, *new, *pcdir = NULL;
     struct inode *pdir;
     bool path = true;
 
-    //lc_printf("Directory %ld parent %ld ctype %d\n", ino, parent, ctype);
     if ((dir->i_fs != fs) && (dir->i_fs->fs_root == parent)) {
         parent = fs->fs_root;
     }
+    //lc_printf("Directory %ld new parent %ld ctype %d\n", ino, parent, ctype);
 
 retry:
 
@@ -409,37 +419,69 @@ out:
 
 /* Add an inode to the change list */
 static void
-lc_addInode(struct fs *fs, struct inode *inode, ino_t lastIno) {
-    ino_t parent = inode->i_dinode.di_parent;
-    struct cdir *cdir = fs->fs_changes;
-    ino_t ino = inode->i_ino;
+lc_addModifiedInode(struct fs *fs, struct inode *inode, ino_t lastIno) {
+    ino_t ino = inode->i_ino, parent = LC_INVALID_INODE;
+    uint32_t nlink = inode->i_nlink, plink = 0;
+    struct hldata *hldata = fs->fs_hlinks;
     struct dirent *dirent;
     struct inode *dir;
+    struct cdir *cdir;
+    int hash = 0;
 
-    /* XXX Take care of inodes with hardlinks */
-    assert(S_ISDIR(inode->i_mode) || (inode->i_nlink == 1) ||
-           (inode->i_ino > lastIno));
     assert(!(inode->i_flags & LC_INODE_CTRACKED));
+    assert(inode->i_fs == fs);
 
-    /* Find the entry for parent directory */
-    while (cdir && (cdir->cd_ino != parent)) {
-        cdir = cdir->cd_next;
+    /* Add each link of the inode to the change list */
+    while (nlink) {
+        if (!(inode->i_flags & LC_INODE_MLINKS)) {
+            parent = inode->i_parent;
+            plink = 1;
+        } else {
+
+            /* Find next directory with a link to this inode */
+            while (hldata && (hldata->hl_ino != ino)) {
+                hldata = hldata->hl_next;
+            }
+            assert(hldata->hl_nlink > 0);
+            parent = hldata->hl_parent;
+            if (parent == LC_ROOT_INODE) {
+                parent = fs->fs_root;
+            }
+            plink = hldata->hl_nlink;
+            hldata = hldata->hl_next;
+        }
+        if ((inode->i_fs != fs) && (inode->i_fs->fs_root == parent)) {
+            parent = fs->fs_root;
+        }
+
+        /* Find the entry for parent directory */
+        cdir = fs->fs_changes;
+        while (cdir && (cdir->cd_ino != parent)) {
+            cdir = cdir->cd_next;
+        }
+
+        /* If an entry for the parent doesn't exist, add one */
+        if (cdir == NULL) {
+            dir = lc_getInode(fs, parent, NULL, false, false);
+            assert(dir->i_ino < lastIno);
+            cdir = lc_addDirectory(fs, dir, NULL, 0, lastIno, LC_MODIFIED);
+            lc_inodeUnlock(dir);
+        }
+        assert(cdir->cd_ino == parent);
+        assert(!(inode->i_flags & LC_INODE_CTRACKED));
+        assert(plink <= nlink);
+        nlink -= plink;
+        dirent = NULL;
+        hash = 0;
+
+        /* Add each link from the directory to the change list */
+        while (plink) {
+            dirent = lc_getDirent(fs, parent, ino, &hash, dirent);
+            lc_addFile(fs, cdir, ino, dirent->di_name, dirent->di_size,
+                       lc_changeInode(ino, lastIno));
+            plink--;
+        }
     }
-
-    /* If an entry for the parent doesn't exist, add one */
-    if (cdir == NULL) {
-        dir = lc_getInode(fs, parent, NULL, false, false);
-        assert(dir->i_ino < lastIno);
-        cdir = lc_addDirectory(fs, dir, NULL, 0, lastIno, LC_MODIFIED);
-        lc_inodeUnlock(dir);
-    }
-    assert(cdir->cd_ino == parent);
-    assert(!(inode->i_flags & LC_INODE_CTRACKED));
-
-    /* XXX Take care of inodes with hardlinks */
-    dirent = lc_getDirent(fs, parent, ino);
-    lc_addFile(fs, cdir, ino, dirent->di_name, dirent->di_size,
-               lc_changeInode(ino, lastIno));
     inode->i_flags |= LC_INODE_CTRACKED;
 }
 
@@ -463,7 +505,7 @@ lc_addName(struct fs *fs, struct cdir *cdir, ino_t ino, char *name,
         /* Flag the inode as tracked in change list */
         if (ctype != LC_REMOVED) {
             inode = lc_lookupInode(fs, ino);
-            if (inode) {
+            if (inode && !(inode->i_flags & LC_INODE_MLINKS)) {
                 assert(inode->i_fs == fs);
                 inode->i_flags |= LC_INODE_CTRACKED;
             }
@@ -474,8 +516,8 @@ lc_addName(struct fs *fs, struct cdir *cdir, ino_t ino, char *name,
 /* Produce diff between a layer and its parent layer */
 void
 lc_layerDiff(fuse_req_t req, const char *name, size_t size) {
-    struct inode *inode;
     struct fs *fs, *rfs;
+    struct inode *inode;
     ino_t ino, lastIno;
     int i;
 
@@ -518,7 +560,7 @@ lc_layerDiff(fuse_req_t req, const char *name, size_t size) {
             /* Skip removed files and those already processed */
             if (!(inode->i_flags & (LC_INODE_REMOVED | LC_INODE_CTRACKED)) &&
                 !S_ISDIR(inode->i_mode)) {
-                lc_addInode(fs, inode, lastIno);
+                lc_addModifiedInode(fs, inode, lastIno);
             }
             inode = inode->i_cnext;
         }
@@ -535,8 +577,10 @@ lc_freeChangeList(struct fs *fs) {
 
     while (cdir) {
         cfile = cdir->cd_file;
+        lc_printf("Dir %s len %d type %d\n", cdir->cd_path, cdir->cd_len, cdir->cd_type);
         while (cfile) {
             file = cfile;
+            lc_printf("file %s len %d type %d\n", cfile->cf_name, cfile->cf_len, cfile->cf_type);
             cfile = cfile->cf_next;
             lc_free(fs, file, sizeof(struct cfile), LC_MEMTYPE_CFILE);
         }

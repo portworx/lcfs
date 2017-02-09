@@ -218,6 +218,9 @@ struct fs {
     /* Last inode with dirty pages */
     struct inode *fs_dirtyInodesLast;
 
+    /* Hardlink information */
+    struct hldata *fs_hlinks;
+
     /* Lock protecting fs_dirtyInodes list */
     pthread_mutex_t fs_dilock;
 
@@ -247,6 +250,9 @@ struct fs {
 
     /* Lock protecting extent lists */
     pthread_mutex_t fs_alock;
+
+    /* Lock protecting hardlinks list */
+    pthread_mutex_t fs_hlock;
 
     /* Changes in this layer compared to parent */
     struct cdir *fs_changes;
@@ -337,6 +343,12 @@ struct fs {
 
     /* Set if layer is being removed */
     bool fs_removed;
+
+    /* Set if layer is remounted */
+    bool fs_restarted;
+
+    /* Set if hlinks shared with parent */
+    bool fs_sharedHlinks;
 } __attribute__((packed));
 
 /* Set up inode handle using inode number and file system id */

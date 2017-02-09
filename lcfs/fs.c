@@ -16,6 +16,7 @@ lc_newLayer(struct gfs *gfs, bool rw) {
     pthread_mutex_init(&fs->fs_plock, NULL);
     pthread_mutex_init(&fs->fs_dilock, NULL);
     pthread_mutex_init(&fs->fs_alock, NULL);
+    pthread_mutex_init(&fs->fs_hlock, NULL);
     pthread_rwlock_init(&fs->fs_rwlock, NULL);
     __sync_add_and_fetch(&gfs->gfs_count, 1);
     return fs;
@@ -123,6 +124,9 @@ lc_freeLayer(struct fs *fs, bool remove) {
     assert(fs->fs_pcount == 0);
     assert(!remove || (fs->fs_blocks == fs->fs_freed));
 
+    lc_freeHlinks(fs);
+    assert(fs->fs_hlinks == NULL);
+
     lc_destroyPages(gfs, fs, remove);
     assert(fs->fs_bcache == NULL);
     lc_statsDeinit(fs);
@@ -130,6 +134,7 @@ lc_freeLayer(struct fs *fs, bool remove) {
     pthread_mutex_destroy(&fs->fs_dilock);
     pthread_mutex_destroy(&fs->fs_plock);
     pthread_mutex_destroy(&fs->fs_alock);
+    pthread_mutex_destroy(&fs->fs_hlock);
     pthread_rwlock_destroy(&fs->fs_rwlock);
     __sync_sub_and_fetch(&gfs->gfs_count, 1);
     if (fs != lc_getGlobalFs(gfs)) {
@@ -419,6 +424,7 @@ lc_initLayer(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
     if (fs->fs_super->sb_flags & LC_SUPER_RDWR) {
         fs->fs_readOnly = false;
     }
+    fs->fs_restarted = true;
     fs->fs_root = fs->fs_super->sb_root;
     if (child) {
 

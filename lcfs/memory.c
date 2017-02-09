@@ -52,6 +52,7 @@ static const char *mrequests[] = {
     "CFILE",
     "CDIR",
     "PATH",
+    "HLINKS",
     "STATS",
 };
 
