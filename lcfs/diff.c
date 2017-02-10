@@ -58,22 +58,27 @@ lc_processDirectory(struct fs *fs, struct inode *dir, struct inode *pdir,
     int i, max;
 
     assert(dir->i_fs == fs);
-    assert(!(dir->i_flags & LC_INODE_SHARED));
+    assert(dir->i_fs != pdir->i_fs);
+
+    /* If nothing changed in the directory, return */
+    if (dir->i_flags & LC_INODE_SHARED) {
+        return;
+    }
 
     /* Traverse parent directory entries looking for missing entries */
     if (hashed) {
-        assert((pdir == NULL) || (pdir->i_flags & LC_INODE_DHASHED));
+        assert(pdir->i_flags & LC_INODE_DHASHED);
         max = LC_DIRCACHE_SIZE;
     } else {
-        assert((pdir == NULL) || !(pdir->i_flags & LC_INODE_DHASHED));
+        assert(!(pdir->i_flags & LC_INODE_DHASHED));
         max = 1;
     }
     for (i = 0; i < max; i++) {
         if (hashed) {
-            pdirent = pdir ? pdir->i_hdirent[i] : NULL;
+            pdirent = pdir->i_hdirent[i];
             dirent = dir->i_hdirent[i];
         } else {
-            pdirent = pdir ? pdir->i_dirent : NULL;
+            pdirent = pdir->i_dirent;
             dirent = dir->i_dirent;
         }
         fdirent = dirent;
@@ -183,6 +188,7 @@ lc_compareDirectory(struct fs *fs, struct inode *dir, struct inode *pdir,
         lc_processDirectory(fs, dir, pdir, lastIno, cdir);
         return;
     }
+
     /* Check for entries currently present */
     for (i = 0; i < max; i++) {
         dirent = hashed ? dir->i_hdirent[i] : dir->i_dirent;
