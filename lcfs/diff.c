@@ -601,7 +601,8 @@ lc_layerDiff(fuse_req_t req, const char *name, size_t size) {
     }
     fs = lc_getLayerLocked(ino, true);
     assert(fs->fs_root == lc_getInodeHandle(ino));
-    if (fs->fs_removed || fs->fs_rfs->fs_restarted) {
+    if (fs->fs_removed || fs->fs_rfs->fs_restarted ||
+        (fs->fs_parent == NULL)) {
         lc_unlock(fs);
         lc_unlock(rfs);
         fuse_reply_err(req, EIO);

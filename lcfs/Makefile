@@ -54,12 +54,15 @@ version:
 	@(mkdir -p version && cd version && ../version_gen.sh)
 
 clean:
-	rm -fr *.o lcfs cstat testxattr
+	rm -fr *.o lcfs cstat testxattr testdiff
 
 testxattr: testxattr.o
 	$(CC) $^ -o $@ $(CFLAGS) $(LDFLAGS)
 
-test: lcfs testxattr
+testdiff: testdiff.o
+	$(CC) $^ -o $@ $(CFLAGS) $(LDFLAGS)
+
+test: lcfs cstat testxattr testdiff
 	sudo ./test.sh
 
 rpm:
