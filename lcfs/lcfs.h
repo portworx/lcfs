@@ -16,11 +16,11 @@ enum ioctl_cmd {
 /* Data structure used to respond to layer diff */
 struct pchange {
 
-    /* Type of change */
-    uint8_t ch_type;
-
     /* Length of path */
     uint16_t ch_len;
+
+    /* Type of change */
+    uint8_t ch_type;
 
     /* Path - Variable length */
     char ch_path[0];

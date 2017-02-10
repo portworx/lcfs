@@ -374,12 +374,13 @@ retry:
 
     /* Check if the directory entry exists already */
     cdir = pcdir ? pcdir : fs->fs_changes;
-    while (cdir && (cdir->cd_ino != ino) && (cdir->cd_parent != parent)) {
+    while (cdir && (cdir->cd_ino != ino)) {
         cdir = cdir->cd_next;
     }
 
     /* Check if an entry is found */
-    if (cdir && (cdir->cd_ino == ino) && (cdir->cd_parent == parent)) {
+    if (cdir) {
+        assert(cdir->cd_ino == ino);
         new = cdir;
         goto out;
     }
@@ -401,7 +402,6 @@ retry:
     new = lc_malloc(fs, sizeof(struct cdir), LC_MEMTYPE_CDIR);
     new->cd_ino = ino;
     new->cd_type = ctype;
-    new->cd_parent = parent;
     new->cd_file = NULL;
 
     /* Add this directory to the change list */
@@ -508,7 +508,8 @@ lc_addName(struct fs *fs, struct cdir *cdir, ino_t ino, char *name,
         /* Flag the inode as tracked in change list */
         if (ctype != LC_REMOVED) {
             inode = lc_lookupInode(fs, ino);
-            if (inode && !(inode->i_flags & LC_INODE_MLINKS)) {
+            if (inode && ((ino > lastIno) ||
+                          !(inode->i_flags & LC_INODE_MLINKS))) {
                 assert(inode->i_fs == fs);
                 inode->i_flags |= LC_INODE_CTRACKED;
             }
@@ -578,6 +579,9 @@ out:
         memset(&buf[size], 0, LC_BLOCK_SIZE - size);
     }
     fuse_reply_buf(req, buf, LC_BLOCK_SIZE);
+    if (size == 0) {
+        lc_printf("Diff done on layer %d\n", fs->fs_gindex);
+    }
 }
 
 /* Produce diff between a layer and its parent layer */
@@ -611,6 +615,7 @@ lc_layerDiff(fuse_req_t req, const char *name, size_t size) {
         lc_unlock(rfs);
         return 0;
     }
+    lc_printf("Starting diff on layer %d\n", fs->fs_gindex);
 
     lastIno = fs->fs_parent->fs_super->sb_lastInode;
 

@@ -37,16 +37,13 @@ struct cfile {
 struct cdir {
 
     /* Inode number of this directory */
-    uint64_t cd_ino:62;
+    uint64_t cd_ino:48;
 
     /* Type of change */
     uint64_t cd_type:2;
 
-    /* Parent inode number */
-    uint64_t cd_parent:48;
-
     /* Length of path */
-    uint64_t cd_len:16;
+    uint64_t cd_len:14;
 
     /* Path name to this directory */
     char *cd_path;
