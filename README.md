@@ -49,11 +49,11 @@ The below table shows a quick comparison of how long it takes LCFS to complete s
 | docker pull mysql                | 13.359s   | 16.438s   (23%)   | 24.998s (87%)    | 19.170s  (43%) | 16.252s (22%)   |
 | docker build <ComplexDockerfile> | 221.539s  | 572.677s  (159%)  | 561.403s (153%)  | 549.851s (148%)| 551.893s (149%) |
 
-**Create / Destroy**: The diagram below depicts the time to [create](https://docs.docker.com/engine/reference/run/) and [destroy](https://docs.docker.com/engine/reference/commandline/rm/) 100 fedora/apache containers. The image was [pulled](https://docs.docker.com/engine/commandline/pull/) before the test. The cumulative time measured: LCFS at 44 seconds, Overlay at 237 sec, Overlay2 at 245 sec, and Device Mapper at 556 sec. 
+**Create / Destroy**: The diagram below depicts the time to [create](https://docs.docker.com/engine/reference/run/) and [destroy](https://docs.docker.com/engine/reference/commandline/rm/) 20, 40, 60, 80 and 100 fedora/apache containers. The image was [pulled](https://docs.docker.com/engine/reference/commandline/pull/) before the test. The cumulative time measured: LCFS at 44 seconds, Overlay at 237 sec, Overlay2 at 246 sec, AUFS 285 sec, Btrfs at 487 sec, and Device Mapper at 556 sec. 
 ![alt text](http://i.imgur.com/JSUeqLc.png "create and destroy times")
 
 
-**Build**: The diagram below depicts the time to build docker sources using various storage drivers. The individual times measured: Device Mapper at 1511 sec, Overlay at 913 seconds, Overlayv2 at 567 seconds, and LCFS at 819 seconds. Future work for LCFS is improving the differencing mechanism to improve this scenario. 
+**Build**: The diagram below depicts the time to build docker sources using various storage drivers. The individual times measured: Device Mapper at 1512 sec, Btrfs at 956 seconds, AUFS at 574 seconds, Overlay at 914 seconds, Overlay2 at 567 seconds, and LCFS at 437 seconds.
 ![alt text](http://i.imgur.com/QAUsMI4.jpg "build times")
 
 ## Architecture 
