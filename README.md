@@ -77,6 +77,8 @@ Separately, LCFS itself is implemented as a single filesystem. It takes in (hard
 * [*crash consistency*](https://github.com/portworx/lcfs/blob/master/docs/crashconsistency_overview.md): work in progress. 
 * [*stats*](https://github.com/portworx/lcfs/blob/master/docs/stats_overview.md): how to access stats and future work. 
 
+* [*LCFS Design*](http://bit.ly/2lzjUSE): LCFS design highlights. 
+
 
 # Installing LCFS
 You can install LCFS by executing the script below (assuming your storage device is `/dev/sdb`):
