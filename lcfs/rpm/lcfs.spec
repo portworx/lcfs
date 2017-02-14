@@ -14,6 +14,9 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 Obsoletes: %name
 autoreqprov: no
 
+%define debug_package %{nil}
+%define __strip /bin/true
+
 %if 0%{?required:1}
 Requires: %required
 %endif
