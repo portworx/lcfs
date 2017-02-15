@@ -218,7 +218,7 @@ lc_remove(struct fs *fs, ino_t parent, const char *name, void **inodep,
     struct inode *dir;
     int err;
 
-    if (fs->fs_frozen) {
+    if (fs->fs_frozen && !fs->fs_commitInProgress) {
         lc_reportError(__func__, __LINE__, parent, EROFS);
         return EROFS;
     }
@@ -264,6 +264,17 @@ lc_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
     ino = lc_dirLookup(fs, dir, name);
     if (ino == LC_INVALID_INODE) {
         lc_inodeUnlock(dir);
+
+        /* Return fake inode info while looking up the diff path */
+        if ((fs->fs_commitInProgress ||
+             (fs->fs_super->sb_flags & LC_SUPER_INIT)) &&
+            strstr(name, LC_COMMIT_TRIGGER_PREFIX)) {
+            lc_copyFakeStat(&ep.attr);
+            ep.ino = lc_setHandle(fs->fs_gindex, ep.attr.st_ino);
+            lc_epInit(&ep);
+            fuse_reply_entry(req, &ep);
+            goto out;
+        }
 
         /* Let kernel remember lookup failure as a negative entry */
         memset(&ep, 0, sizeof(struct fuse_entry_param));
@@ -316,8 +327,17 @@ lc_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     ino_t parent;
     int err = 0;
 
-    lc_statsBegin(&start);
     lc_displayEntry(__func__, 0, ino, NULL);
+
+    /* Check if the operation is on the fake inode */
+    if ((lc_getInodeHandle(ino) == LC_COMMIT_TRIGGER_INODE) &&
+        lc_getFsHandle(ino)) {
+        lc_copyFakeStat(&stbuf);
+        stbuf.st_ino = ino;
+        fuse_reply_attr(req, &stbuf, LC_TIMEOUT_SEC);
+        return;
+    }
+    lc_statsBegin(&start);
     fs = lc_getLayerLocked(ino, false);
     inode = lc_getInode(fs, ino, NULL, false, false);
     if (inode == NULL) {
@@ -329,8 +349,8 @@ lc_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     lc_copyStat(&stbuf, inode);
     parent = inode->i_parent;
     lc_inodeUnlock(inode);
-    stbuf.st_ino = lc_setHandle(lc_getIndex(fs, parent,
-                                              stbuf.st_ino), stbuf.st_ino);
+    stbuf.st_ino = lc_setHandle(lc_getIndex(fs, parent, stbuf.st_ino),
+                                stbuf.st_ino);
     fuse_reply_attr(req, &stbuf, LC_TIMEOUT_SEC);
 
 out:
@@ -350,6 +370,15 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
     struct fs *fs;
 
     lc_displayEntry(__func__, ino, 0, NULL);
+
+    /* Check if the operation is on the fake inode */
+    if ((lc_getInodeHandle(ino) == LC_COMMIT_TRIGGER_INODE) &&
+        lc_getFsHandle(ino)) {
+        lc_copyFakeStat(&stbuf);
+        stbuf.st_ino = ino;
+        fuse_reply_attr(req, &stbuf, LC_TIMEOUT_SEC);
+        return;
+    }
     lc_statsBegin(&start);
     change = (to_set &
               (FUSE_SET_ATTR_MODE | FUSE_SET_ATTR_UID | FUSE_SET_ATTR_GID |
@@ -538,7 +567,7 @@ lc_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
 
         /* Remember some special directories created */
         if (lc_getInodeHandle(parent) == LC_ROOT_INODE) {
-            gfs = getfs();
+            gfs = fs->fs_gfs;
             if (!gfs->gfs_layerRoot &&
                 (strcmp(name, LC_LAYER_ROOT_DIR) == 0)) {
                 lc_setLayerRoot(gfs, e.ino);
@@ -1016,13 +1045,18 @@ lc_flush(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
 
     lc_displayEntry(__func__, ino, 0, NULL);
     fuse_reply_err(req, 0);
-    lc_statsAdd(inode->i_fs, LC_FLUSH, 0, NULL);
+    if (inode) {
+        lc_statsAdd(inode->i_fs, LC_FLUSH, 0, NULL);
+    } else {
+        assert(lc_getInodeHandle(ino) == LC_COMMIT_TRIGGER_INODE);
+        assert(lc_getFsHandle(ino));
+    }
 }
 
 /* Decrement open count on an inode */
 static void
 lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
-                 struct fuse_file_info *fi, bool *inval) {
+                struct fuse_file_info *fi, bool *inval) {
     struct inode *inode;
     bool reg;
 
@@ -1101,8 +1135,14 @@ lc_release(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     struct fs *fs;
     bool inval;
 
-    lc_statsBegin(&start);
     lc_displayEntry(__func__, ino, 0, NULL);
+    if ((struct inode *)fi->fh == NULL) {
+        fuse_reply_err(req, 0);
+        assert(lc_getInodeHandle(ino) == LC_COMMIT_TRIGGER_INODE);
+        assert(lc_getFsHandle(ino));
+        return;
+    }
+    lc_statsBegin(&start);
     fs = lc_getLayerLocked(ino, false);
     lc_releaseInode(req, fs, ino, fi, &inval);
     if (inval) {
@@ -1275,6 +1315,13 @@ lc_getxattr(fuse_req_t req, fuse_ino_t ino, const char *name, size_t size
         return;
     }
 
+    /* Take care of the special inode when commit is in progress */
+    if ((lc_getInodeHandle(ino) == LC_COMMIT_TRIGGER_INODE) &&
+        lc_getFsHandle(ino)) {
+        fuse_reply_err(req, ENODATA);
+        return;
+    }
+
     /* XXX Figure out a way to avoid invoking this for system.posix_acl_access
      * and system.posix_acl_default.
      */
@@ -1320,7 +1367,7 @@ lc_removexattr(fuse_req_t req, fuse_ino_t ino, const char *name) {
 /* Create a file */
 static void
 lc_create(fuse_req_t req, fuse_ino_t parent, const char *name,
-           mode_t mode, struct fuse_file_info *fi) {
+          mode_t mode, struct fuse_file_info *fi) {
     const struct fuse_ctx *ctx = fuse_req_ctx(req);
     struct fuse_entry_param e;
     struct timeval start;
@@ -1330,6 +1377,13 @@ lc_create(fuse_req_t req, fuse_ino_t parent, const char *name,
     lc_statsBegin(&start);
     lc_displayEntry(__func__, parent, 0, name);
     fs = lc_getLayerLocked(parent, false);
+
+    /* Check if a layer commit is triggerd */
+    if (fs->fs_parent && (lc_getInodeHandle(parent) == fs->fs_root) &&
+        strstr(name, LC_COMMIT_TRIGGER_PREFIX)) {
+        lc_commitLayer(req, fs, parent, name, fi);
+        return;
+    }
     err = lc_createInode(fs, parent, name, S_IFREG | (mode & ~ctx->umask),
                          ctx->uid, ctx->gid, 0, NULL, fi, &e);
     if (err) {

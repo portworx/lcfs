@@ -13,6 +13,9 @@ enum ioctl_cmd {
     CLEAR_STAT = 108,               /* Clear stats for a layer */
 };
 
+/* Prefix of fake file name used to trigger layer commit */
+#define LC_COMMIT_TRIGGER_PREFIX    ".lcfs-diff-"
+
 /* Data structure used to respond to layer diff */
 struct pchange {
 

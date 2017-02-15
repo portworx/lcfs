@@ -357,6 +357,7 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
                 assert(fs->fs_child == NULL);
                 assert(!fs->fs_frozen);
                 fuse_reply_ioctl(req, 0, NULL, 0);
+                fs->fs_commitInProgress = false;
                 lc_sync(gfs, fs, false);
             } else {
                 fuse_reply_ioctl(req, 0, NULL, 0);
@@ -387,4 +388,121 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
         fuse_reply_err(req, err);
     }
     lc_unlock(rfs);
+}
+
+/* Promote a read-write layer to read-only layer */
+void
+lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
+               struct fuse_file_info *fi) {
+    struct fuse_entry_param e;
+    int gindex = fs->fs_gindex, newgindex;
+    struct gfs *gfs = fs->fs_gfs;
+    struct fs *rfs, *cfs, *pfs;
+    struct inode *dir;
+    ino_t root;
+
+    lc_printf("Committing %s\n", layer);
+    lc_copyFakeStat(&e.attr);
+    e.ino = lc_setHandle(fs->fs_gindex, e.attr.st_ino);
+    lc_epInit(&e);
+    rfs = lc_getLayerLocked(LC_ROOT_INODE, false);
+    root = lc_getRootIno(rfs, layer + strlen(LC_COMMIT_TRIGGER_PREFIX), NULL, true);
+    assert(root != LC_INVALID_INODE);
+    lc_unlock(fs);
+    cfs = lc_getLayerLocked(root, true);
+    newgindex = cfs->fs_gindex;
+    pfs = lc_getLayerLocked(lc_setHandle(cfs->fs_parent->fs_gindex,
+                                         cfs->fs_parent->fs_root), true);
+    fs = lc_getLayerLocked(ino, true);
+
+    /* Respond after locking all layers */
+    fuse_reply_create(req, &e, fi);
+
+    /* Clone inodes shared with parent layer */
+    lc_cloneInodes(gfs, cfs, pfs);
+
+    /* Clone root directory of the layer being committed to the parent layer */
+    dir = pfs->fs_rootInode;
+    lc_dirFree(dir);
+    dir->i_flags |= LC_INODE_SHARED;
+    lc_cloneRootDir(cfs->fs_rootInode, dir);
+
+    /* Move inodes from the new layer to the layer being committed.
+     * This may be unnecessary as these files are deleted right away.
+     */
+    lc_moveInodes(fs, cfs);
+
+    /* Clone root directory of the parent layer, to the new child layer */
+    dir = fs->fs_rootInode;
+    lc_dirFree(dir);
+    dir->i_flags |= LC_INODE_SHARED;
+    lc_cloneRootDir(pfs->fs_rootInode, dir);
+
+    /* Switch root inodes.  Those don't have to be moved in the hash lists */
+    dir->i_ino = cfs->fs_root;
+    dir->i_parent = cfs->fs_root;
+    cfs->fs_rootInode->i_ino = root;
+    lc_switchInodeParent(cfs, root);
+
+    /* Switch layer roots and indices */
+    //lc_printf("Swapping layers fs %p cfs %p with index %d and %d\n", fs, cfs, gindex, newgindex);
+    root = fs->fs_root;
+    assert(fs->fs_child == NULL);
+    assert(gfs->gfs_roots[newgindex] == cfs->fs_root);
+    assert(gfs->gfs_roots[gindex] == root);
+    pthread_mutex_lock(&gfs->gfs_lock);
+    fs->fs_root = cfs->fs_root;
+    cfs->fs_root = root;
+    gfs->gfs_fs[newgindex] = fs;
+    fs->fs_gindex = newgindex;
+    fs->fs_super->sb_index = newgindex;
+    gfs->gfs_fs[gindex] = cfs;
+    cfs->fs_gindex = gindex;
+    cfs->fs_super->sb_index = gindex;
+
+    /* Make the newly committed layer a child of the image layer */
+    lc_removeChild(cfs);
+    cfs->fs_prev = NULL;
+    cfs->fs_next = NULL;
+    cfs->fs_parent = fs->fs_parent;
+    lc_addChild(gfs, fs->fs_parent, cfs);
+
+    /* Make parent layer a child of the committed layer */
+    lc_removeChild(pfs);
+    pfs->fs_prev = NULL;
+    pfs->fs_next = NULL;
+    pfs->fs_super->sb_nextLayer = 0;
+    assert(pfs->fs_child == NULL);
+    pfs->fs_super->sb_nextLayer = 0;
+    pfs->fs_parent = cfs;
+    assert(cfs->fs_child == NULL);
+    cfs->fs_child = pfs;
+    cfs->fs_super->sb_childLayer = pfs->fs_sblock;
+    cfs->fs_super->sb_lastInode = gfs->gfs_super->sb_ninode;
+    cfs->fs_commitInProgress = true;
+    cfs->fs_readOnly = true;
+    cfs->fs_super->sb_flags &= ~LC_SUPER_RDWR;
+    cfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
+
+    /* Make new child layer a child of the parent */
+    lc_removeChild(fs);
+    fs->fs_prev = NULL;
+    fs->fs_next = NULL;
+    fs->fs_super->sb_nextLayer = 0;
+    fs->fs_parent = pfs;
+    pfs->fs_child = fs;
+    pfs->fs_super->sb_childLayer = fs->fs_sblock;
+    pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
+    fs->fs_super->sb_flags |= LC_SUPER_RDWR | LC_SUPER_DIRTY;
+    pthread_mutex_unlock(&gfs->gfs_lock);
+    fs->fs_readOnly = false;
+
+    /* Sync dirty data on the newly committed layer */
+    lc_sync(gfs, cfs, false);
+    cfs->fs_frozen = true;
+    lc_unlock(cfs);
+    lc_unlock(pfs);
+    lc_unlock(fs);
+    lc_unlock(rfs);
+    printf("Commit complete\n");
 }

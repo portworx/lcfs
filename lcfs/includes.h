@@ -125,6 +125,8 @@ struct fs *lc_getLayerLocked(ino_t ino, bool exclusive);
 uint64_t lc_getLayerForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp);
 int lc_getIndex(struct fs *nfs, ino_t parent, ino_t ino);
 int lc_addLayer(struct gfs *gfs, struct fs *fs, struct fs *pfs, bool *inval);
+void lc_addChild(struct gfs *gfs, struct fs *pfs, struct fs *fs);
+void lc_removeChild(struct fs *fs);
 void lc_removeLayer(struct gfs *gfs, struct fs *fs);
 void lc_lock(struct fs *fs, bool exclusive);
 int lc_tryLock(struct fs *fs, bool exclusive);
@@ -142,6 +144,7 @@ void lc_destroyLayer(struct fs *fs, bool remove);
 void lc_icache_init(struct fs *fs, size_t size);
 void lc_icache_deinit(struct icache *icache);
 void lc_copyStat(struct stat *st, struct inode *inode);
+void lc_copyFakeStat(struct stat *st);
 ino_t lc_inodeAlloc(struct fs *fs);
 void lc_updateFtypeStats(struct fs *fs, mode_t mode, bool incr);
 void lc_displayFtypeStats(struct fs *fs);
@@ -165,6 +168,9 @@ void lc_inodeUnlock(struct inode *inode);
 int lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void lc_invalidateInodePages(struct gfs *gfs, struct fs *fs);
 void lc_invalidateLayerPages(struct gfs *gfs, struct fs *fs);
+void lc_moveInodes(struct fs *fs, struct fs *cfs);
+void lc_cloneInodes(struct gfs *gfs, struct fs *fs, struct fs *pfs);
+void lc_switchInodeParent(struct fs *fs, ino_t root);
 
 ino_t lc_dirLookup(struct fs *fs, struct inode *dir, const char *name);
 void lc_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,
@@ -271,12 +277,16 @@ void lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
 void lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name);
 void lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
                    enum ioctl_cmd cmd);
+void lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *name,
+                    struct fuse_file_info *fi);
 
 void lc_addHlink(struct fs *fs, struct inode *inode, ino_t parent);
 void lc_removeHlink(struct fs *fs, struct inode *inode, ino_t parent);
 void lc_freeHlinks(struct fs *fs);
 
 int lc_layerDiff(fuse_req_t req, const char *name, size_t size);
+struct dirent *lc_getDirent(struct fs *fs, ino_t parent, ino_t ino, int *hash,
+                            struct dirent *sdirent);
 void lc_freeChangeList(struct fs *fs);
 
 void lc_statsNew(struct fs *fs);

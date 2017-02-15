@@ -4,6 +4,7 @@ MNT=/tmp/lcfs-testmountpoint
 MNT2=/lcfs
 LCFS=$PWD/lcfs
 XATTR=$PWD/testxattr
+TESTDIFF=$PWD/testdiff
 CSTAT=$PWD/cstat
 
 umount -f $MNT $MNT2 2>/dev/null
@@ -135,6 +136,10 @@ docker run hello-world
 
 cd $MNT/lcfs
 $CSTAT .
+for layer in *
+do
+    $TESTDIFF $layer
+done
 cd -
 
 docker ps --all --format {{.ID}} | xargs docker rm

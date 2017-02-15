@@ -349,6 +349,9 @@ struct fs {
 
     /* Set if hlinks shared with parent */
     bool fs_sharedHlinks;
+
+    /* Set while a layer commit is in progress */
+    bool fs_commitInProgress;
 } __attribute__((packed));
 
 /* Set up inode handle using inode number and file system id */

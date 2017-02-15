@@ -53,6 +53,7 @@ static const char *mrequests[] = {
     "CDIR",
     "PATH",
     "HLINKS",
+    "SYMLINK",
     "STATS",
 };
 

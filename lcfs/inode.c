@@ -48,6 +48,27 @@ lc_copyStat(struct stat *st, struct inode *inode) {
     lc_copyStatTimes(st, dinode);
 }
 
+/* Copy stats for a file which does not exist */
+void
+lc_copyFakeStat(struct stat *st) {
+    struct timespec tv;
+
+    lc_gettime(&tv);
+    st->st_dev = 0;
+    st->st_ino = LC_ROOT_INODE;
+    st->st_mode = S_IFREG | 0500;
+    st->st_nlink = 1;
+    st->st_uid = 0;
+    st->st_gid = 0;
+    st->st_rdev = 0;
+    st->st_size = 0;
+    st->st_blksize = LC_BLOCK_SIZE;
+    st->st_blocks = 0;
+    st->st_atim = tv;
+    st->st_mtim = tv;
+    st->st_ctim = tv;
+}
+
 /* Initialize a disk inode */
 static void
 lc_dinodeInit(struct inode *inode, ino_t ino, mode_t mode,
@@ -419,10 +440,13 @@ lc_freeInode(struct inode *inode) {
     } else if (S_ISLNK(inode->i_mode)) {
 
         /* Free target of a symbolic link if the inode owns that */
-        inode->i_target = NULL;
-        if (!(inode->i_flags & LC_INODE_SHARED)) {
+        if (inode->i_flags & LC_INODE_SYMLINK) {
+            lc_free(fs, inode->i_target, inode->i_size + 1,
+                    LC_MEMTYPE_SYMLINK);
+        } else if (!(inode->i_flags & LC_INODE_SHARED)) {
             size += inode->i_size + 1;
         }
+        inode->i_target = NULL;
     }
     if (inode->i_xattrData) {
         lc_xattrFree(inode);
@@ -1007,3 +1031,121 @@ lc_inodeInit(struct fs *fs, mode_t mode, uid_t uid, gid_t gid,
     lc_inodeLock(inode, true);
     return inode;
 }
+
+/* Move inodes from one layer to another */
+void
+lc_moveInodes(struct fs *fs, struct fs *cfs) {
+    uint64_t i, count = 0, icount = fs->fs_icount;
+    struct inode *inode, *pinode, *dir, **prev;
+    struct dirent *dirent;
+    ino_t parent;
+
+    for (i = 0; (i < fs->fs_icacheSize) && (count < icount); i++) {
+        pinode = fs->fs_icache[i].ic_head;
+        prev = &fs->fs_icache[i].ic_head;
+        while (pinode) {
+            count++;
+            if (pinode == fs->fs_rootInode) {
+                prev = &pinode->i_cnext;
+                pinode = pinode->i_cnext;
+                continue;
+            }
+            assert((pinode->i_nlink <= 1) || S_ISDIR(pinode->i_mode));
+            *prev = pinode->i_cnext;
+            inode = pinode;
+            pinode = pinode->i_cnext;
+            inode->i_fs = cfs;
+            lc_addInode(cfs, inode);
+            lc_markInodeDirty(inode,
+                              S_ISDIR(inode->i_mode) ? LC_INODE_DIRDIRTY :
+                              (S_ISREG(inode->i_mode) ?
+                               LC_INODE_EMAPDIRTY : 0));
+            if (!(inode->i_flags & LC_INODE_REMOVED)) {
+                parent = inode->i_parent;
+                dirent = lc_getDirent(fs, parent, inode->i_ino,
+                                      NULL, NULL);
+                if (parent == fs->fs_root) {
+                    parent = cfs->fs_root;
+                }
+                dir = lc_getInode(cfs, parent, NULL, false, false);
+                lc_dirAdd(dir, dirent->di_ino, dirent->di_mode,
+                          dirent->di_name, dirent->di_size);
+                if (S_ISDIR(inode->i_mode)) {
+                    dir->i_nlink++;
+                }
+                lc_markInodeDirty(dir, LC_INODE_DIRDIRTY);
+                lc_inodeUnlock(dir);
+            }
+        }
+    }
+    if (count > 1) {
+        count--;
+        __sync_sub_and_fetch(&fs->fs_icount, count);
+        __sync_add_and_fetch(&cfs->fs_icount, count);
+    }
+}
+
+/* Switch parent inodes of files in root directory */
+void
+lc_switchInodeParent(struct fs *fs, ino_t root) {
+    struct inode *dir = fs->fs_rootInode;
+    bool hashed = (dir->i_flags & LC_INODE_DHASHED);
+    int i, max = hashed ? LC_DIRCACHE_SIZE : 1;
+    struct dirent *dirent;
+    struct inode *inode;
+
+    for (i = 0; i < max; i++) {
+        dirent = hashed ? dir->i_hdirent[i] : dir->i_dirent;
+        while (dirent) {
+            inode = lc_lookupInode(fs, dirent->di_ino);
+            if (inode) {
+                inode->i_parent = root;
+            }
+            dirent = dirent->di_next;
+        }
+    }
+}
+
+/* Clone inodes shared with parent layer */
+void
+lc_cloneInodes(struct gfs *gfs, struct fs *fs, struct fs *pfs) {
+    uint64_t i, count = 0, icount = pfs->fs_icount;
+    struct inode *inode, *pinode;
+    int flags;
+
+    for (i = 0; (i < pfs->fs_icacheSize) && (count < icount); i++) {
+        pinode = pfs->fs_icache[i].ic_head;
+        while (pinode) {
+            count++;
+            if ((pinode == pfs->fs_rootInode) ||
+                (pinode->i_flags & LC_INODE_SHARED)) {
+                pinode = pinode->i_cnext;
+                continue;
+            }
+            inode = lc_getInode(fs, pinode->i_ino, NULL, true, true);
+            if (inode->i_flags & LC_INODE_SHARED) {
+                flags = 0;
+                if (S_ISREG(inode->i_mode)) {
+                    lc_copyEmap(gfs, fs, inode);
+                    flags = LC_INODE_EMAPDIRTY;
+                } else if (S_ISDIR(inode->i_mode)) {
+                    lc_dirCopy(inode);
+                    flags = LC_INODE_DIRDIRTY;
+                } else {
+                    assert(S_ISLNK(inode->i_mode));
+
+                    inode->i_target = lc_malloc(fs, inode->i_size + 1,
+                                                LC_MEMTYPE_SYMLINK);
+                    memcpy(inode->i_target, pinode->i_target,
+                           inode->i_size + 1);
+                    inode->i_flags |= LC_INODE_SYMLINK;
+                    inode->i_flags &= ~LC_INODE_SHARED;
+                }
+                lc_markInodeDirty(inode, flags);
+            }
+            lc_inodeUnlock(inode);
+            pinode = pinode->i_cnext;
+        }
+    }
+}
+

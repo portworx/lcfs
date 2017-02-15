@@ -218,6 +218,33 @@ lc_getLayerLocked(ino_t ino, bool exclusive) {
     return fs;
 }
 
+/* Take a layer out of the parent chain */
+void
+lc_removeChild(struct fs *fs) {
+    struct fs *nfs, *pfs = fs->fs_parent;
+
+    if (pfs && (pfs->fs_child == fs)) {
+
+        /* Parent points to this layer */
+        pfs->fs_child = fs->fs_next;
+        if (fs->fs_next) {
+            fs->fs_next->fs_prev = NULL;
+        }
+        pfs->fs_super->sb_childLayer = fs->fs_super->sb_nextLayer;
+        pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
+    } else {
+
+        /* Remove from the common parent list */
+        nfs = fs->fs_prev;
+        nfs->fs_next = fs->fs_next;
+        nfs->fs_super->sb_nextLayer = fs->fs_super->sb_nextLayer;
+        nfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
+        if (fs->fs_next) {
+            fs->fs_next->fs_prev = fs->fs_prev;
+        }
+    }
+}
+
 /* Lock a layer exclusive for removal, after taking it off the global
  * list.
  */
@@ -225,7 +252,7 @@ uint64_t
 lc_getLayerForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
     ino_t ino = lc_getInodeHandle(root);
     int gindex = lc_getFsHandle(root);
-    struct fs *fs, *pfs, *nfs;
+    struct fs *fs;
 
     assert(gindex < LC_LAYER_MAX);
     pthread_mutex_lock(&gfs->gfs_lock);
@@ -255,27 +282,7 @@ lc_getLayerForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
         gfs->gfs_scount--;
     }
     fs->fs_gindex = -1;
-    pfs = fs->fs_parent;
-    if (pfs && (pfs->fs_child == fs)) {
-
-        /* Parent points to this layer */
-        pfs->fs_child = fs->fs_next;
-        if (fs->fs_next) {
-            fs->fs_next->fs_prev = NULL;
-        }
-        pfs->fs_super->sb_childLayer = fs->fs_super->sb_nextLayer;
-        pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
-    } else {
-
-        /* Remove from the common parent list */
-        nfs = fs->fs_prev;
-        nfs->fs_next = fs->fs_next;
-        nfs->fs_super->sb_nextLayer = fs->fs_super->sb_nextLayer;
-        nfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
-        if (fs->fs_next) {
-            fs->fs_next->fs_prev = fs->fs_prev;
-        }
-    }
+    lc_removeChild(fs);
     pthread_mutex_unlock(&gfs->gfs_lock);
     lc_lock(fs, true);
     assert(fs->fs_root == ino);
@@ -283,10 +290,40 @@ lc_getLayerForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
     return 0;
 }
 
+void
+lc_addChild(struct gfs *gfs, struct fs *pfs, struct fs *fs) {
+    struct fs *child = pfs ? pfs->fs_child : lc_getGlobalFs(gfs);
+
+    if (child) {
+        child->fs_single = false;
+        fs->fs_prev = child;
+        if (child->fs_next) {
+            child->fs_next->fs_prev = fs;
+        }
+        fs->fs_next = child->fs_next;
+        child->fs_next = fs;
+        fs->fs_super->sb_nextLayer = child->fs_super->sb_nextLayer;
+        child->fs_super->sb_nextLayer = fs->fs_sblock;
+        child->fs_super->sb_flags |= LC_SUPER_DIRTY;
+    } else if (pfs) {
+
+        /* Tag the very first read-write init layer created as the single child
+         * of the base layer so that it can cache shared data in kernel page
+         * cache.
+         */
+        if (fs->fs_super->sb_flags & LC_SUPER_INIT) {
+            fs->fs_single = true;
+        }
+        pfs->fs_child = fs;
+        pfs->fs_super->sb_childLayer = fs->fs_sblock;
+        pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
+    }
+}
+
 /* Add a file system to global list of file systems */
 int
 lc_addLayer(struct gfs *gfs, struct fs *fs, struct fs *pfs, bool *inval) {
-    struct fs *child, *rfs = fs->fs_rfs;
+    struct fs *rfs = fs->fs_rfs;
     int i;
 
     fs->fs_sblock = lc_blockAllocExact(fs, 1, true, false);
@@ -316,34 +353,10 @@ lc_addLayer(struct gfs *gfs, struct fs *fs, struct fs *pfs, bool *inval) {
         printf("Too many layers.  Retry after remount or deleting some.\n");
         return EOVERFLOW;
     }
-    child = pfs ? pfs->fs_child : lc_getGlobalFs(gfs);
     *inval = pfs && pfs->fs_child && pfs->fs_child->fs_single;
 
     /* Add this file system to the layer list or root file systems list */
-    if (child) {
-        child->fs_single = false;
-        fs->fs_prev = child;
-        if (child->fs_next) {
-            child->fs_next->fs_prev = fs;
-        }
-        fs->fs_next = child->fs_next;
-        child->fs_next = fs;
-        fs->fs_super->sb_nextLayer = child->fs_super->sb_nextLayer;
-        child->fs_super->sb_nextLayer = fs->fs_sblock;
-        child->fs_super->sb_flags |= LC_SUPER_DIRTY;
-    } else if (pfs) {
-
-        /* Tag the very first read-write init layer created as the single child
-         * of the base layer so that it can cache shared data in kernel page
-         * cache.
-         */
-        if (fs->fs_super->sb_flags & LC_SUPER_INIT) {
-            fs->fs_single = true;
-        }
-        pfs->fs_child = fs;
-        pfs->fs_super->sb_childLayer = fs->fs_sblock;
-        pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
-    }
+    lc_addChild(gfs, pfs, fs);
     pthread_mutex_unlock(&gfs->gfs_lock);
     return 0;
 }

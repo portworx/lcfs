@@ -196,9 +196,10 @@ lc_compareDirectory(struct fs *fs, struct inode *dir, struct inode *pdir,
             if (pdir) {
                 ino = lc_dirLookup(fs, pdir, dirent->di_name);
             }
-            lc_addName(fs, cdir, dirent->di_ino, dirent->di_name,
-                       dirent->di_mode, dirent->di_size, lastIno,
-                       (ino == LC_INVALID_INODE) ? LC_ADDED : LC_MODIFIED);
+            if (ino == LC_INVALID_INODE) {
+                lc_addName(fs, cdir, dirent->di_ino, dirent->di_name,
+                           dirent->di_mode, dirent->di_size, lastIno, LC_ADDED);
+            }
             count++;
             dirent = dirent->di_next;
         }
@@ -265,7 +266,7 @@ lc_addDirectoryTree(struct fs *fs, struct inode *dir, struct cdir *cdir,
 }
 
 /* Find directory entry with the given inode number */
-static struct dirent *
+struct dirent *
 lc_getDirent(struct fs *fs, ino_t parent, ino_t ino, int *hash,
              struct dirent *sdirent) {
     struct inode * dir = lc_getInode(fs, parent, NULL, false, false);

@@ -148,6 +148,10 @@ struct ixattr {
 #define LC_INODE_NOTRUNC        0x100  /* Do not truncate this file */
 #define LC_INODE_CTRACKED       0x200  /* Inode in the change list */
 #define LC_INODE_MLINKS         0x400  /* Linked from many directories */
+#define LC_INODE_SYMLINK        0x800  /* Free symbolic link target */
+
+/* Fake inode number used to trigger layer commit operation */
+#define LC_COMMIT_TRIGGER_INODE     LC_ROOT_INODE
 
 /* Inode structure */
 struct inode {
