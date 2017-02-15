@@ -65,6 +65,8 @@ void *lc_malloc(struct fs *fs, size_t size, enum lc_memTypes type);
 void lc_mallocBlockAligned(struct fs *fs, void **memptr,
                            enum lc_memTypes type);
 void lc_free(struct fs *fs, void *ptr, size_t size, enum lc_memTypes type);
+void lc_memMove(struct fs *fs, struct fs *to, size_t size,
+                enum lc_memTypes type);
 bool lc_checkMemoryAvailable(bool flush);
 void lc_waitMemory(bool wait);
 void lc_memUpdateTotal(struct fs *fs, size_t size);
@@ -169,8 +171,10 @@ int lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode);
 void lc_invalidateInodePages(struct gfs *gfs, struct fs *fs);
 void lc_invalidateLayerPages(struct gfs *gfs, struct fs *fs);
 void lc_moveInodes(struct fs *fs, struct fs *cfs);
+void lc_moveRootInode(struct fs *cfs, struct fs *fs);
 void lc_cloneInodes(struct gfs *gfs, struct fs *fs, struct fs *pfs);
 void lc_switchInodeParent(struct fs *fs, ino_t root);
+void lc_swapRootInode(struct fs *fs, struct fs *cfs);
 
 ino_t lc_dirLookup(struct fs *fs, struct inode *dir, const char *name);
 void lc_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,

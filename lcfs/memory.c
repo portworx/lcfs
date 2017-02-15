@@ -150,7 +150,7 @@ lc_memUpdateTotal(struct fs *fs, size_t size) {
     __sync_fetch_and_sub(&fs->fs_memory, size);
 }
 
-/* Transfer some memory from a layer it its base layer */
+/* Transfer some memory from a layer to its base layer */
 void
 lc_memTransferCount(struct fs *fs, uint64_t count) {
     struct fs *rfs = fs->fs_rfs;
@@ -189,6 +189,16 @@ lc_free(struct fs *fs, void *ptr, size_t size, enum lc_memTypes type) {
     assert(size || (type == LC_MEMTYPE_GFS));
     free(ptr);
     lc_memStatsUpdate(fs, size, false, type);
+}
+
+/* Move previously allocated memory from one layer to another */
+void
+lc_memMove(struct fs *from, struct fs *to, size_t size,
+           enum lc_memTypes type) {
+    if (memStatsEnabled) {
+        lc_memStatsUpdate(from, size, false, type);
+        lc_memStatsUpdate(to, size, true, type);
+    }
 }
 
 /* Check for memory leak */

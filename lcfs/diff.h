@@ -37,7 +37,7 @@ struct cfile {
 struct cdir {
 
     /* Inode number of this directory */
-    uint64_t cd_ino:48;
+    uint64_t cd_ino:LC_FH_LAYER;
 
     /* Type of change */
     uint64_t cd_type:2;
