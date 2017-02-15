@@ -47,7 +47,10 @@ struct icache {
 struct dirent {
 
     /* Inode number */
-    ino_t di_ino;
+    uint64_t di_ino:LC_FH_LAYER;
+
+    /* Size of name */
+    uint64_t di_size:16;
 
     /* Next entry in the directory */
     struct dirent *di_next;
@@ -57,9 +60,6 @@ struct dirent {
 
     /* Index of this entry in the directory */
     uint32_t di_index;
-
-    /* Size of name */
-    int16_t di_size;
 
     /* File mode */
     mode_t di_mode;
