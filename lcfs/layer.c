@@ -133,6 +133,7 @@ lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
     } else {
         pfs = lc_getLayerLocked(pinum, false);
         assert(pfs->fs_pcount == 0);
+        assert(!(fs->fs_super->sb_flags & LC_SUPER_ZOMBIE));
 
         /* Mark the layer as immutable */
         if (!pfs->fs_frozen) {
@@ -226,7 +227,7 @@ lc_removeRoot(struct fs *rfs, struct inode *dir, ino_t ino, bool rmdir,
 /* Remove a layer */
 void
 lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
-    struct fs *fs = NULL, *rfs, *bfs = NULL;
+    struct fs *fs = NULL, *rfs, *bfs = NULL, *zfs;
     struct inode *pdir = NULL;
     struct timeval start;
     int err = 0;
@@ -246,6 +247,15 @@ lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
         fuse_reply_err(req, err);
         goto out;
     }
+
+    /* This could happen when a layer is made a zombie layer, which will be
+     * removed when all the child layers are removed.
+     */
+    if (fs == NULL) {
+        fuse_reply_ioctl(req, 0, NULL, 0);
+        lc_printf("Converted layer %s to a zombie layer\n", name);
+        goto out;
+    }
     assert(fs->fs_removed);
     if (fs->fs_parent) {
 
@@ -260,6 +270,9 @@ lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
 
     lc_printf("Removing fs with parent %ld root %ld name %s\n",
                fs->fs_parent ? fs->fs_parent->fs_root : - 1, root, name);
+
+retry:
+    zfs = fs->fs_zfs;
     lc_invalidateDirtyPages(gfs, fs);
     lc_invalidateInodePages(gfs, fs);
     lc_invalidateInodeBlocks(gfs, fs);
@@ -267,6 +280,13 @@ lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
     lc_freeLayerBlocks(gfs, fs, true, true, fs->fs_parent);
     lc_unlock(fs);
     lc_destroyLayer(fs, true);
+    if (zfs) {
+
+        /* Remove zombie parent layer */
+        fs = zfs;
+        lc_lock(fs, true);
+        goto retry;
+    }
     if (bfs) {
         lc_unlock(bfs);
     }
@@ -279,7 +299,6 @@ lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
                                 gfs->gfs_ch[LC_LAYER_MOUNT],
 #endif
                                 gfs->gfs_layerRoot, root, name, strlen(name));
-
 out:
     lc_statsAdd(rfs, LC_LAYER_REMOVE, err, &start);
     lc_unlock(rfs);
@@ -357,7 +376,7 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
                 assert(!fs->fs_frozen);
                 fuse_reply_ioctl(req, 0, NULL, 0);
                 fs->fs_commitInProgress = false;
-                lc_sync(gfs, fs, false);
+                lc_sync(gfs, fs, false, false);
             } else {
                 fuse_reply_ioctl(req, 0, NULL, 0);
             }
@@ -395,8 +414,8 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
                struct fuse_file_info *fi) {
     struct fuse_entry_param e;
     int gindex = fs->fs_gindex, newgindex;
+    struct fs *rfs, *cfs, *pfs, *tfs;
     struct gfs *gfs = fs->fs_gfs;
-    struct fs *rfs, *cfs, *pfs;
     struct inode *dir;
     ino_t root;
 
@@ -417,8 +436,12 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
     /* Respond after locking all layers */
     fuse_reply_create(req, &e, fi);
 
-    /* Clone inodes shared with parent layer */
-    lc_cloneInodes(gfs, cfs, pfs);
+    /* Clone inodes shared with parent layers */
+    tfs = pfs;
+    while (tfs != fs->fs_parent) {
+        lc_cloneInodes(gfs, cfs, tfs);
+        tfs = tfs->fs_parent;
+    }
 
     /* Clone root directories */
     dir = cfs->fs_rootInode;
@@ -503,12 +526,13 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
     if (cfs->fs_readOnly) {
         cfs->fs_super->sb_flags &= ~LC_SUPER_RDWR;
     }
+    cfs->fs_super->sb_zombie = pfs->fs_gindex;
     cfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
     pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
     fs->fs_super->sb_flags |= LC_SUPER_RDWR | LC_SUPER_DIRTY;
 
     /* Sync dirty data on the newly committed layer */
-    lc_sync(gfs, cfs, false);
+    lc_sync(gfs, cfs, false, false);
     cfs->fs_commitInProgress = true;
     cfs->fs_frozen = true;
     lc_unlock(fs);

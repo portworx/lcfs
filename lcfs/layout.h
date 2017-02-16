@@ -59,10 +59,11 @@
 #define LC_XATTR_MAGIC 0xBDEF4389
 
 /* Superblock Flags */
-#define LC_SUPER_DIRTY     0x00000001  // Layer is dirty
-#define LC_SUPER_RDWR      0x00000002  // Layer is readwrite
-#define LC_SUPER_MOUNTED   0x00000004  // Layer is mounted
-#define LC_SUPER_INIT      0x00000008  // Init layer
+#define LC_SUPER_DIRTY     0x00000001  /* Layer is dirty */
+#define LC_SUPER_RDWR      0x00000002  /* Layer is readwrite */
+#define LC_SUPER_MOUNTED   0x00000004  /* Layer is mounted */
+#define LC_SUPER_INIT      0x00000008  /* Init layer */
+#define LC_SUPER_ZOMBIE    0x00000010  /* Removed layer */
 
 /* Directory name in which layers are created */
 #define LC_LAYER_ROOT_DIR   "lcfs"
@@ -106,6 +107,9 @@ struct super {
     /* Largest inode number in a layer */
     uint64_t sb_lastInode;
 
+    /* Set on promoted layers after commit */
+    uint64_t sb_zombie;
+
     /* CRC of this block */
     uint32_t sb_crc;
 
@@ -136,7 +140,7 @@ struct super {
     uint64_t sb_ftypes[LC_FTYPE_MAX];
 
     /* Padding for filling up a block */
-    uint8_t  sb_pad[LC_BLOCK_SIZE - 140];
+    uint8_t  sb_pad[LC_BLOCK_SIZE - 148];
 } __attribute__((packed));
 static_assert(sizeof(struct super) == LC_BLOCK_SIZE, "superblock size != LC_BLOCK_SIZE");
 

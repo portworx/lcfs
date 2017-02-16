@@ -1,5 +1,6 @@
 #include "includes.h"
 
+#ifdef LC_DIFF
 static void lc_addName(struct fs *fs, struct cdir *cdir, ino_t ino, char *name,
                        mode_t mode, uint16_t len, ino_t lastIno,
                        enum lc_changeType ctype);
@@ -263,35 +264,6 @@ lc_addDirectoryTree(struct fs *fs, struct inode *dir, struct cdir *cdir,
 
     /* Add everything from the new directory */
     lc_compareDirectory(fs, dir, NULL, lastIno, cdir);
-}
-
-/* Find directory entry with the given inode number */
-struct dirent *
-lc_getDirent(struct fs *fs, ino_t parent, ino_t ino, int *hash,
-             struct dirent *sdirent) {
-    struct inode * dir = lc_getInode(fs, parent, NULL, false, false);
-    struct dirent *dirent = sdirent ? sdirent->di_next : NULL;
-    bool hashed = (dir->i_flags & LC_INODE_DHASHED);
-    int i = hash ? *hash : 0, max = hashed ? LC_DIRCACHE_SIZE : 1;
-
-    for (; i < max; i++) {
-        if (!sdirent) {
-            dirent = (hashed ? dir->i_hdirent[i] : dir->i_dirent);
-        }
-        while (dirent) {
-            if (dirent->di_ino == ino) {
-                if (hash) {
-                    *hash = i;
-                }
-                i = max;
-                break;
-            }
-            dirent = dirent->di_next;
-        }
-        sdirent = NULL;
-    }
-    lc_inodeUnlock(dir);
-    return dirent;
 }
 
 /* Add the directory to the change list */
@@ -591,13 +563,41 @@ out:
     }
 }
 
+/* Free the list created for tracking changes in the layer */
+void
+lc_freeChangeList(struct fs *fs) {
+    struct cdir *cdir = fs->fs_changes, *dir;
+    struct cfile *cfile, *file;
+
+    while (cdir) {
+        cfile = cdir->cd_file;
+        while (cfile) {
+            file = cfile;
+            cfile = cfile->cf_next;
+            lc_free(fs, file, sizeof(struct cfile), LC_MEMTYPE_CFILE);
+        }
+        if (cdir->cd_path) {
+            lc_free(fs, cdir->cd_path, cdir->cd_len, LC_MEMTYPE_PATH);
+        }
+        dir = cdir;
+        cdir = cdir->cd_next;
+        lc_free(fs, dir, sizeof(struct cdir), LC_MEMTYPE_CDIR);
+    }
+    fs->fs_changes = NULL;
+}
+#endif
+
 /* Produce diff between a layer and its parent layer */
 int
 lc_layerDiff(fuse_req_t req, const char *name, size_t size) {
     struct fs *fs, *rfs;
+#ifdef LC_DIFF
     struct inode *inode;
     ino_t ino, lastIno;
     int i;
+#else
+    ino_t ino;
+#endif
 
     assert(size == LC_BLOCK_SIZE);
     rfs = lc_getLayerLocked(LC_ROOT_INODE, false);
@@ -608,6 +608,7 @@ lc_layerDiff(fuse_req_t req, const char *name, size_t size) {
     }
     fs = lc_getLayerLocked(ino, true);
     assert(fs->fs_root == lc_getInodeHandle(ino));
+#ifdef LC_DIFF
     if (fs->fs_removed || fs->fs_rfs->fs_restarted ||
         (fs->fs_parent == NULL)) {
         lc_unlock(fs);
@@ -668,31 +669,10 @@ lc_layerDiff(fuse_req_t req, const char *name, size_t size) {
             inode = inode->i_cnext;
         }
     }
+#else
+    fuse_reply_buf(req, (char *)&fs->fs_size, sizeof(uint64_t));
+#endif
     lc_unlock(fs);
     lc_unlock(rfs);
     return 0;
 }
-
-/* Free the list created for tracking changes in the layer */
-void
-lc_freeChangeList(struct fs *fs) {
-    struct cdir *cdir = fs->fs_changes, *dir;
-    struct cfile *cfile, *file;
-
-    while (cdir) {
-        cfile = cdir->cd_file;
-        while (cfile) {
-            file = cfile;
-            cfile = cfile->cf_next;
-            lc_free(fs, file, sizeof(struct cfile), LC_MEMTYPE_CFILE);
-        }
-        if (cdir->cd_path) {
-            lc_free(fs, cdir->cd_path, cdir->cd_len, LC_MEMTYPE_PATH);
-        }
-        dir = cdir;
-        cdir = cdir->cd_next;
-        lc_free(fs, dir, sizeof(struct cdir), LC_MEMTYPE_CDIR);
-    }
-    fs->fs_changes = NULL;
-}
-

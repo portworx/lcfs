@@ -721,3 +721,33 @@ out:
     }
     return 0;
 }
+
+/* Find directory entry with the given inode number */
+struct dirent *
+lc_getDirent(struct fs *fs, ino_t parent, ino_t ino, int *hash,
+             struct dirent *sdirent) {
+    struct inode * dir = lc_getInode(fs, parent, NULL, false, false);
+    struct dirent *dirent = sdirent ? sdirent->di_next : NULL;
+    bool hashed = (dir->i_flags & LC_INODE_DHASHED);
+    int i = hash ? *hash : 0, max = hashed ? LC_DIRCACHE_SIZE : 1;
+
+    for (; i < max; i++) {
+        if (!sdirent) {
+            dirent = (hashed ? dir->i_hdirent[i] : dir->i_dirent);
+        }
+        while (dirent) {
+            if (dirent->di_ino == ino) {
+                if (hash) {
+                    *hash = i;
+                }
+                i = max;
+                break;
+            }
+            dirent = dirent->di_next;
+        }
+        sdirent = NULL;
+    }
+    lc_inodeUnlock(dir);
+    return dirent;
+}
+

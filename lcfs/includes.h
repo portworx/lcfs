@@ -137,7 +137,7 @@ void lc_mount(struct gfs *gfs, char *device, size_t size);
 void lc_newInodeBlock(struct gfs *gfs, struct fs *fs);
 void lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs);
 void lc_invalidateInodeBlocks(struct gfs *gfs, struct fs *fs);
-void lc_sync(struct gfs *gfs, struct fs *fs, bool super);
+void lc_sync(struct gfs *gfs, struct fs *fs, bool all, bool super);
 void lc_unmount(struct gfs *gfs);
 void lc_syncAllLayers(struct gfs *gfs);
 struct fs *lc_newLayer(struct gfs *gfs, bool rw);
@@ -164,7 +164,7 @@ void lc_rootInit(struct fs *fs, ino_t root);
 void lc_cloneRootDir(struct inode *pdir, struct inode *dir);
 void lc_setLayerRoot(struct gfs *gfs, ino_t ino);
 void lc_updateInodeTimes(struct inode *inode, bool mtime, bool ctime);
-void lc_syncInodes(struct gfs *gfs, struct fs *fs);
+void lc_syncInodes(struct gfs *gfs, struct fs *fs, bool all);
 void lc_inodeLock(struct inode *inode, bool exclusive);
 void lc_inodeUnlock(struct inode *inode);
 int lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode);
@@ -177,6 +177,8 @@ void lc_switchInodeParent(struct fs *fs, ino_t root);
 void lc_swapRootInode(struct fs *fs, struct fs *cfs);
 
 ino_t lc_dirLookup(struct fs *fs, struct inode *dir, const char *name);
+struct dirent *lc_getDirent(struct fs *fs, ino_t parent, ino_t ino, int *hash,
+                            struct dirent *sdirent);
 void lc_dirAdd(struct inode *dir, ino_t ino, mode_t mode, const char *name,
                int nsize);
 int lc_dirReaddir(fuse_req_t req, struct fs *fs, struct inode *dir,
@@ -284,14 +286,20 @@ void lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
 void lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *name,
                     struct fuse_file_info *fi);
 
+#ifdef LC_DIFF
 void lc_addHlink(struct fs *fs, struct inode *inode, ino_t parent);
 void lc_removeHlink(struct fs *fs, struct inode *inode, ino_t parent);
 void lc_freeHlinks(struct fs *fs);
 
-int lc_layerDiff(fuse_req_t req, const char *name, size_t size);
-struct dirent *lc_getDirent(struct fs *fs, ino_t parent, ino_t ino, int *hash,
-                            struct dirent *sdirent);
 void lc_freeChangeList(struct fs *fs);
+#else
+#define lc_addHlink(fs, inode, parent)
+#define lc_removeHlink(fs, inode, parent)
+#define lc_freeHlinks(fs)
+
+#define lc_freeChangeList(fs)
+#endif
+int lc_layerDiff(fuse_req_t req, const char *name, size_t size);
 
 void lc_statsNew(struct fs *fs);
 void lc_statsBegin(struct timeval *start);

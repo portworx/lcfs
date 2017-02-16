@@ -183,6 +183,9 @@ struct fs {
     /* Root of the layer tree */
     struct fs *fs_rfs;
 
+    /* zombie layer to be removed along with */
+    struct fs *fs_zfs;
+
     /* Layer file system of this layer */
     struct fs *fs_child;
 
@@ -223,6 +226,9 @@ struct fs {
 
     /* Lock protecting fs_dirtyInodes list */
     pthread_mutex_t fs_dilock;
+
+    /* Approximate size of the layer */
+    uint64_t fs_size;
 
     /* Creation time in seconds since Epoch */
     time_t fs_ctime;

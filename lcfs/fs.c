@@ -211,9 +211,16 @@ lc_getLayerLocked(ino_t ino, bool exclusive) {
     struct fs *fs;
 
     assert(gindex < LC_LAYER_MAX);
+
+retry:
     fs = gfs->gfs_fs[gindex];
     lc_lock(fs, exclusive);
-    assert(fs->fs_gindex == gindex);
+    if (fs->fs_gindex != gindex) {
+
+        /* This could happen if a layer is committed */
+        lc_unlock(fs);
+        goto retry;
+    }
     assert(gfs->gfs_roots[gindex] == fs->fs_root);
     return fs;
 }
@@ -252,7 +259,7 @@ uint64_t
 lc_getLayerForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
     ino_t ino = lc_getInodeHandle(root);
     int gindex = lc_getFsHandle(root);
-    struct fs *fs;
+    struct fs *fs, *zfs;
 
     assert(gindex < LC_LAYER_MAX);
     pthread_mutex_lock(&gfs->gfs_lock);
@@ -269,6 +276,18 @@ lc_getLayerForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
         return EINVAL;
     }
     if (fs->fs_child) {
+
+        /* Return success if the layer inherited child layers after a layer was
+         * committed.
+         */
+        if ((fs->fs_super->sb_zombie == fs->fs_child->fs_gindex) &&
+            (fs->fs_child->fs_next == NULL)) {
+            fs->fs_super->sb_flags |= LC_SUPER_ZOMBIE;
+            fs->fs_child->fs_zfs = fs;
+            pthread_mutex_unlock(&gfs->gfs_lock);
+            *fsp = NULL;
+            return 0;
+        }
         pthread_mutex_unlock(&gfs->gfs_lock);
         lc_reportError(__func__, __LINE__, root, EEXIST);
         return EEXIST;
@@ -277,12 +296,25 @@ lc_getLayerForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
     assert(gfs->gfs_roots[gindex] == ino);
     gfs->gfs_fs[gindex] = NULL;
     gfs->gfs_roots[gindex] = 0;
+    fs->fs_gindex = -1;
+    lc_removeChild(fs);
+    if (fs->fs_zfs) {
+
+        /* Remove zombie parent layer as well */
+        zfs = fs->fs_zfs;
+        assert(zfs->fs_super->sb_flags & LC_SUPER_ZOMBIE);
+        zfs->fs_removed = true;
+        gindex = zfs->fs_gindex;
+        assert(gfs->gfs_roots[gindex] == zfs->fs_root);
+        gfs->gfs_fs[gindex] = NULL;
+        gfs->gfs_roots[gindex] = 0;
+        zfs->fs_gindex = -1;
+        lc_removeChild(zfs);
+    }
     while (gfs->gfs_fs[gfs->gfs_scount] == NULL) {
         assert(gfs->gfs_scount > 0);
         gfs->gfs_scount--;
     }
-    fs->fs_gindex = -1;
-    lc_removeChild(fs);
     pthread_mutex_unlock(&gfs->gfs_lock);
     lc_lock(fs, true);
     assert(fs->fs_root == ino);
@@ -447,6 +479,9 @@ lc_initLayer(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
         pfs->fs_frozen = true;
         lc_linkParent(fs, pfs);
         fs->fs_parent = pfs;
+        if (pfs->fs_super->sb_flags & LC_SUPER_ZOMBIE) {
+            fs->fs_zfs = pfs;
+        }
     } else if (pfs->fs_parent == NULL) {
 
         /* Base layer */
@@ -586,17 +621,21 @@ lc_mount(struct gfs *gfs, char *device, size_t size) {
 
 /* Sync a dirty file system */
 void
-lc_sync(struct gfs *gfs, struct fs *fs, bool super) {
+lc_sync(struct gfs *gfs, struct fs *fs, bool all, bool super) {
     int err;
 
     if (fs->fs_super->sb_flags & LC_SUPER_DIRTY) {
         if (fs->fs_super->sb_flags & LC_SUPER_MOUNTED) {
-            fs->fs_super->sb_flags &= ~LC_SUPER_MOUNTED;
-            lc_syncInodes(gfs, fs);
-            lc_flushDirtyPages(gfs, fs);
-            //lc_displayAllocStats(fs);
-            lc_processFreedBlocks(fs, true);
-            lc_freeLayerBlocks(gfs, fs, false, false, false);
+            if (all) {
+                fs->fs_super->sb_flags &= ~LC_SUPER_MOUNTED;
+            }
+            lc_syncInodes(gfs, fs, all);
+            if (all) {
+                lc_flushDirtyPages(gfs, fs);
+                //lc_displayAllocStats(fs);
+                lc_processFreedBlocks(fs, true);
+                lc_freeLayerBlocks(gfs, fs, false, false, false);
+            }
         }
 
         /* Flush everything to disk before marking file system clean */
@@ -618,7 +657,7 @@ lc_umountSync(struct gfs *gfs) {
     lc_lock(fs, true);
 
     /* XXX Combine sync and destroy */
-    lc_sync(gfs, fs, false);
+    lc_sync(gfs, fs, true, false);
 
     /* Release freed and unused blocks */
     lc_freeLayerBlocks(gfs, fs, true, false, false);
@@ -662,7 +701,7 @@ lc_syncAllLayers(struct gfs *gfs) {
         /* Trylock can fail only if the fs is being removed */
         if (fs && !lc_tryLock(fs, false)) {
             pthread_mutex_unlock(&gfs->gfs_lock);
-            lc_sync(gfs, fs, true);
+            lc_sync(gfs, fs, true, true);
             lc_unlock(fs);
             pthread_mutex_lock(&gfs->gfs_lock);
         }

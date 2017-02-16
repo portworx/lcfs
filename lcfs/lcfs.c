@@ -139,6 +139,9 @@ out:
     pthread_mutex_lock(&gfs->gfs_lock);
     se = gfs->gfs_se[other];
     if (se) {
+        if ((id == LC_BASE_MOUNT) && (gfs->gfs_mcount == 0)) {
+            pthread_cond_signal(&gfs->gfs_mountCond);
+        }
         fuse_session_exit(se);
     }
     se = gfs->gfs_se[id];
@@ -241,16 +244,20 @@ lc_start(struct gfs *gfs, char *device, enum lc_mountId id) {
     } else {
 
         /* Wait for first thread to complete */
-        pthread_mutex_lock(&gfs->gfs_lock);
-        while (gfs->gfs_mcount == 0) {
-            pthread_cond_wait(&gfs->gfs_mountCond, &gfs->gfs_lock);
-        }
-        pthread_mutex_unlock(&gfs->gfs_lock);
+        err = EIO;
         if (!gfs->gfs_unmounting) {
-            printf("%s mounted at %s\n", device, gfs->gfs_mountpoint[id]);
-            lc_serve((void *)id);
-            err = 0;
-        } else {
+            pthread_mutex_lock(&gfs->gfs_lock);
+            while ((gfs->gfs_mcount == 0) && !gfs->gfs_unmounting) {
+                pthread_cond_wait(&gfs->gfs_mountCond, &gfs->gfs_lock);
+            }
+            pthread_mutex_unlock(&gfs->gfs_lock);
+            if (!gfs->gfs_unmounting) {
+                printf("%s mounted at %s\n", device, gfs->gfs_mountpoint[id]);
+                lc_serve((void *)id);
+                err = 0;
+            }
+        }
+        if (err) {
             fprintf(stderr, "Aborting mount, base layer unmounted\n");
             err = EIO;
         }
@@ -418,7 +425,6 @@ main(int argc, char *argv[]) {
             gfs->gfs_unmounting = true;
             lc_unmount(gfs);
         }
-        fuse_remove_signal_handlers(se);
     }
     assert(gfs->gfs_unmounting);
 

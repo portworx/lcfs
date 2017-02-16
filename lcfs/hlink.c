@@ -1,5 +1,6 @@
 #include "includes.h"
 
+#ifdef LC_DIFF
 /* Copy hardlink records from parent */
 static void
 lc_copyHlinks(struct fs *fs) {
@@ -149,3 +150,4 @@ lc_freeHlinks(struct fs *fs) {
         lc_free(fs, tmp, sizeof(struct hldata), LC_MEMTYPE_HLDATA);
     }
 }
+#endif

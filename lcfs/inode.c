@@ -656,7 +656,7 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
 
 /* Sync all dirty inodes */
 void
-lc_syncInodes(struct gfs *gfs, struct fs *fs) {
+lc_syncInodes(struct gfs *gfs, struct fs *fs, bool all) {
     struct inode *inode;
     uint64_t count = 0;
     int i;
@@ -665,8 +665,10 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs) {
 
     /* Flush the root inode first */
     inode = fs->fs_rootInode;
+    fs->fs_size = 0;
     if (inode && !fs->fs_removed && lc_inodeDirty(inode)) {
         count += lc_flushInode(gfs, fs, inode);
+        fs->fs_size += inode->i_size;
     }
     if (fs == lc_getGlobalFs(gfs)) {
 
@@ -674,6 +676,7 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs) {
         inode = gfs->gfs_layerRootInode;
         if (inode && !fs->fs_removed && lc_inodeDirty(inode)) {
             count += lc_flushInode(gfs, fs, inode);
+            fs->fs_size += inode->i_size;
         }
     }
 
@@ -684,21 +687,32 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs) {
             if ((inode->i_flags & LC_INODE_REMOVED) &&
                 S_ISREG(inode->i_mode) &&
                 inode->i_size) {
+                if (!all && inode->i_ocount) {
+                    inode = inode->i_cnext;
+                    continue;
+                }
                 assert(lc_inodeDirty(inode));
 
                 /* Truncate pages of a removed inode on umount */
                 lc_truncateFile(inode, 0, true);
+                inode->i_size = 0;
             }
-            if (lc_inodeDirty(inode)) {
-                count += lc_flushInode(gfs, fs, inode);
+            if (all) {
+                if (lc_inodeDirty(inode)) {
+                    count += lc_flushInode(gfs, fs, inode);
+                }
+            } else if ((inode->i_flags & LC_INODE_EMAPDIRTY) &&
+                       lc_inodeGetDirtyPageCount(inode) && inode->i_size) {
+                lc_flushPages(gfs, fs, inode, true, false);
             }
+            fs->fs_size += inode->i_size;
             inode = inode->i_cnext;
         }
     }
-    if (fs->fs_inodePagesCount && !fs->fs_removed) {
+    if (all && fs->fs_inodePagesCount && !fs->fs_removed) {
         lc_flushInodePages(gfs, fs);
     }
-    if (!fs->fs_removed) {
+    if (all && !fs->fs_removed) {
         lc_flushInodeBlocks(gfs, fs);
     }
     if (count) {
@@ -1191,7 +1205,7 @@ lc_cloneInodes(struct gfs *gfs, struct fs *fs, struct fs *pfs) {
         while (pinode) {
             count++;
             if ((pinode == pfs->fs_rootInode) ||
-                (pinode->i_flags & LC_INODE_SHARED)) {
+                (pinode->i_flags & (LC_INODE_SHARED | LC_INODE_REMOVED))) {
                 pinode = pinode->i_cnext;
                 continue;
             }

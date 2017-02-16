@@ -769,6 +769,14 @@ lc_flusher(void *data) {
                 }
                 lc_unlock(fs);
                 pthread_mutex_lock(&gfs->gfs_lock);
+            } else if (fs->fs_frozen && fs->fs_dpcount &&
+                       !lc_tryLock(fs, false)) {
+
+                /* Write out dirty pages of a frozen layer */
+                pthread_mutex_unlock(&gfs->gfs_lock);
+                lc_flushDirtyPages(gfs, fs);
+                lc_unlock(fs);
+                pthread_mutex_lock(&gfs->gfs_lock);
             }
         }
         pthread_mutex_unlock(&gfs->gfs_lock);
