@@ -20,6 +20,11 @@ main(int argc, char *argv[]) {
     if (argc == 2) {
         do {
             size = getxattr("/lcfs/lcfs", argv[1], buf, LC_BLOCK_SIZE);
+            if (size != LC_BLOCK_SIZE) {
+                printf("Size of changes in layer %s is %ld\n",
+                       argv[1], *(uint64_t *)buf);
+                break;
+            }
             psize = 0;
             while ((psize + sizeof(struct pchange)) < size) {
                 pchange = (struct pchange *)&buf[psize];
