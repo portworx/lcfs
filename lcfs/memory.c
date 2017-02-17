@@ -54,6 +54,7 @@ static const char *mrequests[] = {
     "PATH",
     "HLINKS",
     "SYMLINK",
+    "RWLOCK",
     "STATS",
 };
 

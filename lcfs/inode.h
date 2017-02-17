@@ -166,7 +166,7 @@ struct inode {
     struct fs *i_fs;
 
     /* Lock serializing operations on the inode */
-    pthread_rwlock_t i_rwlock;
+    pthread_rwlock_t *i_rwlock;
 
     /* Next entry in the hash list */
     struct inode *i_cnext;
@@ -208,7 +208,7 @@ struct inode {
 static_assert(sizeof(struct inode) == 360, "inode size != 360");
 #else
 }  __attribute__((packed));
-static_assert(sizeof(struct inode) == 216, "inode size != 216");
+static_assert(sizeof(struct inode) == 168, "inode size != 168");
 #endif
 static_assert((sizeof(struct inode) % sizeof(void *)) == 0,
               "Inode size is not aligned");

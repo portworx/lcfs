@@ -98,7 +98,8 @@ lc_dinodeInit(struct inode *inode, ino_t ino, mode_t mode,
  * name, unless the target name is shared from the parent inode.
  */
 static struct inode *
-lc_newInode(struct fs *fs, uint64_t block, uint64_t len, bool reg, bool new) {
+lc_newInode(struct fs *fs, uint64_t block, uint64_t len, bool reg, bool new,
+            bool lock) {
     size_t size = sizeof(struct inode) + (reg ? sizeof(struct rdata) : 0);
     struct inode *inode;
     struct rdata *rdata;
@@ -109,7 +110,13 @@ lc_newInode(struct fs *fs, uint64_t block, uint64_t len, bool reg, bool new) {
     inode = lc_malloc(fs, size, LC_MEMTYPE_INODE);
     inode->i_block = block;
     inode->i_fs = fs;
-    pthread_rwlock_init(&inode->i_rwlock, NULL);
+    if (lock) {
+        inode->i_rwlock = lc_malloc(fs, sizeof(pthread_rwlock_t),
+                                    LC_MEMTYPE_IRWLOCK);
+        pthread_rwlock_init(inode->i_rwlock, NULL);
+    } else {
+        inode->i_rwlock = NULL;
+    }
     inode->i_cnext = NULL;
     inode->i_emapDirExtents = NULL;
     inode->i_xattrData = NULL;
@@ -132,30 +139,39 @@ lc_newInode(struct fs *fs, uint64_t block, uint64_t len, bool reg, bool new) {
 /* Take the lock on inode in the specified mode */
 void
 lc_inodeLock(struct inode *inode, bool exclusive) {
-    if (inode->i_fs->fs_frozen) {
+    struct fs *fs;
+
+    if (inode->i_rwlock == NULL) {
+        fs = inode->i_fs;
+        assert(fs->fs_frozen || fs->fs_readOnly ||
+               (fs->fs_super->sb_flags & LC_SUPER_INIT));
 
         /* Inode locks are disabled in immutable layers */
         return;
     }
     if (exclusive) {
-        pthread_rwlock_wrlock(&inode->i_rwlock);
+        pthread_rwlock_wrlock(inode->i_rwlock);
     } else {
-        pthread_rwlock_rdlock(&inode->i_rwlock);
+        pthread_rwlock_rdlock(inode->i_rwlock);
     }
 }
 
 /* Unlock the inode */
 void
 lc_inodeUnlock(struct inode *inode) {
+    struct fs *fs;
 
-    /* fs_frozen cannot be set while an inode is locked.  That is made sure by
-     * syncing all dirty data as part of unmount of a layer after locking the
-     * layer exclusively, which could be used as a parent layer.
+    /* i_rwlock cannot be freed while the inode is locked.  That is made sure
+     * by syncing all dirty data as part of unload of a layer after locking the
+     * layer exclusively, which could then be used as a parent layer.
      */
-    if (inode->i_fs->fs_frozen) {
+    if (inode->i_rwlock == NULL) {
+        fs = inode->i_fs;
+        assert(fs->fs_frozen || fs->fs_readOnly ||
+               (fs->fs_super->sb_flags & LC_SUPER_INIT));
         return;
     }
-    pthread_rwlock_unlock(&inode->i_rwlock);
+    pthread_rwlock_unlock(inode->i_rwlock);
 }
 
 /* Add an inode to the hash table of the layer */
@@ -223,7 +239,8 @@ lc_updateInodeTimes(struct inode *inode, bool mtime, bool ctime) {
 /* Initialize root inode of a file system */
 void
 lc_rootInit(struct fs *fs, ino_t root) {
-    struct inode *dir = lc_newInode(fs, LC_INVALID_BLOCK, 0, false, false);
+    struct inode *dir = lc_newInode(fs, LC_INVALID_BLOCK, 0, false, false,
+                                    true);
 
     lc_dinodeInit(dir, root, S_IFDIR | 0755, 0, 0, 0, 0, root);
     lc_addInode(fs, dir);
@@ -264,7 +281,7 @@ lc_setLayerRoot(struct gfs *gfs, ino_t ino) {
 /* Read inodes from an inode block */
 static bool
 lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
-                   char *buf, void *ibuf) {
+                   char *buf, void *ibuf, bool lock) {
     bool empty = true, reg;
     struct inode *inode;
     uint64_t i, len;
@@ -284,7 +301,7 @@ lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
         reg = S_ISREG(inode->i_mode);
         len = S_ISLNK(inode->i_mode) ? inode->i_size : 0;
         inode = lc_newInode(fs, (i << LC_DINODE_INDEX) | block, len,
-                            reg, false);
+                            reg, false, lock);
         memcpy(&inode->i_dinode, &buf[offset], sizeof(struct dinode));
         lc_addInode(fs, inode);
         if (reg) {
@@ -320,8 +337,8 @@ lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
 /* Initialize inode table of a file system */
 void
 lc_readInodes(struct gfs *gfs, struct fs *fs) {
+    bool flush = false, read = true, lock = !fs->fs_frozen;
     uint64_t iblock, block = fs->fs_super->sb_inodeBlock;
-    bool flush = false, read = true;
     void *ibuf = NULL, *xbuf = NULL;
     struct iblock *buf = NULL;
     int i, j, k, l;
@@ -354,7 +371,7 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
             }
 
             assert(iblock != LC_INVALID_BLOCK);
-            if (lc_readInodesBlock(gfs, fs, iblock, ibuf, xbuf)) {
+            if (lc_readInodesBlock(gfs, fs, iblock, ibuf, xbuf, lock)) {
                 lc_freeLayerMetaBlocks(fs, iblock, 1);
 
                 /* If the inode block is completely empty, insert a dummy entry
@@ -452,7 +469,11 @@ lc_freeInode(struct inode *inode) {
         lc_xattrFree(inode);
     }
     assert(inode->i_xattrData == NULL);
-    pthread_rwlock_destroy(&inode->i_rwlock);
+    if (inode->i_rwlock) {
+        pthread_rwlock_destroy(inode->i_rwlock);
+        lc_free(fs, inode->i_rwlock, sizeof(pthread_rwlock_t),
+                LC_MEMTYPE_IRWLOCK);
+    }
     if (inode->i_emapDirExtents) {
         lc_blockFreeExtents(fs->fs_gfs, fs, inode->i_emapDirExtents, 0);
     }
@@ -684,6 +705,14 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs, bool all) {
     for (i = 0; (i < fs->fs_icacheSize) && !fs->fs_removed; i++) {
         inode = fs->fs_icache[i].ic_head;
         while (inode && !fs->fs_removed) {
+            if (!all) {
+
+                /* A layer being frozen does not need inode locks anymore */
+                pthread_rwlock_destroy(inode->i_rwlock);
+                lc_free(fs, inode->i_rwlock, sizeof(pthread_rwlock_t),
+                        LC_MEMTYPE_IRWLOCK);
+                inode->i_rwlock = NULL;
+            }
             if ((inode->i_flags & LC_INODE_REMOVED) &&
                 S_ISREG(inode->i_mode) &&
                 inode->i_size) {
@@ -816,7 +845,7 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino, bool exclusive) {
     /* Initialize the inode and add to the hash and drop the layer lock after
      * taking the lock on the inode.
      */
-    inode = lc_newInode(fs, LC_INVALID_BLOCK, 0, reg, false);
+    inode = lc_newInode(fs, LC_INVALID_BLOCK, 0, reg, false, true);
     memcpy(&inode->i_dinode, &parent->i_dinode, sizeof(struct dinode));
     lc_inodeLock(inode, true);
     lc_addInode(fs, inode);
@@ -1032,7 +1061,7 @@ lc_inodeInit(struct fs *fs, mode_t mode, uid_t uid, gid_t gid,
     int len = (target != NULL) ? strlen(target) : 0;
     struct inode *inode;
 
-    inode = lc_newInode(fs, LC_INVALID_BLOCK, len, S_ISREG(mode), true);
+    inode = lc_newInode(fs, LC_INVALID_BLOCK, len, S_ISREG(mode), true, true);
     if (len) {
 
         /* Copy the target of symbolic link */
@@ -1104,6 +1133,10 @@ lc_moveInodes(struct fs *fs, struct fs *cfs) {
                 }
                 lc_markInodeDirty(dir, LC_INODE_DIRDIRTY);
                 lc_inodeUnlock(dir);
+                if (inode->i_rwlock) {
+                    lc_memMove(fs, cfs, sizeof(pthread_rwlock_t),
+                               LC_MEMTYPE_IRWLOCK);
+                }
                 lc_memMove(fs, cfs, sizeof(struct inode) + size,
                            LC_MEMTYPE_INODE);
                 mcount++;

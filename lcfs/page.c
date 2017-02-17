@@ -193,7 +193,7 @@ lc_flushDirtyInodeList(struct fs *fs, bool all) {
 
             /* Take removed inodes off of the dirty list */
             inode = lc_removeDirtyInode(fs, inode, prev);
-        } else if (!pthread_rwlock_trywrlock(&inode->i_rwlock)) {
+        } else if (!pthread_rwlock_trywrlock(inode->i_rwlock)) {
             next = lc_removeDirtyInode(fs, inode, prev);
             if (lc_inodeGetDirtyPageCount(inode) && !(inode->i_flags & LC_INODE_REMOVED) &&
                 ((inode->i_ocount == 0) || force)) {
@@ -212,13 +212,13 @@ lc_flushDirtyInodeList(struct fs *fs, bool all) {
                     if (lc_inodeGetDirtyPageCount(inode) && (inode->i_ocount == 0)) {
                         lc_addDirtyInode(fs, inode);
                     }
-                    pthread_rwlock_unlock(&inode->i_rwlock);
+                    pthread_rwlock_unlock(inode->i_rwlock);
                 } else if (!all &&
                            (fs->fs_pcount < (LC_MAX_LAYER_DIRTYPAGES / 2))) {
                     return;
                 }
             } else {
-                pthread_rwlock_unlock(&inode->i_rwlock);
+                pthread_rwlock_unlock(inode->i_rwlock);
                 inode = next;
                 continue;
             }
@@ -1249,7 +1249,8 @@ lc_truncateFile(struct inode *inode, off_t size, bool remove) {
     assert(S_ISREG(inode->i_mode));
 
     /* If nothing to truncate, return */
-    if ((lc_inodeGetEmap(inode) == NULL) && (lc_inodeGetDirtyPageCount(inode) == 0) &&
+    if ((lc_inodeGetEmap(inode) == NULL) &&
+        (lc_inodeGetDirtyPageCount(inode) == 0) &&
         (inode->i_extentLength == 0)) {
         assert(inode->i_page == NULL);
         assert(!(inode->i_flags & LC_INODE_SHARED));

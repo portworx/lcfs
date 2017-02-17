@@ -27,8 +27,9 @@ enum lc_memTypes {
     LC_MEMTYPE_PATH = 21,           /* Path to a directory */
     LC_MEMTYPE_HLDATA = 22,         /* Hard links */
     LC_MEMTYPE_SYMLINK = 23,        /* Symbolic link */
-    LC_MEMTYPE_STATS = 24,          /* Request stats */
-    LC_MEMTYPE_MAX = 25,
+    LC_MEMTYPE_IRWLOCK = 24,        /* Inode lock */
+    LC_MEMTYPE_STATS = 25,          /* Request stats */
+    LC_MEMTYPE_MAX = 26,
 };
 
 #endif
