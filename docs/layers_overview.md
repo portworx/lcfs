@@ -29,7 +29,25 @@ LCFS implements snapshots without using reference counts and thus allow an unlim
 
 A layer becomes read-only after new layers are populated on top of it, and a new layer will not conflict with any modifications in progress on the parent layer.  In a storage driver, creating a new layer or removing a layer does not have to stop any in-progress operations. Thus creating or removing images and containers can proceed without any noticeable impact on other running containers.
 
-## Layer Diff (for Docker build/commit)
+## Layer commit
+
+When somebody commits a container Docker creates a new image.  When a Dockerfile is built, many intermediate images are built for each command in the Dockerfile, before the final image is created.
+Each command in the Dockerfile is run inside a container created of the previous image and the container is committed as an image after the command is completed.
+
+Each time a container is committed (manually or part of building a Dockerfile), the storage driver needs to provide a list of modified files/directories in that container compared to the image it was spawned from.
+Many union file systems like AUFS and Overlay(2), keep track of these changes at run time and can generate that list easily (but there are other scalability concerns).  But other storage drivers like Devicemapper and Btrfs don't keep track of changes in a container and need to generate that list by scanning for changes in the container on demand.
+Docker provides a driver for this purpose, called NaiveDiffDriver.  This driver compares the underlying file systems of the container and the image, traversing the whole directory tree (namespace), looking for modified directories and files (comparing modification times, inode numbers and stuff like that).
+This could be challenging for a big data set, as all the directories and files in those file systems need to be brought into the cache and numerous system calls like readdir(2), stat(2) etc. are issued during this process.
+
+After creating the list of modified directories and files in the container, a tar archive is created, which involves reading all those modified files and then writing those to a tar file.  Again this step involves many read(2) and write(2) system calls.  Also all modified data need to transit through the page cache (which could be huge depending on the dataset).   Also the tar file may allocate space in the storage driver, and issue I/Os taking away I/O bandwidth and other resources of the system.
+
+After the tar archive is ready, a new container is created and the data from the tar archive is extracted to the new container.  This also could turn out to be an expensive operation, as new directories and files are created, replacing any old ones around (many create/mkdir/unlink system calls) and then data copied from the tar archive using read(2) and write(2) system calls.  This data again transit through the page cache, causing duplicate instances of data and consuming a lot of system resources.  After all data populated in the new container, the tar file is removed which may require some additional work from the storage driver (free space, free inode, trim freed space etc.).
+
+If this process was done part of building a Dockerfile, the container in which the command was run, is deleted after changes in it are committed as an image.  So in short, the whole process is simply for moving data from one container layer to an image layer.
+
+LCFS is doing this whole process differently.  A container can be committed skipping most of the above steps.  The time for committing a container is constant irrespective of the sizes of the underlying images and amount of changes made in the container.  There is no requirement for creating a list of modified files in the container - thus there is no namespace tree traversal and all the readdir(2)/stat(2) system calls are eliminated.  There is no data movement involved as well - no need for docker to read modified data from one container layer and write to another image layer.  LCFS will take care of all that work behind the scenes, by promoting the container as an image internally from which new containers could be spawned.  The old container (which is committed now) is available as well for continued use or could be deleted.
+
+## Layer Diff (obsolete)
 
 Finding differences between a layer and its parent layer is simply finding differences in the sets of inodes present in layers between the old layer and new layer (inclusive).  This is done by traversing the private inode cache of the new layer and reporting any inodes instantiated in the cache along with complete path.  Directories which are modified, need to scan for changes in those compared to corresponding directories in parent layer and include all changes with complete path.  All directories in a modified path, even if those are not modified, are considered changed.  All paths to a modified file (in case of multiple links - hardlinks) need to be included as well.
 
