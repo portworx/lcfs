@@ -618,7 +618,7 @@ lc_freeBlocksAfterFlush(struct fs *fs, uint64_t count) {
 void
 lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
                     struct page *head, uint64_t count, bool bfree) {
-    uint64_t i, j, bcount = 0;
+    uint64_t i, j, bcount = 0, iovcount;
     struct page *page = head;
     struct iovec *iovec;
     uint64_t block = 0;
@@ -628,10 +628,13 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
         block = page->p_block;
         lc_writeBlock(gfs, fs, page->p_data, block);
     } else {
-        iovec = alloca(count * sizeof(struct iovec));
+        iovcount = (count < LC_WRITE_CLUSTER_SIZE) ?
+                        count : LC_WRITE_CLUSTER_SIZE;
+        iovec = alloca(iovcount * sizeof(struct iovec));
+        //memset(iovec, 0, iovcount * sizeof(struct iovec));
 
         /* Issue the I/O in block order */
-        for (i = 0, j = count - 1; i < count; i++, j--) {
+        for (i = 0, j = iovcount - 1; i < count; i++, j--) {
 
             /* Flush current set of dirty pages if the new page is not adjacent
              * to those.
@@ -639,10 +642,12 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
              * concurrently OR files flushed concurrently.
              */
             if ((i && ((page->p_block + 1) != block)) ||
-                (bcount >= LC_WRITE_CLUSTER_SIZE)) {
+                (bcount >= iovcount)) {
                 //lc_printf("Not contigous, block %ld previous block %ld i %ld count %ld\n", block, page->p_block, i, count);
                 lc_writeBlocks(gfs, fs, &iovec[j + 1], bcount, block);
                 bcount = 0;
+                j = iovcount - 1;
+                //memset(iovec, 0, iovcount * sizeof(struct iovec));
             }
             iovec[j].iov_base = page->p_data;
             iovec[j].iov_len = LC_BLOCK_SIZE;
@@ -652,7 +657,7 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
         }
         assert(page == NULL);
         assert(block != 0);
-        lc_writeBlocks(gfs, fs, iovec, bcount, block);
+        lc_writeBlocks(gfs, fs, &iovec[iovcount - bcount], bcount, block);
     }
 
     /* Release the pages after writing */
