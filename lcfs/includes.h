@@ -137,7 +137,7 @@ void lc_mount(struct gfs *gfs, char *device, size_t size);
 void lc_newInodeBlock(struct gfs *gfs, struct fs *fs);
 void lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs);
 void lc_invalidateInodeBlocks(struct gfs *gfs, struct fs *fs);
-void lc_sync(struct gfs *gfs, struct fs *fs, bool all, bool super);
+void lc_sync(struct gfs *gfs, struct fs *fs, bool super);
 void lc_unmount(struct gfs *gfs);
 void lc_syncAllLayers(struct gfs *gfs);
 struct fs *lc_newLayer(struct gfs *gfs, bool rw);
@@ -164,7 +164,7 @@ void lc_rootInit(struct fs *fs, ino_t root);
 void lc_cloneRootDir(struct inode *pdir, struct inode *dir);
 void lc_setLayerRoot(struct gfs *gfs, ino_t ino);
 void lc_updateInodeTimes(struct inode *inode, bool mtime, bool ctime);
-void lc_syncInodes(struct gfs *gfs, struct fs *fs, bool all);
+void lc_syncInodes(struct gfs *gfs, struct fs *fs);
 void lc_inodeLock(struct inode *inode, bool exclusive);
 void lc_inodeUnlock(struct inode *inode);
 int lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode);
@@ -175,6 +175,7 @@ void lc_moveRootInode(struct fs *cfs, struct fs *fs);
 void lc_cloneInodes(struct gfs *gfs, struct fs *fs, struct fs *pfs);
 void lc_switchInodeParent(struct fs *fs, ino_t root);
 void lc_swapRootInode(struct fs *fs, struct fs *cfs);
+void lc_freezeLayer(struct gfs *gfs, struct fs *fs);
 
 ino_t lc_dirLookup(struct fs *fs, struct inode *dir, const char *name);
 struct dirent *lc_getDirent(struct fs *fs, ino_t parent, ino_t ino, int *hash,
@@ -234,9 +235,10 @@ void lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
 void lc_freeBlocksAfterFlush(struct fs *fs, uint64_t count);
 void lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
                          struct page *head, uint64_t count, bool bfree);
-void lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head);
+void lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head,
+                     bool inval);
 void lc_addPageForWriteBack(struct gfs *gfs, struct fs *fs, struct page *head,
-                            struct page *tail, uint64_t pcount);
+                            struct page *tail, uint64_t pcount, bool io);
 void *lc_cleaner(void *data);
 
 uint64_t lc_copyPages(struct fs *fs, off_t off, size_t size,
@@ -248,7 +250,7 @@ int lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode,
                 off_t soffset, off_t endoffset, uint64_t asize,
                 struct page **pages, char **dbuf, struct fuse_bufvec *bufv);
 void lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
-                   bool release, bool unlock);
+                   bool io, bool release, bool unlock);
 void lc_truncateFile(struct inode *inode, off_t size, bool remove);
 void lc_flushDirtyPages(struct gfs *gfs, struct fs *fs);
 void lc_addDirtyInode(struct fs *fs, struct inode *inode);

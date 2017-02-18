@@ -258,7 +258,7 @@ lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     }
 
     /* Flush all the dirty pages */
-    lc_flushPages(gfs, fs, inode, true, false);
+    lc_flushPages(gfs, fs, inode, true, true, false);
     extent = lc_inodeGetEmap(inode);
     if (extent) {
         lc_printf("File %ld fragmented\n", inode->i_ino);

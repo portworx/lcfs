@@ -142,8 +142,10 @@ do
 done
 cd -
 
+docker ps --all --format {{.ID}} | xargs docker commit
 docker ps --all --format {{.ID}} | xargs docker rm
 docker rmi hello-world
+docker images --format {{.ID}} | xargs docker rmi
 pkill dockerd
 sleep 10
 

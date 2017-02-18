@@ -122,7 +122,7 @@ lc_flushInodeDirtyPages(struct inode *inode, uint64_t page, bool unlock,
             return false;
         }
     }
-    lc_flushPages(inode->i_fs->fs_gfs, inode->i_fs, inode, false, unlock);
+    lc_flushPages(inode->i_fs->fs_gfs, inode->i_fs, inode, false, false, unlock);
     return true;
 }
 
@@ -833,7 +833,7 @@ lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode, off_t soffset,
 /* Flush dirty pages of an inode */
 void
 lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
-              bool release, bool unlock) {
+              bool io, bool release, bool unlock) {
     uint64_t count = 0, bcount, start, end = 0, pstart = -1, zcount = 0;
     uint64_t lpage, pcount = 0, tcount = 0, rcount = 0, bstart = -1;
     uint64_t eblock = LC_INVALID_BLOCK, elength = 0, dblocks = 0;
@@ -1076,7 +1076,7 @@ out:
     if (tcount) {
 
         /* Queue the dirty pages for write */
-        lc_addPageForWriteBack(gfs, fs, dpage, tpage, tcount);
+        lc_addPageForWriteBack(gfs, fs, dpage, tpage, tcount, io);
     }
     tcount += fcount;
     if (tcount) {

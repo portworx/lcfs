@@ -48,6 +48,9 @@ lc_writeBlocks(struct gfs *gfs, struct fs *fs,
 
     //lc_printf("lc_writeBlocks: Writing %d blocks %ld\n", iovcnt, block);
     assert((block + iovcnt) < gfs->gfs_super->sb_tblocks);
+    if (fs->fs_removed) {
+        return;
+    }
     count = lc_pwritev(gfs->gfs_fd, iov, iovcnt, block * LC_BLOCK_SIZE);
     assert(count == (iovcnt * LC_BLOCK_SIZE));
     __sync_add_and_fetch(&gfs->gfs_writes, 1);

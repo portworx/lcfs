@@ -489,7 +489,7 @@ lc_invalidateInodePages(struct gfs *gfs, struct fs *fs) {
         page = fs->fs_inodePages;
         fs->fs_inodePages = NULL;
         fs->fs_inodePagesCount = 0;
-        lc_releasePages(gfs, fs, page);
+        lc_releasePages(gfs, fs, page, true);
     }
 }
 
@@ -675,9 +675,48 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     return written ? 1 : 0;
 }
 
+/* Release inode locks as those are not needed anymore */
+void
+lc_freezeLayer(struct gfs *gfs, struct fs *fs) {
+    uint64_t i, count = 0;
+    struct inode *inode;
+
+    assert(fs->fs_readOnly || (fs->fs_super->sb_flags & LC_SUPER_INIT));
+    assert(!fs->fs_frozen);
+    fs->fs_size = 0;
+    for (i = 0;
+         (i < fs->fs_icacheSize) && (count < fs->fs_icount) && !fs->fs_removed;
+         i++) {
+        inode = fs->fs_icache[i].ic_head;
+        while (inode && !fs->fs_removed) {
+
+            /* A newly committed layer may still have dirty pages */
+            if (inode->i_flags & LC_INODE_EMAPDIRTY) {
+                assert((inode->i_size == 0) ||
+                       !(inode->i_flags & LC_INODE_REMOVED));
+                lc_flushPages(gfs, fs, inode, false, true, false);
+            }
+            assert(!S_ISREG(inode->i_mode) ||
+                   (lc_inodeGetDirtyPageCount(inode) == 0));
+
+            /* Drop locks from the inode */
+            pthread_rwlock_destroy(inode->i_rwlock);
+            lc_free(fs, inode->i_rwlock, sizeof(pthread_rwlock_t),
+                    LC_MEMTYPE_IRWLOCK);
+            inode->i_rwlock = NULL;
+            if (!(inode->i_flags & LC_INODE_REMOVED)) {
+                fs->fs_size += inode->i_size;
+            }
+            count++;
+            inode = inode->i_cnext;
+        }
+    }
+    assert(fs->fs_pcount == 0);
+}
+
 /* Sync all dirty inodes */
 void
-lc_syncInodes(struct gfs *gfs, struct fs *fs, bool all) {
+lc_syncInodes(struct gfs *gfs, struct fs *fs) {
     struct inode *inode;
     uint64_t count = 0;
     int i;
@@ -686,10 +725,8 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs, bool all) {
 
     /* Flush the root inode first */
     inode = fs->fs_rootInode;
-    fs->fs_size = 0;
     if (inode && !fs->fs_removed && lc_inodeDirty(inode)) {
         count += lc_flushInode(gfs, fs, inode);
-        fs->fs_size += inode->i_size;
     }
     if (fs == lc_getGlobalFs(gfs)) {
 
@@ -697,7 +734,6 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs, bool all) {
         inode = gfs->gfs_layerRootInode;
         if (inode && !fs->fs_removed && lc_inodeDirty(inode)) {
             count += lc_flushInode(gfs, fs, inode);
-            fs->fs_size += inode->i_size;
         }
     }
 
@@ -705,43 +741,25 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs, bool all) {
     for (i = 0; (i < fs->fs_icacheSize) && !fs->fs_removed; i++) {
         inode = fs->fs_icache[i].ic_head;
         while (inode && !fs->fs_removed) {
-            if (!all) {
-
-                /* A layer being frozen does not need inode locks anymore */
-                pthread_rwlock_destroy(inode->i_rwlock);
-                lc_free(fs, inode->i_rwlock, sizeof(pthread_rwlock_t),
-                        LC_MEMTYPE_IRWLOCK);
-                inode->i_rwlock = NULL;
-            }
             if ((inode->i_flags & LC_INODE_REMOVED) &&
                 S_ISREG(inode->i_mode) &&
                 inode->i_size) {
-                if (!all && inode->i_ocount) {
-                    inode = inode->i_cnext;
-                    continue;
-                }
                 assert(lc_inodeDirty(inode));
 
                 /* Truncate pages of a removed inode on umount */
                 lc_truncateFile(inode, 0, true);
                 inode->i_size = 0;
             }
-            if (all) {
-                if (lc_inodeDirty(inode)) {
-                    count += lc_flushInode(gfs, fs, inode);
-                }
-            } else if ((inode->i_flags & LC_INODE_EMAPDIRTY) &&
-                       lc_inodeGetDirtyPageCount(inode) && inode->i_size) {
-                lc_flushPages(gfs, fs, inode, true, false);
+            if (lc_inodeDirty(inode)) {
+                count += lc_flushInode(gfs, fs, inode);
             }
-            fs->fs_size += inode->i_size;
             inode = inode->i_cnext;
         }
     }
-    if (all && fs->fs_inodePagesCount && !fs->fs_removed) {
+    if (fs->fs_inodePagesCount && !fs->fs_removed) {
         lc_flushInodePages(gfs, fs);
     }
-    if (all && !fs->fs_removed) {
+    if (!fs->fs_removed) {
         lc_flushInodeBlocks(gfs, fs);
     }
     if (count) {
@@ -752,10 +770,12 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs, bool all) {
 /* Invalidate pages in kernel page cache for the layer */
 void
 lc_invalidateLayerPages(struct gfs *gfs, struct fs *fs) {
+    uint64_t i, count = 0;
     struct inode *inode;
-    int i;
 
-    for (i = 0; (i < fs->fs_icacheSize) && !fs->fs_removed; i++) {
+    for (i = 0;
+         (i < fs->fs_icacheSize) && (count < fs->fs_icount) && !fs->fs_removed;
+         i++) {
         inode = fs->fs_icache[i].ic_head;
         while (inode && !fs->fs_removed) {
             if (S_ISREG(inode->i_mode) && !inode->i_private && inode->i_size) {
@@ -767,6 +787,7 @@ lc_invalidateLayerPages(struct gfs *gfs, struct fs *fs) {
 #endif
                                                  inode->i_ino, 0, -1);
             }
+            count++;
             inode = inode->i_cnext;
         }
     }
@@ -781,7 +802,7 @@ lc_destroyInodes(struct fs *fs, bool remove) {
     int i;
 
     /* Take the inode off the hash list */
-    for (i = 0; i < fs->fs_icacheSize; i++) {
+    for (i = 0; (i < fs->fs_icacheSize) && (icount < fs->fs_icount); i++) {
         /* XXX Lock is not needed as the file system is locked for exclusive
          * access
          * */
@@ -925,7 +946,7 @@ lc_getInodeParent(struct fs *fs, ino_t inum, bool copy, bool exclusive) {
     pfs = fs->fs_parent;
     while (pfs) {
         assert(inum != pfs->fs_root);
-        assert(pfs->fs_frozen);
+        assert(pfs->fs_frozen || pfs->fs_commitInProgress);
 
         /* Hash changes with inode cache size */
         if (pfs->fs_icacheSize != csize) {

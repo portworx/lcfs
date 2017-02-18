@@ -244,7 +244,8 @@ lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page, bool read) {
 
 /* Release a linked list of pages */
 void
-lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head) {
+lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head,
+                bool inval) {
     struct page *page = head, *next;
 
     while (page) {
@@ -256,6 +257,10 @@ lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head) {
             assert(page->p_refCount == 1);
             page->p_refCount = 0;
             lc_freePage(gfs, fs, page);
+        } else if (inval) {
+            assert(fs->fs_removed);
+            assert(page->p_refCount == 1);
+            page->p_refCount = 0;
         } else {
             lc_releasePage(gfs, fs, page, false);
         }
@@ -328,7 +333,7 @@ lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
     assert(page->p_block == LC_INVALID_BLOCK);
     page->p_block = block;
     page->p_lindex = fs->fs_gindex;
-    page->p_nocache = true;
+    page->p_nocache = 1;
     lhash = lc_pcLockHash(fs, hash);
     cpage = pcache[hash].pc_head;
 
@@ -651,7 +656,7 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
     }
 
     /* Release the pages after writing */
-    lc_releasePages(gfs, fs, head);
+    lc_releasePages(gfs, fs, head, fs->fs_removed);
 
     /* Check any of the freed blocks can be released to the free pool */
     if (bfree) {
@@ -662,7 +667,7 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
 /* Add a page to the file system dirty list for writeback */
 void
 lc_addPageForWriteBack(struct gfs *gfs, struct fs *fs, struct page *head,
-                       struct page *tail, uint64_t pcount) {
+                       struct page *tail, uint64_t pcount, bool io) {
     struct page *page = NULL;
     uint64_t count = 0;
 
@@ -672,7 +677,7 @@ lc_addPageForWriteBack(struct gfs *gfs, struct fs *fs, struct page *head,
     fs->fs_dpcount += pcount;
 
     /* Issue write when a certain number of dirty pages accumulated */
-    if (fs->fs_dpcount >= LC_WRITE_CLUSTER_SIZE) {
+    if (io && (fs->fs_dpcount >= LC_WRITE_CLUSTER_SIZE)) {
         page = fs->fs_dpages;
         fs->fs_dpages = NULL;
         count = fs->fs_dpcount;
@@ -716,7 +721,7 @@ lc_invalidateDirtyPages(struct gfs *gfs, struct fs *fs) {
         fs->fs_dpages = NULL;
         fs->fs_dpcount = 0;
         pthread_mutex_unlock(&fs->fs_plock);
-        lc_releasePages(gfs, fs, page);
+        lc_releasePages(gfs, fs, page, true);
     }
 }
 
@@ -767,12 +772,13 @@ lc_flusher(void *data) {
                 if (fs->fs_pcount) {
                     lc_flushDirtyInodeList(fs, false);
                 }
+                lc_flushDirtyPages(gfs, fs);
                 lc_unlock(fs);
                 pthread_mutex_lock(&gfs->gfs_lock);
-            } else if (fs->fs_frozen && fs->fs_dpcount &&
-                       !lc_tryLock(fs, false)) {
+            } else if (((fs->fs_dpcount > LC_MAX_LAYER_DIRTYPAGES) ||
+                        (fs->fs_dpcount && force)) && !lc_tryLock(fs, false)) {
 
-                /* Write out dirty pages of a frozen layer */
+                /* Write out dirty pages of a layer */
                 pthread_mutex_unlock(&gfs->gfs_lock);
                 lc_flushDirtyPages(gfs, fs);
                 lc_unlock(fs);

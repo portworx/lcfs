@@ -139,6 +139,7 @@ lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
         if (!pfs->fs_frozen) {
             pfs->fs_super->sb_lastInode = gfs->gfs_super->sb_ninode;
             pfs->fs_frozen = true;
+            pfs->fs_commitInProgress = false;
         }
         assert(pfs->fs_root == lc_getInodeHandle(pinum));
         lc_linkParent(fs, pfs);
@@ -372,11 +373,10 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
                  (fs->fs_super->sb_flags & LC_SUPER_INIT))) {
                 lc_unlock(fs);
                 fs = lc_getLayerLocked(root, true);
-                assert(fs->fs_child == NULL);
+                assert((fs->fs_child == NULL) || fs->fs_commitInProgress);
                 assert(!fs->fs_frozen);
                 fuse_reply_ioctl(req, 0, NULL, 0);
-                fs->fs_commitInProgress = false;
-                lc_sync(gfs, fs, false, false);
+                lc_freezeLayer(gfs, fs);
             } else {
                 fuse_reply_ioctl(req, 0, NULL, 0);
             }
@@ -530,11 +530,7 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
     cfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
     pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
     fs->fs_super->sb_flags |= LC_SUPER_RDWR | LC_SUPER_DIRTY;
-
-    /* Sync dirty data on the newly committed layer */
-    lc_sync(gfs, cfs, false, false);
     cfs->fs_commitInProgress = true;
-    cfs->fs_frozen = true;
     lc_unlock(fs);
     lc_unlock(pfs);
     lc_unlock(cfs);

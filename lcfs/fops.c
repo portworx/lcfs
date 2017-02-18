@@ -218,7 +218,7 @@ lc_remove(struct fs *fs, ino_t parent, const char *name, void **inodep,
     struct inode *dir;
     int err;
 
-    if (fs->fs_frozen && !fs->fs_commitInProgress) {
+    if (fs->fs_frozen) {
         lc_reportError(__func__, __LINE__, parent, EROFS);
         return EROFS;
     }
@@ -1104,7 +1104,7 @@ lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
         if (fs->fs_readOnly || (fs->fs_super->sb_flags & LC_SUPER_INIT)) {
 
             /* Inode emap needs to be stable before an inode could be cloned */
-            lc_flushPages(fs->fs_gfs, fs, inode, true, true);
+            lc_flushPages(fs->fs_gfs, fs, inode, false, true, true);
             return;
         } else if (!(inode->i_flags & (LC_INODE_REMOVED | LC_INODE_TMP)) &&
                    lc_inodeGetDirtyPageCount(inode)) {

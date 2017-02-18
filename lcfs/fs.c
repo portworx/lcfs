@@ -31,7 +31,7 @@ lc_invalidateInodeBlocks(struct gfs *gfs, struct fs *fs) {
         page = fs->fs_inodeBlockPages;
         fs->fs_inodeBlockPages = NULL;
         fs->fs_inodeBlockCount = 0;
-        lc_releasePages(gfs, fs, page);
+        lc_releasePages(gfs, fs, page, true);
     }
     if (fs->fs_inodeBlocks) {
         lc_free(fs->fs_rfs, fs->fs_inodeBlocks,
@@ -621,21 +621,17 @@ lc_mount(struct gfs *gfs, char *device, size_t size) {
 
 /* Sync a dirty file system */
 void
-lc_sync(struct gfs *gfs, struct fs *fs, bool all, bool super) {
+lc_sync(struct gfs *gfs, struct fs *fs, bool super) {
     int err;
 
     if (fs->fs_super->sb_flags & LC_SUPER_DIRTY) {
         if (fs->fs_super->sb_flags & LC_SUPER_MOUNTED) {
-            if (all) {
-                fs->fs_super->sb_flags &= ~LC_SUPER_MOUNTED;
-            }
-            lc_syncInodes(gfs, fs, all);
-            if (all) {
-                lc_flushDirtyPages(gfs, fs);
-                //lc_displayAllocStats(fs);
-                lc_processFreedBlocks(fs, true);
-                lc_freeLayerBlocks(gfs, fs, false, false, false);
-            }
+            fs->fs_super->sb_flags &= ~LC_SUPER_MOUNTED;
+            lc_syncInodes(gfs, fs);
+            lc_flushDirtyPages(gfs, fs);
+            //lc_displayAllocStats(fs);
+            lc_processFreedBlocks(fs, true);
+            lc_freeLayerBlocks(gfs, fs, false, false, false);
         }
 
         /* Flush everything to disk before marking file system clean */
@@ -657,7 +653,7 @@ lc_umountSync(struct gfs *gfs) {
     lc_lock(fs, true);
 
     /* XXX Combine sync and destroy */
-    lc_sync(gfs, fs, true, false);
+    lc_sync(gfs, fs, false);
 
     /* Release freed and unused blocks */
     lc_freeLayerBlocks(gfs, fs, true, false, false);
@@ -701,7 +697,7 @@ lc_syncAllLayers(struct gfs *gfs) {
         /* Trylock can fail only if the fs is being removed */
         if (fs && !lc_tryLock(fs, false)) {
             pthread_mutex_unlock(&gfs->gfs_lock);
-            lc_sync(gfs, fs, true, true);
+            lc_sync(gfs, fs, true);
             lc_unlock(fs);
             pthread_mutex_lock(&gfs->gfs_lock);
         }
