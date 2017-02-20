@@ -252,6 +252,17 @@ lc_removeChild(struct fs *fs) {
     }
 }
 
+/* Remove a layer from the list of layers */
+static void
+lc_removeLayer(struct gfs *gfs, struct fs *fs, int gindex) {
+    fs->fs_removed = true;
+    assert(gfs->gfs_roots[gindex] == fs->fs_root);
+    gfs->gfs_fs[gindex] = NULL;
+    gfs->gfs_roots[gindex] = 0;
+    fs->fs_gindex = -1;
+    lc_removeChild(fs);
+}
+
 /* Lock a layer exclusive for removal, after taking it off the global
  * list.
  */
@@ -292,24 +303,22 @@ lc_getLayerForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
         lc_reportError(__func__, __LINE__, root, EEXIST);
         return EEXIST;
     }
-    fs->fs_removed = true;
-    assert(gfs->gfs_roots[gindex] == ino);
-    gfs->gfs_fs[gindex] = NULL;
-    gfs->gfs_roots[gindex] = 0;
-    fs->fs_gindex = -1;
-    lc_removeChild(fs);
+    lc_removeLayer(gfs, fs, gindex);
     if (fs->fs_zfs) {
 
         /* Remove zombie parent layer as well */
         zfs = fs->fs_zfs;
         assert(zfs->fs_super->sb_flags & LC_SUPER_ZOMBIE);
-        zfs->fs_removed = true;
-        gindex = zfs->fs_gindex;
-        assert(gfs->gfs_roots[gindex] == zfs->fs_root);
-        gfs->gfs_fs[gindex] = NULL;
-        gfs->gfs_roots[gindex] = 0;
-        zfs->fs_gindex = -1;
-        lc_removeChild(zfs);
+        lc_removeLayer(gfs, zfs, zfs->fs_gindex);
+    }
+    if ((fs->fs_super->sb_flags & LC_SUPER_RDWR) &&
+        !(fs->fs_super->sb_flags & LC_SUPER_INIT)) {
+
+        /* Remove init layer as well */
+        fs->fs_zfs = fs->fs_parent;
+        zfs = fs->fs_zfs;
+        assert(zfs->fs_super->sb_flags & LC_SUPER_INIT);
+        lc_removeLayer(gfs, zfs, zfs->fs_gindex);
     }
     while (gfs->gfs_fs[gfs->gfs_scount] == NULL) {
         assert(gfs->gfs_scount > 0);

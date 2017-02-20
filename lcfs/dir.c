@@ -539,13 +539,12 @@ lc_removeTree(struct fs *fs, struct inode *dir) {
 /* Lookup an entry in the directory and remove that if present */
 int
 lc_dirRemoveName(struct fs *fs, struct inode *dir,
-                 const char *name, bool rmdir, void **fsp,
-                 int dremove(struct fs *, struct inode *, ino_t,
-                             bool, void **)) {
+                 const char *name, bool rmdir, void **fsp, bool layer) {
     ino_t ino, parent = dir->i_ino;
     struct dirent *dirent, **prev;
     struct gfs *gfs = fs->fs_gfs;
     int len = strlen(name), err;
+    struct fs *rfs;
 
     assert(S_ISDIR(dir->i_mode));
     dirent = lc_dirGetDirent(dir, name, len, &prev, NULL);
@@ -559,7 +558,7 @@ lc_dirRemoveName(struct fs *fs, struct inode *dir,
             /* Do not allow removing layer root directory, parent of that and
              * anything in it.
              */
-            if (rmdir && (fsp == NULL) && (fs->fs_gindex == 0) &&
+            if (rmdir && !layer && (fs->fs_gindex == 0) &&
                ((ino == gfs->gfs_layerRoot) ||
                 ((gfs->gfs_layerRootInode != NULL) &&
                  (ino == gfs->gfs_layerRootInode->i_parent)) ||
@@ -567,7 +566,8 @@ lc_dirRemoveName(struct fs *fs, struct inode *dir,
                 lc_reportError(__func__, __LINE__, parent, EEXIST);
                 err = EEXIST;
             } else {
-                err = dremove(fs, dir, ino, rmdir, fsp);
+                err = layer ? lc_removeRoot(fs, dir, ino, rmdir, fsp) :
+                              lc_removeInode(fs, dir, ino, rmdir, fsp);
             }
             if ((err == 0) || (err == ESTALE)) {
                 if (err == 0) {
@@ -589,6 +589,29 @@ lc_dirRemoveName(struct fs *fs, struct inode *dir,
                 *prev = dirent->di_next;
                 dir->i_size--;
                 lc_freeDirent(fs, dirent);
+            }
+            if (layer && (err == 0)) {
+
+                /* Remove init layer along with this one */
+                rfs = (struct fs *)*fsp;
+                if (rfs->fs_zfs &&
+                    !(rfs->fs_super->sb_flags & LC_SUPER_INIT)) {
+                    rfs = rfs->fs_zfs;
+                    ino = rfs->fs_root;
+                    len += strlen("-init");
+                    dirent = lc_dirGetDirent(dir, name, len, &prev, NULL);
+                    while (dirent && (dirent->di_ino != ino)) {
+                        prev = &dirent->di_next;
+                        dirent = dirent->di_next;
+                    }
+                    assert(dirent->di_ino == ino);
+                    assert(dirent->di_size == len);
+                    *prev = dirent->di_next;
+                    dir->i_size--;
+                    assert(dir->i_nlink > 2);
+                    dir->i_nlink--;
+                    lc_freeDirent(fs, dirent);
+                }
             }
             return err;
         }

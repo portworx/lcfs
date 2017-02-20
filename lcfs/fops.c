@@ -233,7 +233,7 @@ lc_remove(struct fs *fs, ino_t parent, const char *name, void **inodep,
     }
 
     /* Lookup and remove the specified entry from the directory */
-    err = lc_dirRemoveName(fs, dir, name, rmdir, inodep, lc_removeInode);
+    err = lc_dirRemoveName(fs, dir, name, rmdir, inodep, false);
     lc_inodeUnlock(dir);
     if (err && (err != EEXIST)) {
         lc_reportError(__func__, __LINE__, parent, err);
@@ -756,7 +756,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
 
     /* Remove if target exists */
     err = lc_dirRemoveName(fs, tdir ? tdir : sdir, newname, false,
-                           NULL, lc_removeInode);
+                           NULL, false);
     if (err && (err != ENOENT)) {
 
         /* Target is a non-empty directory */
@@ -1303,7 +1303,7 @@ lc_getxattr(fuse_req_t req, fuse_ino_t ino, const char *name, size_t size
     lc_displayEntry(__func__, ino, 0, name);
 
     /* Check if the request is for finding changes made in a layer */
-    if ((ino == gfs->gfs_layerRoot) && (size == LC_BLOCK_SIZE) &&
+    if ((ino == gfs->gfs_layerRoot) && (size == sizeof(uint64_t)) &&
         (lc_layerDiff(req, name, size) == 0)) {
         return;
     }

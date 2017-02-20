@@ -599,7 +599,6 @@ lc_layerDiff(fuse_req_t req, const char *name, size_t size) {
     ino_t ino;
 #endif
 
-    assert(size == LC_BLOCK_SIZE);
     rfs = lc_getLayerLocked(LC_ROOT_INODE, false);
     ino = lc_getRootIno(rfs, name, NULL, true);
     if (ino == LC_INVALID_INODE) {
@@ -609,6 +608,7 @@ lc_layerDiff(fuse_req_t req, const char *name, size_t size) {
     fs = lc_getLayerLocked(ino, true);
     assert(fs->fs_root == lc_getInodeHandle(ino));
 #ifdef LC_DIFF
+    assert(size == LC_BLOCK_SIZE);
     if (fs->fs_removed || fs->fs_rfs->fs_restarted ||
         (fs->fs_parent == NULL)) {
         lc_unlock(fs);

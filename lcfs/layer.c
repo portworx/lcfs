@@ -215,7 +215,7 @@ out:
 }
 
 /* Check if a layer could be removed */
-static int
+int
 lc_removeRoot(struct fs *rfs, struct inode *dir, ino_t ino, bool rmdir,
                void **fsp) {
     ino_t root;
@@ -241,24 +241,15 @@ lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
     lc_inodeLock(pdir, true);
 
     /* Get the layer locked for removal */
-    err = lc_dirRemoveName(rfs, pdir, name, true,
-                           (void **)&fs, lc_removeRoot);
-    lc_inodeUnlock(pdir);
+    err = lc_dirRemoveName(rfs, pdir, name, true, (void **)&fs, true);
     if (err) {
+        lc_inodeUnlock(pdir);
         fuse_reply_err(req, err);
+        lc_reportError(__func__, __LINE__, pdir->i_ino, err);
         goto out;
     }
 
-    /* This could happen when a layer is made a zombie layer, which will be
-     * removed when all the child layers are removed.
-     */
-    if (fs == NULL) {
-        fuse_reply_ioctl(req, 0, NULL, 0);
-        lc_printf("Converted layer %s to a zombie layer\n", name);
-        goto out;
-    }
-    assert(fs->fs_removed);
-    if (fs->fs_parent) {
+    if (fs && fs->fs_parent) {
 
         /* Have the base layer locked so that that will not be deleted before
          * this layer is freed.
@@ -266,7 +257,16 @@ lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
         bfs = fs->fs_rfs;
         lc_lock(bfs, false);
     }
+    lc_inodeUnlock(pdir);
     fuse_reply_ioctl(req, 0, NULL, 0);
+
+    /* This could happen when a layer is made a zombie layer, which will be
+     * removed when all the child layers are removed.
+     */
+    if (fs == NULL) {
+        lc_printf("Converted layer %s to a zombie layer\n", name);
+        goto out;
+    }
     root = fs->fs_root;
 
     lc_printf("Removing fs with parent %ld root %ld name %s\n",
@@ -274,6 +274,7 @@ lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
 
 retry:
     zfs = fs->fs_zfs;
+    assert(fs->fs_removed);
     lc_invalidateDirtyPages(gfs, fs);
     lc_invalidateInodePages(gfs, fs);
     lc_invalidateInodeBlocks(gfs, fs);

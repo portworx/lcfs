@@ -129,7 +129,6 @@ int lc_getIndex(struct fs *nfs, ino_t parent, ino_t ino);
 int lc_addLayer(struct gfs *gfs, struct fs *fs, struct fs *pfs, bool *inval);
 void lc_addChild(struct gfs *gfs, struct fs *pfs, struct fs *fs);
 void lc_removeChild(struct fs *fs);
-void lc_removeLayer(struct gfs *gfs, struct fs *fs);
 void lc_lock(struct fs *fs, bool exclusive);
 int lc_tryLock(struct fs *fs, bool exclusive);
 void lc_unlock(struct fs *fs);
@@ -192,9 +191,7 @@ void lc_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf);
 void lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir);
 void lc_removeTree(struct fs *fs, struct inode *dir);
 int lc_dirRemoveName(struct fs *fs, struct inode *dir,
-                     const char *name, bool rmdir, void **fsp,
-                     int dremove(struct fs *, struct inode *, ino_t,
-                                 bool, void **));
+                     const char *name, bool rmdir, void **fsp, bool layer);
 void  lc_dirConvertHashed(struct fs *fs, struct inode *dir);
 void lc_dirFreeHash(struct fs *fs, struct inode *dir);
 void lc_dirFree(struct inode *dir);
@@ -283,6 +280,8 @@ void lc_linkParent(struct fs *fs, struct fs *pfs);
 void lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
                     const char *parent, size_t size, bool rw);
 void lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name);
+int lc_removeRoot(struct fs *rfs, struct inode *dir, ino_t ino, bool rmdir,
+                  void **fsp);
 void lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
                    enum ioctl_cmd cmd);
 void lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *name,

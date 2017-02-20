@@ -197,6 +197,9 @@ func (d *Driver) CreateReadWrite(id string, parent string, mountLabel string, st
 // Remove the layer with given id.
 func (d *Driver) Remove(id string) error {
 	logrus.Debugf("Remove - id %s", id)
+	if strings.HasSuffix(id, "-init") {
+		return nil
+	}
 	return d.ioctl(LayerRemove, "", id)
 }
 
@@ -330,7 +333,7 @@ func (d *Driver) ApplyDiff(id, parent string, archive io.Reader) (int64, error) 
 	logrus.Debugf("ApplyDiff - id %s parent %s", id, parent)
 	size, err := d.driver.ApplyDiff(id, parent, archive)
 	if err == nil && parent != "" && size < 20 {
-		cbuf := make([]byte, 4096)
+		cbuf := make([]byte, unsafe.Sizeof(uint64(0)))
 		_, err := syscall.Getxattr(d.home, id, cbuf)
 		if err == nil {
 			nsize := int64(binary.LittleEndian.Uint64(cbuf))
