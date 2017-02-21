@@ -510,13 +510,7 @@ lc_removeTree(struct fs *fs, struct inode *dir) {
 
             /* Invalidate kernel page cache */
             if (S_ISREG(dirent->di_mode)) {
-                fuse_lowlevel_notify_inval_inode(
-#ifdef FUSE3
-                                                 gfs->gfs_se[LC_LAYER_MOUNT],
-#else
-                                                 gfs->gfs_ch[LC_LAYER_MOUNT],
-#endif
-                                                 dirent->di_ino, 0, -1);
+                lc_invalInodePages(gfs, dirent->di_ino);
             }
             if (rmdir) {
                 assert(dir->i_nlink > 2);

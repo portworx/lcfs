@@ -562,6 +562,26 @@ fs_allocInodeBlock(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     return allocated;
 }
 
+/* Free metadata extents allocated to an inode */
+static void
+lc_inodeFreeMetaExtents(struct gfs *gfs, struct fs *fs, struct inode *inode) {
+    assert(inode->i_extentLength == 0);
+
+    /* Free metadata blocks allocated to the inode */
+    if (inode->i_emapDirExtents) {
+        lc_blockFreeExtents(gfs, fs, inode->i_emapDirExtents,
+                            LC_EXTENT_EFREE | LC_EXTENT_LAYER);
+        inode->i_emapDirExtents = NULL;
+    }
+    inode->i_emapDirBlock = LC_INVALID_BLOCK;
+    if (inode->i_xattrData && inode->i_xattrExtents) {
+        lc_blockFreeExtents(gfs, fs, inode->i_xattrExtents,
+                            LC_EXTENT_EFREE | LC_EXTENT_LAYER);
+        inode->i_xattrExtents = NULL;
+    }
+    inode->i_xattrBlock = LC_INVALID_BLOCK;
+}
+
 /* Flush a dirty inode to disk */
 int
 lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
@@ -590,21 +610,7 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     /* Write out a dirty inode */
     if (inode->i_flags & LC_INODE_DIRTY) {
         if (inode->i_flags & LC_INODE_REMOVED) {
-            assert(inode->i_extentLength == 0);
-
-            /* Free metadata blocks allocated to the inode */
-            if (inode->i_emapDirExtents) {
-                lc_blockFreeExtents(gfs, fs, inode->i_emapDirExtents,
-                                    LC_EXTENT_EFREE | LC_EXTENT_LAYER);
-                inode->i_emapDirExtents = NULL;
-            }
-            inode->i_emapDirBlock = LC_INVALID_BLOCK;
-            if (inode->i_xattrData && inode->i_xattrExtents) {
-                lc_blockFreeExtents(gfs, fs, inode->i_xattrExtents,
-                                    LC_EXTENT_EFREE | LC_EXTENT_LAYER);
-                inode->i_xattrExtents = NULL;
-            }
-            inode->i_xattrBlock = LC_INVALID_BLOCK;
+            lc_inodeFreeMetaExtents(gfs, fs, inode);
         }
 
         /* A removed inode with a disk copy, needs to be written out so that
@@ -678,8 +684,8 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
 /* Release inode locks as those are not needed anymore */
 void
 lc_freezeLayer(struct gfs *gfs, struct fs *fs) {
-    uint64_t i, count = 0;
-    struct inode *inode;
+    uint64_t i, count = 0, rcount = 0;
+    struct inode *inode, **prev;
 
     assert(fs->fs_readOnly || (fs->fs_super->sb_flags & LC_SUPER_INIT));
     assert(!fs->fs_frozen);
@@ -687,13 +693,27 @@ lc_freezeLayer(struct gfs *gfs, struct fs *fs) {
     for (i = 0;
          (i < fs->fs_icacheSize) && (count < fs->fs_icount) && !fs->fs_removed;
          i++) {
+        prev = &fs->fs_icache[i].ic_head;
         inode = fs->fs_icache[i].ic_head;
         while (inode && !fs->fs_removed) {
+            count++;
+
+            /* Removed inodes can be taken out of the cache */
+            if ((inode->i_flags & LC_INODE_REMOVED) &&
+                !(inode->i_flags & LC_INODE_NOTRUNC)) {
+                assert(inode->i_ocount == 0);
+                assert(inode->i_block == LC_INVALID_BLOCK);
+                assert((inode->i_size == 0) || !S_ISREG(inode->i_mode));
+                lc_inodeFreeMetaExtents(gfs, fs, inode);
+                *prev = inode->i_cnext;
+                lc_freeInode(inode);
+                inode = *prev;
+                rcount++;
+                continue;
+            }
 
             /* A newly committed layer may still have dirty pages */
             if (inode->i_flags & LC_INODE_EMAPDIRTY) {
-                assert((inode->i_size == 0) ||
-                       !(inode->i_flags & LC_INODE_REMOVED));
                 lc_flushPages(gfs, fs, inode, false, true, false);
             }
             assert(!S_ISREG(inode->i_mode) ||
@@ -707,11 +727,12 @@ lc_freezeLayer(struct gfs *gfs, struct fs *fs) {
             if (!(inode->i_flags & LC_INODE_REMOVED)) {
                 fs->fs_size += inode->i_size;
             }
-            count++;
+            prev = &inode->i_cnext;
             inode = inode->i_cnext;
         }
     }
     assert(fs->fs_pcount == 0);
+    fs->fs_icount -= rcount;
 }
 
 /* Sync all dirty inodes */
@@ -779,13 +800,7 @@ lc_invalidateLayerPages(struct gfs *gfs, struct fs *fs) {
         inode = fs->fs_icache[i].ic_head;
         while (inode && !fs->fs_removed) {
             if (S_ISREG(inode->i_mode) && !inode->i_private && inode->i_size) {
-                fuse_lowlevel_notify_inval_inode(
-#ifdef FUSE3
-                                                 gfs->gfs_se[LC_LAYER_MOUNT],
-#else
-                                                 gfs->gfs_ch[LC_LAYER_MOUNT],
-#endif
-                                                 inode->i_ino, 0, -1);
+                lc_invalInodePages(gfs, inode->i_ino);
             }
             count++;
             inode = inode->i_cnext;
@@ -816,13 +831,7 @@ lc_destroyInodes(struct fs *fs, bool remove) {
             /* Invalidate kernel page cache when a layer is deleted */
             if (remove && !fs->fs_readOnly && inode->i_private &&
                 inode->i_size) {
-                fuse_lowlevel_notify_inval_inode(
-#ifdef FUSE3
-                                                 gfs->gfs_se[LC_LAYER_MOUNT],
-#else
-                                                 gfs->gfs_ch[LC_LAYER_MOUNT],
-#endif
-                                                 inode->i_ino, 0, -1);
+                lc_invalInodePages(gfs, inode->i_ino);
             }
             lc_freeInode(inode);
             icount++;

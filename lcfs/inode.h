@@ -382,4 +382,16 @@ lc_inodeDirty(struct inode *inode) {
                               LC_INODE_EMAPDIRTY | LC_INODE_XATTRDIRTY));
 }
 
+/* Invalidate pages of an inode in kernel page cache */
+static inline void
+lc_invalInodePages(struct gfs *gfs, ino_t ino) {
+    fuse_lowlevel_notify_inval_inode(
+#ifdef FUSE3
+                                     gfs->gfs_se[LC_LAYER_MOUNT],
+#else
+                                     gfs->gfs_ch[LC_LAYER_MOUNT],
+#endif
+                                     ino, 0, -1);
+}
+
 #endif

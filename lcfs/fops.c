@@ -2,8 +2,6 @@
 
 #define LC_TIMEOUT_SEC  1.0
 
-/* XXX Check return values from fuse_reply_*, for example on interrupt */
-
 /* Initialize default values in fuse_entry_param structure.
  */
 void
@@ -944,11 +942,79 @@ lc_openInode(struct fs *fs, fuse_ino_t ino, struct fuse_file_info *fi) {
     return 0;
 }
 
+/* Decrement open count on an inode */
+static void
+lc_closeInode(struct fs *fs, struct inode *inode, struct fuse_file_info *fi,
+              bool *inval) {
+    bool reg = S_ISREG(inode->i_mode);
+
+    /* Nothing to do if inode is not part of this layer */
+    if (inode->i_fs != fs) {
+        if (inval) {
+
+            /* Invalidate pages in kernel page cache if multiple layers are
+             * reading shared data from parent layer.
+             * Allow a single container to cache data from parent layers in
+             * kernel page cache.
+             */
+            *inval = reg && (inode->i_size > 0) && !fs->fs_parent->fs_single;
+        }
+        return;
+    }
+
+    /* Lock the inode exclusive and decrement open count */
+    lc_inodeLock(inode, true);
+    assert(inode->i_fs == fs);
+    assert(inode->i_ocount > 0);
+    inode->i_ocount--;
+
+    /* Invalidate pages of shared files in kernel page cache */
+    if (inval) {
+        *inval = reg && (inode->i_ocount == 0) && (inode->i_size > 0) &&
+                 (!inode->i_private || fs->fs_readOnly ||
+                  (fs->fs_super->sb_flags & LC_SUPER_INIT));
+    }
+
+    /* Truncate a removed file on last close */
+    if (reg && (inode->i_ocount == 0) && (inode->i_flags & LC_INODE_REMOVED)) {
+        lc_truncate(inode, 0, false);
+    }
+
+    /* Flush dirty pages of a file on last close */
+    if ((inode->i_ocount == 0) && (inode->i_flags & LC_INODE_EMAPDIRTY)) {
+        assert(reg);
+        if (fs->fs_readOnly || (fs->fs_super->sb_flags & LC_SUPER_INIT)) {
+
+            /* Inode emap needs to be stable before an inode could be cloned */
+            lc_flushPages(fs->fs_gfs, fs, inode, false, true, true);
+            return;
+        } else if (!(inode->i_flags & (LC_INODE_REMOVED | LC_INODE_TMP)) &&
+                   lc_inodeGetDirtyPageCount(inode)) {
+
+            /* Add inode to dirty list of the layer */
+            if (lc_inodeGetDirtyPageCount(inode) &&
+                (lc_inodeGetDirtyNext(inode) == NULL) &&
+                (fs->fs_dirtyInodesLast != inode)) {
+                lc_addDirtyInode(fs, inode);
+            }
+
+            /* Flush pages of the inode if layer has too many dirty pages */
+            if ((fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES) &&
+                lc_flushInodeDirtyPages(inode, inode->i_size / LC_BLOCK_SIZE,
+                                        true, true)) {
+                return;
+            }
+        }
+    }
+    lc_inodeUnlock(inode);
+}
+
 /* Open a file and return a handle corresponding to the inode number */
 static void
 lc_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     struct timeval start;
     struct fs *fs;
+    bool inval;
     int err;
 
     lc_statsBegin(&start);
@@ -958,8 +1024,13 @@ lc_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     if (err) {
         fuse_reply_err(req, err);
     } else {
-        /* XXX FUSE3 explore returning ENOSYS with FUSE_CAP_NO_OPEN_SUPPORT */
-        fuse_reply_open(req, fi);
+        err = fuse_reply_open(req, fi);
+        if (err) {
+            lc_closeInode(fs, (struct inode *)fi->fh, fi, &inval);
+            if (inval) {
+                lc_invalInodePages(fs->fs_gfs, ino);
+            }
+        }
     }
     lc_statsAdd(fs, LC_OPEN, err, &start);
     lc_unlock(fs);
@@ -1057,74 +1128,12 @@ lc_flush(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
 static void
 lc_releaseInode(fuse_req_t req, struct fs *fs, fuse_ino_t ino,
                 struct fuse_file_info *fi, bool *inval) {
-    struct inode *inode;
-    bool reg;
+    struct inode *inode = (struct inode *)fi->fh;
 
     assert(fi);
     fuse_reply_err(req, 0);
-    inode = (struct inode *)fi->fh;
-    reg = S_ISREG(inode->i_mode);
-
-    /* Nothing to do if inode is not part of this layer */
-    if (inode->i_fs != fs) {
-        if (inval) {
-
-            /* Invalidate pages in kernel page cache if multiple layers are
-             * reading shared data from parent layer.
-             * Allow a single container to cache data from parent layers in
-             * kernel page cache.
-             */
-            *inval = reg && (inode->i_size > 0) && !fs->fs_parent->fs_single;
-        }
-        return;
-    }
-
-    /* Lock the inode exclusive and decrement open count */
-    lc_inodeLock(inode, true);
     assert(inode->i_ino == lc_getInodeHandle(ino));
-    assert(inode->i_fs == fs);
-    assert(inode->i_ocount > 0);
-    inode->i_ocount--;
-
-    /* Invalidate pages of shared files in kernel page cache */
-    if (inval) {
-        *inval = reg && (inode->i_ocount == 0) && (inode->i_size > 0) &&
-                 (!inode->i_private || fs->fs_readOnly ||
-                  (fs->fs_super->sb_flags & LC_SUPER_INIT));
-    }
-
-    /* Truncate a removed file on last close */
-    if (reg && (inode->i_ocount == 0) && (inode->i_flags & LC_INODE_REMOVED)) {
-        lc_truncate(inode, 0, false);
-    }
-
-    /* Flush dirty pages of a file on last close */
-    if ((inode->i_ocount == 0) && (inode->i_flags & LC_INODE_EMAPDIRTY)) {
-        assert(reg);
-        if (fs->fs_readOnly || (fs->fs_super->sb_flags & LC_SUPER_INIT)) {
-
-            /* Inode emap needs to be stable before an inode could be cloned */
-            lc_flushPages(fs->fs_gfs, fs, inode, false, true, true);
-            return;
-        } else if (!(inode->i_flags & (LC_INODE_REMOVED | LC_INODE_TMP)) &&
-                   lc_inodeGetDirtyPageCount(inode)) {
-
-            /* Add inode to dirty list of the layer */
-            if (lc_inodeGetDirtyPageCount(inode) &&
-                (lc_inodeGetDirtyNext(inode) == NULL) &&
-                (fs->fs_dirtyInodesLast != inode)) {
-                lc_addDirtyInode(fs, inode);
-            }
-
-            /* Flush pages of the inode if layer has too many dirty pages */
-            if ((fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES) &&
-                lc_flushInodeDirtyPages(inode, inode->i_size / LC_BLOCK_SIZE,
-                                        true, true)) {
-                return;
-            }
-        }
-    }
-    lc_inodeUnlock(inode);
+    lc_closeInode(fs, inode, fi, inval);
 }
 
 /* Release open count on a file */
@@ -1150,13 +1159,7 @@ lc_release(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
         /* Invalidate kernel page cache if inode is sharing data with inodes in
          * other layers.
          */
-        fuse_lowlevel_notify_inval_inode(
-#ifdef FUSE3
-                                         gfs->gfs_se[LC_LAYER_MOUNT],
-#else
-                                         gfs->gfs_ch[LC_LAYER_MOUNT],
-#endif
-                                         ino, 0, -1);
+        lc_invalInodePages(gfs, ino);
     }
     lc_statsAdd(fs, LC_RELEASE, false, &start);
     lc_unlock(fs);
@@ -1190,7 +1193,10 @@ lc_opendir(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     if (err) {
         fuse_reply_err(req, err);
     } else {
-        fuse_reply_open(req, fi);
+        err = fuse_reply_open(req, fi);
+        if (err) {
+            lc_closeInode(fs, (struct inode *)fi->fh, fi, NULL);
+        }
     }
     lc_statsAdd(fs, LC_OPENDIR, err, &start);
     lc_unlock(fs);
@@ -1389,7 +1395,10 @@ lc_create(fuse_req_t req, fuse_ino_t parent, const char *name,
     if (err) {
         fuse_reply_err(req, err);
     } else {
-        fuse_reply_create(req, &e, fi);
+        err = fuse_reply_create(req, &e, fi);
+        if (err) {
+            lc_closeInode(fs, (struct inode *)fi->fh, fi, NULL);
+        }
     }
     lc_statsAdd(fs, LC_CREATE, err, &start);
     lc_unlock(fs);
