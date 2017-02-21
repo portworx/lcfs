@@ -4,6 +4,7 @@
 #include <assert.h>
 
 #define LC_BLOCK_SIZE 4096
+#define GETXATTR_SIZE sizeof(uint64_t)
 
 struct pchange {
     uint16_t ch_len;
@@ -13,13 +14,17 @@ struct pchange {
 
 int
 main(int argc, char *argv[]) {
-    char buf[LC_BLOCK_SIZE];
+    char buf[GETXATTR_SIZE];
     struct pchange *pchange;
     size_t size, psize;
 
     if (argc == 2) {
         do {
-            size = getxattr("/lcfs/lcfs", argv[1], buf, LC_BLOCK_SIZE);
+            size = getxattr("/lcfs/lcfs", argv[1], buf, GETXATTR_SIZE);
+            if (size == -1) {
+                perror("getxattr");
+                break;
+            }
             if (size != LC_BLOCK_SIZE) {
                 printf("Size of changes in layer %s is %ld\n",
                        argv[1], *(uint64_t *)buf);

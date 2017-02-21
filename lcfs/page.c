@@ -553,6 +553,15 @@ lc_mergePage(struct gfs *gfs, struct inode *inode, uint64_t pg,
         return 0;
     }
 
+    /* If replacing with a whole page, just swap buffers */
+    if ((poffset == 0) && (psize == LC_BLOCK_SIZE)) {
+        page->dp_data = dpage->dp_data;
+        dpage->dp_data = data;
+        dpage->dp_poffset = 0;
+        dpage->dp_psize = LC_BLOCK_SIZE;
+        return 0;
+    }
+
     /* If the current dirty page is partial page and this new write is not a
      * contiguous write, initialize exisitng page correctly before copying new
      * data.
