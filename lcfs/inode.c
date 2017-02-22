@@ -201,10 +201,7 @@ lc_lookupInodeCache(struct fs *fs, ino_t ino, int hash) {
     /* XXX Locking not needed right now, as inodes are not removed */
     //pthread_mutex_lock(&fs->fs_icache[hash].ic_lock);
     inode = fs->fs_icache[hash].ic_head;
-    while (inode) {
-        if (inode->i_ino == ino) {
-            break;
-        }
+    while (inode && (inode->i_ino != ino)) {
         inode = inode->i_cnext;
     }
     //pthread_mutex_unlock(&fs->fs_icache[hash].ic_lock);
@@ -688,17 +685,27 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
 /* Release inode locks as those are not needed anymore */
 void
 lc_freezeLayer(struct gfs *gfs, struct fs *fs) {
-    uint64_t i, count = 0, rcount = 0;
+    uint64_t i, count = 0, rcount = 0, icsize, icacheSize = fs->fs_icacheSize;
+    struct icache *icache = fs->fs_icache;
     struct inode *inode, **prev;
+    bool resize;
 
     assert(fs->fs_readOnly || (fs->fs_super->sb_flags & LC_SUPER_INIT));
     assert(!fs->fs_frozen);
     fs->fs_size = 0;
-    for (i = 0;
-         (i < fs->fs_icacheSize) && (count < fs->fs_icount) && !fs->fs_removed;
+    assert(fs->fs_ricount < fs->fs_icount);
+
+    /* Resize icache if needed */
+    fs->fs_super->sb_icount = fs->fs_icount - fs->fs_ricount;
+    icsize = lc_icache_size(fs);
+    resize = (icsize != icacheSize);
+    if (icsize != icacheSize) {
+        lc_icache_init(fs, icsize);
+    }
+    for (i = 0; (i < icacheSize) && (count < fs->fs_icount) && !fs->fs_removed;
          i++) {
-        prev = &fs->fs_icache[i].ic_head;
-        inode = fs->fs_icache[i].ic_head;
+        prev = &icache[i].ic_head;
+        inode = icache[i].ic_head;
         while (inode && !fs->fs_removed) {
             count++;
 
@@ -731,12 +738,30 @@ lc_freezeLayer(struct gfs *gfs, struct fs *fs) {
             if (!(inode->i_flags & LC_INODE_REMOVED)) {
                 fs->fs_size += inode->i_size;
             }
-            prev = &inode->i_cnext;
-            inode = inode->i_cnext;
+            if (resize) {
+                *prev = inode->i_cnext;
+                lc_addInode(fs, inode, false);
+            } else {
+                prev = &inode->i_cnext;
+            }
+            inode = *prev;
+        }
+        if (resize) {
+            pthread_mutex_destroy(&icache[i].ic_lock);
         }
     }
     assert(fs->fs_pcount == 0);
-    fs->fs_icount -= rcount;
+    if (rcount) {
+        assert(fs->fs_ricount == rcount);
+        fs->fs_icount -= rcount;
+    }
+    if (resize) {
+        for (; i < icacheSize; i++) {
+            pthread_mutex_destroy(&icache[i].ic_lock);
+        }
+        lc_free(fs, icache, sizeof(struct icache) * icacheSize,
+                LC_MEMTYPE_ICACHE);
+    }
 }
 
 /* Sync all dirty inodes */

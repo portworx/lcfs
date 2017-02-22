@@ -6,8 +6,11 @@
 /* Initial size of the inode hash table */
 /* XXX This needs to consider available memory */
 #define LC_ICACHE_SIZE_MIN 8
-#define LC_ICACHE_SIZE     4096
+#define LC_ICACHE_SIZE     1024
 #define LC_ICACHE_SIZE_MAX 8192
+
+/* Used to size icache from number of inodes in the layer */
+#define LC_ICACHE_TARGET   2
 
 /* Current file name size limit */
 #define LC_FILENAME_MAX 255
@@ -380,6 +383,36 @@ static inline bool
 lc_inodeDirty(struct inode *inode) {
     return (inode->i_flags & (LC_INODE_DIRTY | LC_INODE_DIRDIRTY |
                               LC_INODE_EMAPDIRTY | LC_INODE_XATTRDIRTY));
+}
+
+/* Find size of icache size based on number of inodes */
+static inline size_t
+lc_icache_size(struct fs *fs) {
+    uint64_t icount, icsize = 1;
+    struct super *super = fs->fs_super;
+
+    if (super->sb_flags & LC_SUPER_INIT) {
+        return LC_ICACHE_SIZE_MIN;
+    }
+    if (super->sb_flags & LC_SUPER_RDWR) {
+        return LC_ICACHE_SIZE;
+    }
+
+    /* Find next power of two */
+    icount = super->sb_icount / LC_ICACHE_TARGET;
+    if (icount) {
+        icount--;
+        while (icount >>= 1) {
+            icsize <<= 1;
+        }
+    }
+    if (icsize <= LC_ICACHE_SIZE_MIN) {
+        return LC_ICACHE_SIZE_MIN;
+    }
+    if (icsize >= LC_ICACHE_SIZE_MAX) {
+        return LC_ICACHE_SIZE_MAX;
+    }
+    return icsize;
 }
 
 /* Invalidate pages of an inode in kernel page cache */

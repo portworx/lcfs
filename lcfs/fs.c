@@ -467,14 +467,10 @@ lc_gfsDeinit(struct gfs *gfs) {
 /* Initialize a file system after reading its super block */
 static struct fs *
 lc_initLayer(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
-    uint64_t icsize;
     struct fs *fs;
     int i;
 
-    /* XXX Size the icache based on inodes allocated in layer */
-    icsize = (child || pfs->fs_parent) ? LC_ICACHE_SIZE : LC_ICACHE_SIZE_MAX;
     fs = lc_newLayer(gfs, true);
-    lc_icache_init(fs, icsize);
     lc_statsNew(fs);
     fs->fs_sblock = block;
     lc_superRead(gfs, fs, block);
@@ -512,6 +508,7 @@ lc_initLayer(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
         lc_linkParent(fs, pfs);
         fs->fs_parent = pfs->fs_parent;
     }
+    lc_icache_init(fs, lc_icache_size(fs));
 
     /* Add the layer to the global list */
     i = fs->fs_super->sb_index;
@@ -591,7 +588,7 @@ lc_mount(struct gfs *gfs, char *device, size_t size) {
 
     /* Initialize a file system structure in memory */
     fs = lc_newLayer(gfs, true);
-    lc_icache_init(fs, LC_ICACHE_SIZE);
+    lc_icache_init(fs, LC_ICACHE_SIZE_MAX);
     lc_statsNew(fs);
     fs->fs_root = LC_ROOT_INODE;
     fs->fs_sblock = LC_SUPER_BLOCK;

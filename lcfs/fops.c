@@ -199,12 +199,15 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
         }
     }
     lc_markInodeDirty(inode, 0);
-    if (unlock) {
-        lc_inodeUnlock(inode);
-    }
     if (removed) {
+        if (!(inode->i_flags & LC_INODE_NOTRUNC)) {
+            __sync_add_and_fetch(&fs->fs_ricount, 1);
+        }
         __sync_sub_and_fetch(&fs->fs_gfs->gfs_super->sb_inodes, 1);
         lc_updateFtypeStats(fs, inode->i_mode, false);
+    }
+    if (unlock) {
+        lc_inodeUnlock(inode);
     }
     return 0;
 }

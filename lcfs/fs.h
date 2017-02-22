@@ -302,6 +302,9 @@ struct fs {
     /* Count of inodes */
     uint64_t fs_icount;
 
+    /* Count of removed inodes */
+    uint64_t fs_ricount;
+
     /* Count of dirty pages */
     uint64_t fs_pcount;
 
