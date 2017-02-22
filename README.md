@@ -54,7 +54,7 @@ The below table shows a quick comparison of how long it takes LCFS to complete s
 
 
 **Build**: The diagram below depicts the time to build docker sources using various storage drivers. The individual times measured: Device Mapper at 1512 sec, Btrfs at 956 seconds, AUFS at 574 seconds, Overlay at 914 seconds, Overlay2 at 567 seconds, and LCFS at 437 seconds.
-![alt text](http://i.imgur.com/QAUsMI4.jpg "build times")
+![alt text](http://i.imgur.com/sf8n6sP.png "build times")
 
 ## Architecture 
 The LCFS filesystem is user-level, written in C, POSIX-compliant, and integrated into Linux and macOS via Fuse. It does not require any kernel modifications, enabling it to be a portable filesystem. 
