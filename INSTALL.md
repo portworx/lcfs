@@ -9,7 +9,13 @@ Now run the command below, substituting in the lcfs device you have chosen. In t
 # curl -fsSL http://lcfs.portworx.com/lcfs-setup.sh | sudo DEV=/dev/sdb bash
 ```
 
-Note: The convenience script will start dockerd with `-s portworx/lcfs --experimental` but it will not setup the systemd service script.
+Note: The convenience script will start dockerd with `-s portworx/lcfs --experimental` but it will not setup the systemd service script.  This means that after a system reboot, `lcfs` **will not persist** and needs to be restarted manually with the following command: 
+
+```
+# /opt/pwx/bin/lcfs-setup.sh --start
+```
+
+The above command can be added to a `systemd` unit file.
 
 ## Manual installation
 To install LCFS, there are four actions you must perform:
