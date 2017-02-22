@@ -994,7 +994,8 @@ lc_closeInode(struct fs *fs, struct inode *inode, struct fuse_file_info *fi,
     if ((inode->i_ocount == 0) && (inode->i_flags & LC_INODE_EMAPDIRTY)) {
         assert(reg);
         if (fs->fs_readOnly || (fs->fs_super->sb_flags & LC_SUPER_INIT) ||
-            (fs->fs_gfs->gfs_layerRoot == 0)) {
+            ((fs->fs_gfs->gfs_layerRoot == 0) &&
+             (fs->fs_gfs->gfs_dbIno != inode->i_ino))) {
 
             /* Inode emap needs to be stable before an inode could be cloned */
             lc_flushPages(fs->fs_gfs, fs, inode, false, true, true);
@@ -1413,6 +1414,13 @@ lc_create(fuse_req_t req, fuse_ino_t parent, const char *name,
     if (err) {
         fuse_reply_err(req, err);
     } else {
+
+        /* Track file local_kv.db in root layer */
+        if (!lc_getFsHandle(parent) && (parent != LC_ROOT_INODE) &&
+            (fs->fs_gfs->gfs_dbIno == 0) &&
+            (strcmp(name, LC_LAYER_LOCAL_KV_DB) == 0)) {
+            fs->fs_gfs->gfs_dbIno = e.ino;
+        }
         err = fuse_reply_create(req, &e, fi);
         if (err) {
             lc_closeInode(fs, (struct inode *)fi->fh, fi, NULL);

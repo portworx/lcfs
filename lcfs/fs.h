@@ -34,6 +34,9 @@ struct gfs {
     /* Inode of tmp directory */
     ino_t gfs_tmp_root;
 
+    /* Inode of local-kv.db */
+    ino_t gfs_dbIno;
+
     /* List of file system roots */
     ino_t *gfs_roots;
 

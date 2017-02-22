@@ -71,6 +71,9 @@
 /* Directory in which temporary data placed */
 #define LC_LAYER_TMP_DIR    "tmp"
 
+/* local-kv.db file in root layer */
+#define LC_LAYER_LOCAL_KV_DB "local-kv.db"
+
 /* File types for counting each type created in a layer */
 enum lc_ftypes {
     LC_FTYPE_REGULAR,           /* Regular file */
