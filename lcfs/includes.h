@@ -154,8 +154,6 @@ void lc_destroyInodes(struct fs *fs, bool remove);
 struct inode *lc_lookupInode(struct fs *fs, ino_t ino);
 struct inode *lc_getInode(struct fs *fs, ino_t ino, struct inode *handle,
                           bool copy, bool exclusive);
-struct inode *lc_getInodeParent(struct fs *fs, ino_t inum, bool copy,
-                                 bool exclusive);
 struct inode *lc_inodeInit(struct fs *fs, mode_t mode,
                             uid_t uid, gid_t gid, dev_t rdev, ino_t parent,
                             const char *target);

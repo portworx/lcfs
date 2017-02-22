@@ -381,6 +381,7 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
             } else {
                 fuse_reply_ioctl(req, 0, NULL, 0);
             }
+            fs->fs_super->sb_icount = fs->fs_icount;
             lc_unlock(fs);
         }
         lc_statsAdd(rfs, LC_UMOUNT, err, &start);

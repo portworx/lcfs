@@ -110,6 +110,9 @@ struct super {
     /* Set on promoted layers after commit */
     uint64_t sb_zombie;
 
+    /* Count of inodes in use */
+    uint64_t sb_icount;
+
     /* CRC of this block */
     uint32_t sb_crc;
 
@@ -140,7 +143,7 @@ struct super {
     uint64_t sb_ftypes[LC_FTYPE_MAX];
 
     /* Padding for filling up a block */
-    uint8_t  sb_pad[LC_BLOCK_SIZE - 148];
+    uint8_t  sb_pad[LC_BLOCK_SIZE - 156];
 } __attribute__((packed));
 static_assert(sizeof(struct super) == LC_BLOCK_SIZE, "superblock size != LC_BLOCK_SIZE");
 

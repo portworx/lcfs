@@ -250,6 +250,10 @@ lc_removeChild(struct fs *fs) {
             fs->fs_next->fs_prev = fs->fs_prev;
         }
     }
+    if (pfs && (pfs->fs_super->sb_zombie == fs->fs_gindex)) {
+        pfs->fs_super->sb_zombie = 0;
+        pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
+    }
 }
 
 /* Remove a layer from the list of layers */
@@ -259,8 +263,8 @@ lc_removeLayer(struct gfs *gfs, struct fs *fs, int gindex) {
     assert(gfs->gfs_roots[gindex] == fs->fs_root);
     gfs->gfs_fs[gindex] = NULL;
     gfs->gfs_roots[gindex] = 0;
-    fs->fs_gindex = -1;
     lc_removeChild(fs);
+    fs->fs_gindex = -1;
 }
 
 /* Lock a layer exclusive for removal, after taking it off the global

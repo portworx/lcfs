@@ -55,7 +55,7 @@ lc_copyFakeStat(struct stat *st) {
 
     lc_gettime(&tv);
     st->st_dev = 0;
-    st->st_ino = LC_ROOT_INODE;
+    st->st_ino = LC_COMMIT_TRIGGER_INODE;
     st->st_mode = S_IFREG | 0500;
     st->st_nlink = 1;
     st->st_uid = 0;
@@ -176,14 +176,18 @@ lc_inodeUnlock(struct inode *inode) {
 
 /* Add an inode to the hash table of the layer */
 static void
-lc_addInode(struct fs *fs, struct inode *inode) {
+lc_addInode(struct fs *fs, struct inode *inode, bool lock) {
     int hash = lc_inodeHash(fs, inode->i_ino);
 
     /* Add the inode to the hash list */
-    pthread_mutex_lock(&fs->fs_icache[hash].ic_lock);
+    if (lock) {
+        pthread_mutex_lock(&fs->fs_icache[hash].ic_lock);
+    }
     inode->i_cnext = fs->fs_icache[hash].ic_head;
     fs->fs_icache[hash].ic_head = inode;
-    pthread_mutex_unlock(&fs->fs_icache[hash].ic_lock);
+    if (lock) {
+        pthread_mutex_unlock(&fs->fs_icache[hash].ic_lock);
+    }
 }
 
 /* Lookup an inode in the hash list */
@@ -243,7 +247,7 @@ lc_rootInit(struct fs *fs, ino_t root) {
                                     true);
 
     lc_dinodeInit(dir, root, S_IFDIR | 0755, 0, 0, 0, 0, root);
-    lc_addInode(fs, dir);
+    lc_addInode(fs, dir, false);
     fs->fs_rootInode = dir;
     lc_markInodeDirty(dir, LC_INODE_DIRDIRTY);
 }
@@ -303,7 +307,7 @@ lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
         inode = lc_newInode(fs, (i << LC_DINODE_INDEX) | block, len,
                             reg, false, lock);
         memcpy(&inode->i_dinode, &buf[offset], sizeof(struct dinode));
-        lc_addInode(fs, inode);
+        lc_addInode(fs, inode, false);
         if (reg) {
 
             /* Read emap of fragmented regular files */
@@ -878,7 +882,7 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino, bool exclusive) {
     inode = lc_newInode(fs, LC_INVALID_BLOCK, 0, reg, false, true);
     memcpy(&inode->i_dinode, &parent->i_dinode, sizeof(struct dinode));
     lc_inodeLock(inode, true);
-    lc_addInode(fs, inode);
+    lc_addInode(fs, inode, true);
     pthread_mutex_unlock(&fs->fs_ilock);
     if (reg) {
         assert(parent->i_page == NULL);
@@ -945,7 +949,7 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino, bool exclusive) {
 /* Lookup the requested inode in the parent chain.  Inode is locked only if
  * cloned to the layer
  */
-struct inode *
+static struct inode *
 lc_getInodeParent(struct fs *fs, ino_t inum, bool copy, bool exclusive) {
     struct inode *inode = NULL, *parent;
     uint64_t csize = 0;
@@ -1101,7 +1105,7 @@ lc_inodeInit(struct fs *fs, mode_t mode, uid_t uid, gid_t gid,
     }
     lc_dinodeInit(inode, lc_inodeAlloc(fs), mode, uid, gid, rdev, len, parent);
     lc_updateFtypeStats(fs, mode, true);
-    lc_addInode(fs, inode);
+    lc_addInode(fs, inode, true);
     lc_inodeLock(inode, true);
     return inode;
 }
@@ -1134,7 +1138,7 @@ lc_moveInodes(struct fs *fs, struct fs *cfs) {
             inode = pinode;
             pinode = pinode->i_cnext;
             inode->i_fs = cfs;
-            lc_addInode(cfs, inode);
+            lc_addInode(cfs, inode, false);
             lc_markInodeDirty(inode,
                               S_ISDIR(inode->i_mode) ? LC_INODE_DIRDIRTY :
                               (S_ISREG(inode->i_mode) ?
@@ -1197,7 +1201,7 @@ lc_moveRootInode(struct fs *cfs, struct fs *fs) {
         inode->i_cnext = dir->i_cnext;
     }
     dir->i_fs = fs;
-    lc_addInode(fs, dir);
+    lc_addInode(fs, dir, false);
     lc_markInodeDirty(dir, LC_INODE_DIRDIRTY);
 }
 

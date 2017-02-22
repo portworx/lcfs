@@ -5,7 +5,7 @@
 
 /* Initial size of the inode hash table */
 /* XXX This needs to consider available memory */
-#define LC_ICACHE_SIZE_MIN 128
+#define LC_ICACHE_SIZE_MIN 8
 #define LC_ICACHE_SIZE     4096
 #define LC_ICACHE_SIZE_MAX 8192
 

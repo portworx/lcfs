@@ -1367,6 +1367,13 @@ lc_removexattr(fuse_req_t req, fuse_ino_t ino, const char *name) {
         fuse_reply_err(req, ENODATA);
         return;
     }
+
+    /* Take care of the special inode when commit is in progress */
+    if ((lc_getInodeHandle(ino) == LC_COMMIT_TRIGGER_INODE) &&
+        lc_getFsHandle(ino)) {
+        fuse_reply_err(req, ENODATA);
+        return;
+    }
     lc_xattrRemove(req, ino, name);
 }
 
