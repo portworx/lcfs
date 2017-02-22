@@ -272,9 +272,6 @@ lc_setLayerRoot(struct gfs *gfs, ino_t ino) {
         }
         gfs->gfs_layerRootInode = dir;
         lc_inodeUnlock(dir);
-
-        /* Flush dirty pages created before starting layer management */
-        lc_flushDirtyInodeList(fs, true);
     }
     printf("layer root inode %ld\n", ino);
 }

@@ -552,6 +552,7 @@ lc_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
     const struct fuse_ctx *ctx = fuse_req_ctx(req);
     struct fuse_entry_param e;
     struct timeval start;
+    bool flush = false;
     struct gfs *gfs;
     struct fs *fs;
     int err;
@@ -564,7 +565,6 @@ lc_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
     if (err) {
         fuse_reply_err(req, err);
     } else {
-        fuse_reply_entry(req, &e);
 
         /* Remember some special directories created */
         if (lc_getInodeHandle(parent) == LC_ROOT_INODE) {
@@ -572,11 +572,18 @@ lc_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
             if (!gfs->gfs_layerRoot &&
                 (strcmp(name, LC_LAYER_ROOT_DIR) == 0)) {
                 lc_setLayerRoot(gfs, e.ino);
+                flush = true;
             } else if (!gfs->gfs_tmp_root &&
                        (strcmp(name, LC_LAYER_TMP_DIR) == 0)) {
                 gfs->gfs_tmp_root = e.ino;
                 printf("tmp root %ld\n", e.ino);
             }
+        }
+        fuse_reply_entry(req, &e);
+        if (flush) {
+
+            /* Flush dirty pages created before starting layer management */
+            lc_flushDirtyPages(gfs, fs);
         }
     }
     lc_statsAdd(fs, LC_MKDIR, err, &start);
@@ -986,7 +993,8 @@ lc_closeInode(struct fs *fs, struct inode *inode, struct fuse_file_info *fi,
     /* Flush dirty pages of a file on last close */
     if ((inode->i_ocount == 0) && (inode->i_flags & LC_INODE_EMAPDIRTY)) {
         assert(reg);
-        if (fs->fs_readOnly || (fs->fs_super->sb_flags & LC_SUPER_INIT)) {
+        if (fs->fs_readOnly || (fs->fs_super->sb_flags & LC_SUPER_INIT) ||
+            (fs->fs_gfs->gfs_layerRoot == 0)) {
 
             /* Inode emap needs to be stable before an inode could be cloned */
             lc_flushPages(fs->fs_gfs, fs, inode, false, true, true);

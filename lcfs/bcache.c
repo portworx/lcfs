@@ -257,11 +257,13 @@ lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head,
             assert(page->p_refCount == 1);
             page->p_refCount = 0;
             lc_freePage(gfs, fs, page);
-        } else if (inval) {
-            assert(fs->fs_removed);
+        } else if (inval && fs->fs_removed) {
             assert(page->p_refCount == 1);
             page->p_refCount = 0;
         } else {
+            if (inval) {
+                page->p_nocache = 1;
+            }
             lc_releasePage(gfs, fs, page, false);
         }
         page = next;
@@ -661,7 +663,8 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
     }
 
     /* Release the pages after writing */
-    lc_releasePages(gfs, fs, head, fs->fs_removed);
+    lc_releasePages(gfs, fs, head,
+                    fs->fs_removed || (fs == lc_getGlobalFs(gfs)));
 
     /* Check any of the freed blocks can be released to the free pool */
     if (bfree) {
