@@ -1008,6 +1008,7 @@ lc_getInodeParent(struct fs *fs, ino_t inum, bool copy, bool exclusive) {
                     inode = lc_cloneInode(fs, parent, inum, exclusive);
                 } else {
                     pthread_mutex_unlock(&fs->fs_ilock);
+                    lc_inodeLock(inode, exclusive);
                 }
             } else {
                 /* XXX Remember this for future lookup */
