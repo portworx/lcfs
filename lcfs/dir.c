@@ -588,7 +588,7 @@ lc_dirRemoveName(struct fs *fs, struct inode *dir,
 
                 /* Remove init layer along with this one */
                 rfs = (struct fs *)*fsp;
-                if (rfs->fs_zfs &&
+                if (rfs && rfs->fs_zfs &&
                     !(rfs->fs_super->sb_flags & LC_SUPER_INIT)) {
                     rfs = rfs->fs_zfs;
                     ino = rfs->fs_root;

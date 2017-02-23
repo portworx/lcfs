@@ -171,8 +171,7 @@ lc_inodeUnlock(struct inode *inode) {
                (fs->fs_super->sb_flags & LC_SUPER_INIT));
         return;
     }
-    assert(inode->i_rwlock->__data.__writer ||
-           inode->i_rwlock->__data.__nr_readers);
+    lc_lockOwned(inode->i_rwlock, false);
     pthread_rwlock_unlock(inode->i_rwlock);
 }
 
@@ -1062,6 +1061,8 @@ lc_getInode(struct fs *fs, ino_t ino, struct inode *handle,
         lc_printf("Inode is NULL, fs gindex %d root %ld ino %ld\n",
                    fs->fs_gindex, fs->fs_root, ino);
         assert(inode);
+    } else {
+        lc_lockOwned(inode->i_rwlock, exclusive);
     }
     return inode;
 }

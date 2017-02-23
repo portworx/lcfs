@@ -308,21 +308,24 @@ lc_getLayerForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
         return EEXIST;
     }
     lc_removeLayer(gfs, fs, gindex);
-    if (fs->fs_zfs) {
-
-        /* Remove zombie parent layer as well */
-        zfs = fs->fs_zfs;
-        assert(zfs->fs_super->sb_flags & LC_SUPER_ZOMBIE);
-        lc_removeLayer(gfs, zfs, zfs->fs_gindex);
-    }
     if ((fs->fs_super->sb_flags & LC_SUPER_RDWR) &&
         !(fs->fs_super->sb_flags & LC_SUPER_INIT)) {
 
         /* Remove init layer as well */
+        assert(fs->fs_zfs == NULL);
         fs->fs_zfs = fs->fs_parent;
         zfs = fs->fs_zfs;
         assert(zfs->fs_super->sb_flags & LC_SUPER_INIT);
+    } else {
+
+        /* Remove zombie parent layer as well */
+        zfs = fs->fs_zfs;
+        assert((zfs == NULL) || (zfs->fs_super->sb_flags & LC_SUPER_ZOMBIE));
+    }
+    while (zfs) {
         lc_removeLayer(gfs, zfs, zfs->fs_gindex);
+        zfs = zfs->fs_zfs;
+        assert((zfs == NULL) || (zfs->fs_super->sb_flags & LC_SUPER_ZOMBIE));
     }
     while (gfs->gfs_fs[gfs->gfs_scount] == NULL) {
         assert(gfs->gfs_scount > 0);
