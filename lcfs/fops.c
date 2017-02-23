@@ -402,6 +402,12 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
     if (change && !(to_set & ~(FUSE_SET_ATTR_UID | FUSE_SET_ATTR_GID))) {
         new_set = to_set;
         inode = lc_getInode(fs, ino, handle, false, false);
+        if (inode == NULL) {
+            lc_reportError(__func__, __LINE__, ino, ENOENT);
+            fuse_reply_err(req, ENOENT);
+            err = ENOENT;
+            goto out;
+        }
         if ((to_set & FUSE_SET_ATTR_UID) &&
             (inode->i_dinode.di_uid == attr->st_uid)) {
             new_set &= ~FUSE_SET_ATTR_UID;
@@ -1105,7 +1111,6 @@ retry:
     if (err) {
 
         /* Retry after allocating pages */
-        lc_inodeUnlock(inode);
         assert(dbuf == NULL);
         dbuf = alloca(sizeof(char *) * pcount);
         for (i = 0; i < pcount; i++) {

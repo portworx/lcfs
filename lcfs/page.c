@@ -114,7 +114,8 @@ lc_flushInodeDirtyPages(struct inode *inode, uint64_t page, bool unlock,
     /* Do not trigger flush if the last page is not fully filled up for a
      * sequentially written file.
      */
-    if (!force && (inode->i_extentLength || (lc_inodeGetEmap(inode) == NULL))) {
+    if (!force &&
+        (inode->i_extentLength || (lc_inodeGetEmap(inode) == NULL))) {
         dpage = lc_findDirtyPage(inode, page);
         if ((dpage == NULL) ||
             (dpage->dp_data &&
@@ -122,7 +123,8 @@ lc_flushInodeDirtyPages(struct inode *inode, uint64_t page, bool unlock,
             return false;
         }
     }
-    lc_flushPages(inode->i_fs->fs_gfs, inode->i_fs, inode, false, false, unlock);
+    lc_flushPages(inode->i_fs->fs_gfs, inode->i_fs, inode,
+                  false, false, unlock);
     return true;
 }
 
@@ -785,6 +787,7 @@ lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode, off_t soffset,
                  * unlocking the inode.
                  */
                 if (!page->p_dvalid && (page->p_data == NULL)) {
+                    lc_inodeUnlock(inode);
                     lc_releaseReadPages(gfs, fs, pages, pcount, false);
                     return ENOMEM;
                 }

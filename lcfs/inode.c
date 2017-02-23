@@ -171,6 +171,8 @@ lc_inodeUnlock(struct inode *inode) {
                (fs->fs_super->sb_flags & LC_SUPER_INIT));
         return;
     }
+    assert(inode->i_rwlock->__data.__writer ||
+           inode->i_rwlock->__data.__nr_readers);
     pthread_rwlock_unlock(inode->i_rwlock);
 }
 
