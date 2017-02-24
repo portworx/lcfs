@@ -1,0 +1,16 @@
+# cp lcfs.systemctl /etc/systemd/system/lcfs.service
+# chmod 664 /etc/systemd/system/lcfs.service
+
+[Unit]
+Description=LCFS Storage Driver for Docker
+Documentation=http://lcfs.portworx.com
+
+[Service]
+Type=forking
+ExecStart=/opt/pwx/bin/lcfs-setup.sh --start
+ExecStop=/opt/pwx/bin/lcfs-setup.sh --stop 
+StandardOutput=syslog
+StandardError=syslog
+
+[Install]
+WantedBy=multi-user.target

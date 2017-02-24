@@ -17,8 +17,15 @@ DEVFL=${DEVFL:-"/lcfs-dev-file"}
 DEV=${DEV:-"/dev/sdNN"}
 DSZ=${DSZ:-"500M"}
 
-LOCAL_DNLD=/opt/pwx/dnld
-LOCAL_PKG_NM=lcfs.rpm
+PWX_DIR=/opt/pwx
+
+LCFS_BINARY=${PWX_DIR}/bin/lcfs
+
+LOCAL_DNLD=${PWX_DIR}/dnld
+LOCAL_PKG=${LOCAL_DNLD}/lcfs.rpm
+LOCAL_MANIFEST=${LOCAL_DNLD}/manifest
+
+DOCKER_DAEMON_CFG=/etc/docker/daemon.json
 
 function cleanup_and_exit()
 {
@@ -51,20 +58,20 @@ function killprocess()
 function download_lcfs_binary()
 {
     ${SUDO} mkdir -p ${LOCAL_DNLD}
-    ${SUDO} curl --fail --netrc -s -o ${LOCAL_DNLD}/${LOCAL_PKG_NM} ${LCFS_PKG}
+    ${SUDO} curl --fail --netrc -s -o ${LOCAL_PKG} ${LCFS_PKG}
     [ $? -ne 0 ] && echo "Failed to download LCFS package ${LCFS_PKG}." && cleanup_and_exit 1
 }
 
 function install_lcfs_binary()
 {
-    local flg_fl=/opt/pwx/.lcfs
+    local flg_fl=${PWX_DIR}/.lcfs
 
     [ -z "$(ps -C ${DOCKER_SRV_BIN} -o pid --no-header)" ] && dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN}"
 
     local centos_exists=$(${SUDO} ${DOCKER_BIN} images -q centos:latest)
 
     ${SUDO} \rm -f ${flg_fl}
-    ${SUDO} ${DOCKER_BIN} run --rm --name centos -v /opt:/opt centos bash -c "rpm -Uvh --nodeps ${LOCAL_DNLD}/${LOCAL_PKG_NM} && touch ${flg_fl}"
+    ${SUDO} ${DOCKER_BIN} run --rm --name centos -v /opt:/opt centos bash -c "rpm -qlp ${LOCAL_PKG} &> ${LOCAL_MANIFEST} && rpm -Uvh --nodeps ${LOCAL_PKG} && touch ${flg_fl}"
     [ -z "${centos_exists}" ] && ${SUDO} ${DOCKER_BIN} rmi centos:latest &> /dev/null
     [ ! -f ${flg_fl} ] && echo "Failed to install LCFS binaries." && cleanup_and_exit 1
 }
@@ -98,6 +105,34 @@ function remove_lcfs_plugin()
     ${SUDO} ${DOCKER_BIN} plugin rm ${LCFS_IMG} &> /dev/null
 }
 
+function backup_docker_cfg()
+{
+    if [ -e "${DOCKER_DAEMON_CFG}" ]; then
+	echo "Backing up existing docker configuration: ${DOCKER_DAEMON_CFG}..."
+	${SUDO} mv -f ${DOCKER_DAEMON_CFG} ${DOCKER_DAEMON_CFG}.bak
+	echo "Backup made: ${DOCKER_DAEMON_CFG}.bak"
+    fi
+}
+
+function restore_docker_cfg()
+{
+    if [ -e "${DOCKER_DAEMON_CFG}" -a -e "${DOCKER_DAEMON_CFG}.bak" ]; then
+	echo "Warning: New docker configuration exists while trying restoring the original one."
+	echo "Backing up new configuration to restore the original: ${DOCKER_DAEMON_CFG}..."
+	${SUDO} mv -f ${DOCKER_DAEMON_CFG} ${DOCKER_DAEMON_CFG}.new.bak
+	echo "Backup made: ${DOCKER_DAEMON_CFG}.new.bak"
+    fi
+
+    if [ -e "${DOCKER_DAEMON_CFG}.bak" ]; then
+	echo "Restoring original docker configuration backup..."
+	${SUDO} mv /etc/docker/daemon.json.bak /etc/docker/daemon.json
+	echo "Done restoring: ${DOCKER_DAEMON_CFG}."
+	if [ -e "${DOCKER_DAEMON_CFG}.new.bak" ]; then
+	    echo "NOTE: Manual merge of configuration files: ${DOCKER_DAEMON_CFG} and ${DOCKER_DAEMON_CFG}.new.bak is needed."
+	fi
+    fi
+}
+
 function dockerd_manual_start()
 {
     local dcmd=($1)
@@ -109,8 +144,9 @@ function dockerd_manual_start()
 
     [ ${status} -ne 0 ] && echo "Error: failed to start docker." && cat ${out_fl}
     ${SUDO} \rm ${out_fl}
-    [ ${status} -ne 0 ] && cleanup_and_exit 1
+    [ ${status} -ne 0 ] && STOP="--stop" && stop_remove_lcfs 1
 }
+
 
 function system_docker_stop()
 {
@@ -120,6 +156,24 @@ function system_docker_stop()
     [ -n "${sysd_pid}" ] && sudo systemctl stop docker          # Systemd stop
     [ -e "${sysV_docker}" ] && ${SUDO} /etc/init.d/docker stop; # SystemV stop
     killprocess ${DOCKER_SRV_BIN};                              # last resort
+}
+
+function system_docker_disable_enable()
+{
+    [ -z "$1" ] && echo "Warning: failed to disable docker startup." && return 1
+    [ "$1" != "enable" -a "$1" != "disable" ] && echo "Warning: failed to disable docker startup. Invalid parameter." && return 1
+
+    local sysd_pid=$(ps -C systemd -o pid --no-header)
+    local sysV_docker="/etc/init.d/docker"
+
+    echo "Disable docker startup..."
+    [ -n "${sysd_pid}" ] && ${SUDO} systemctl $1 docker       # Systemd enable/disable
+
+    if [ -e "${sysV_docker}" ]; then
+	local onoff="on"
+	[ "$1" == "disable" ] && onoff=off
+	${SUDO} chkconfig docker ${onff};                     # SystemV enable/disable
+    fi
 }
 
 function lcfs_configure_save()
@@ -195,12 +249,13 @@ function stop_remove_lcfs
 	dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN} -s vfs"
 	remove_lcfs_plugin
 	killprocess ${DOCKER_SRV_BIN}
-	[ -z "${ZERODEV}" ] && read -p "Initialize the lcfs device (y/n)? " yn
+	[ "${DEV}" != "/dev/sdNN" -a -z "${ZERODEV}" ] && read -p "Clear (dd) or remove the lcfs device or file [${DEV}] (y/n)? " yn
 	if [ "${yn,,}" = "y" -o -n "${ZERODEV}"  ]; then
 	    [ "${DEV}" != "/dev/sdNN" ] && ${SUDO} dd if=/dev/zero of=${DEV} count=1 bs=4096 &> /dev/null
 	    ${SUDO} \rm -f ${DEVFL}
 	fi
 	[ -e ${LCFS_ENV_FL} ] && ${SUDO} \mv -f ${LCFS_ENV_FL} ${LCFS_ENV_FL}.save
+	restore_docker_cfg
     fi
     [ -z "${rcode}" ] && rcode=0
     [ -n "${STOP}" -o -n "${REMOVE}" -o -n "${STOP_DOCKER}" ] && cleanup_and_exit ${rcode}
@@ -252,6 +307,32 @@ function help()
     echo -e "\t--help: \tDisplay this message."
     cleanup_and_exit $?
 }
+
+function docker_version_check()
+{
+    ${SUDO} docker version --format '{{.Server.Version}}' &> /dev/null
+    [ $? -ne 0 ] && echo "Error: failed to check docker version. ${errmsg} Verify docker is running." && cleanup_and_exit 1
+
+    local errmsg="Docker 1.13 or greater is required to run LCFS."
+    local dversion=$(${SUDO} docker version --format '{{.Server.Version}}')
+
+    if [ $(echo "${dversion}" | awk -F'.' '{printf "%s%s",$1,$2}') -lt 113 ]; then
+	echo "Invalid Docker Version. ${errmsg}" && cleanup_and_exit 1
+    fi
+
+    return 0
+}
+
+
+if [ -z "$1" -o ! -e "${LCFS_ENV_FL}" ]; then
+    docker_version_check
+fi
+
+args=("$@")
+for ((i=0; i<${#args[@]}; i++)); do
+    [ "${args[i]}" == "--configure" ] && docker_version_check
+done
+
 
 while [ "$1" != "" ]; do
     case $1 in
@@ -311,10 +392,12 @@ fi
 ${SUDO} mkdir -p ${PLUGIN_MNT} ${DOCKER_MNT}
 
 # Mount lcfs
-${SUDO} /opt/pwx/bin/lcfs ${DEV} ${DOCKER_MNT} ${PLUGIN_MNT}
+${SUDO} ${LCFS_BINARY} ${DEV} ${DOCKER_MNT} ${PLUGIN_MNT}
 LSTATUS=$?
 sleep 3
 [ -z "$(ps -C lcfs -o pid,command --no-header)" -o ${LSTATUS} -ne 0 ] && echo "Failed to start LCFS binary [${LSTATUS}]." && cleanup_and_exit ${LSTATUS}
+
+backup_docker_cfg
 
 # Restart docker
 if [ -z "${START}" ]; then
@@ -330,5 +413,6 @@ if [ -z "${START}" ]; then
     if [ $? -ne 0 ]; then
 	echo "Error: LCFS save configuration failed. Setup failed." && REMOVE=yes && stop_remove_lcfs 1  # exit(1)
     fi
+    system_docker_disable_enable "disable"    # Disable docker startup for now if LCFS is setup.
 fi
 cleanup_and_exit $?
