@@ -257,7 +257,7 @@ lc_removeChild(struct fs *fs) {
 }
 
 /* Remove a layer from the list of layers */
-static void
+void
 lc_removeLayer(struct gfs *gfs, struct fs *fs, int gindex) {
     fs->fs_removed = true;
     assert(gfs->gfs_roots[gindex] == fs->fs_root);
@@ -298,6 +298,7 @@ lc_getLayerForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
         if ((fs->fs_super->sb_zombie == fs->fs_child->fs_gindex) &&
             (fs->fs_child->fs_next == NULL)) {
             fs->fs_super->sb_flags |= LC_SUPER_ZOMBIE;
+            assert(fs->fs_child->fs_zfs == NULL);
             fs->fs_child->fs_zfs = fs;
             pthread_mutex_unlock(&gfs->gfs_lock);
             *fsp = NULL;
@@ -338,6 +339,7 @@ lc_getLayerForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
     return 0;
 }
 
+/* Add a child layer */
 void
 lc_addChild(struct gfs *gfs, struct fs *pfs, struct fs *fs) {
     struct fs *child = pfs ? pfs->fs_child : lc_getGlobalFs(gfs);

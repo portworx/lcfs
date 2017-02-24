@@ -225,6 +225,19 @@ lc_removeRoot(struct fs *rfs, struct inode *dir, ino_t ino, bool rmdir,
     return lc_getLayerForRemoval(rfs->fs_gfs, root, (struct fs **)fsp);
 }
 
+/* Release resources assocaited with a layer being deleted */
+static void
+lc_releaseLayer(struct gfs *gfs, struct fs *fs) {
+    assert(fs->fs_removed);
+    lc_invalidateDirtyPages(gfs, fs);
+    lc_invalidateInodePages(gfs, fs);
+    lc_invalidateInodeBlocks(gfs, fs);
+    lc_blockFree(gfs, fs, fs->fs_sblock, 1, true);
+    lc_freeLayerBlocks(gfs, fs, true, true, fs->fs_parent);
+    lc_unlock(fs);
+    lc_destroyLayer(fs, true);
+}
+
 /* Remove a layer */
 void
 lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
@@ -274,14 +287,7 @@ lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
 
 retry:
     zfs = fs->fs_zfs;
-    assert(fs->fs_removed);
-    lc_invalidateDirtyPages(gfs, fs);
-    lc_invalidateInodePages(gfs, fs);
-    lc_invalidateInodeBlocks(gfs, fs);
-    lc_blockFree(gfs, fs, fs->fs_sblock, 1, true);
-    lc_freeLayerBlocks(gfs, fs, true, true, fs->fs_parent);
-    lc_unlock(fs);
-    lc_destroyLayer(fs, true);
+    lc_releaseLayer(gfs, fs);
     if (zfs) {
 
         /* Remove zombie parent layer */
@@ -509,6 +515,14 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
     cfs->fs_child = pfs;
     cfs->fs_super->sb_childLayer = pfs->fs_sblock;
 
+    /* Check if old parent of parent layer is pending removal */
+    tfs = pfs->fs_zfs;
+    if (tfs) {
+        assert(tfs->fs_super->sb_flags & LC_SUPER_ZOMBIE);
+        pfs->fs_zfs = NULL;
+        lc_removeLayer(gfs, tfs, tfs->fs_gindex);
+    }
+
     /* Make new child layer a child of the parent */
     lc_removeChild(fs);
     fs->fs_prev = NULL;
@@ -536,5 +550,9 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
     lc_unlock(fs);
     lc_unlock(pfs);
     lc_unlock(cfs);
+    if (tfs) {
+        lc_lock(tfs, true);
+        lc_releaseLayer(gfs, tfs);
+    }
     lc_unlock(rfs);
 }
