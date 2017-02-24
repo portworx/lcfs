@@ -132,6 +132,7 @@ lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
         fs->fs_rfs = fs;
     } else {
         pfs = lc_getLayerLocked(pinum, false);
+        assert(rw || pfs->fs_readOnly);
         assert(pfs->fs_pcount == 0);
         assert(!(fs->fs_super->sb_flags & LC_SUPER_ZOMBIE));
 
@@ -483,6 +484,8 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
     lc_switchInodeParent(cfs, root);
     cfs->fs_readOnly = fs->fs_readOnly;
     fs->fs_readOnly = false;
+    fs->fs_pinval = 0;
+    cfs->fs_pinval = 0;
 
     /* Switch layer roots and indices */
     //lc_printf("Swapping layers fs %p cfs %p with index %d and %d\n", fs, cfs, gindex, newgindex);

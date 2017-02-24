@@ -488,19 +488,19 @@ lc_initLayer(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
     fs->fs_sblock = block;
     lc_superRead(gfs, fs, block);
     assert(lc_superValid(fs->fs_super));
-    if (fs->fs_super->sb_flags & LC_SUPER_RDWR) {
-        fs->fs_readOnly = false;
-    }
+    fs->fs_readOnly = !(fs->fs_super->sb_flags & LC_SUPER_RDWR);
     fs->fs_restarted = true;
     fs->fs_root = fs->fs_super->sb_root;
     if (child) {
 
         /* First child layer of the parent */
         assert(pfs->fs_child == NULL);
+        assert(pfs->fs_frozen);
         pfs->fs_child = fs;
-        pfs->fs_frozen = true;
         lc_linkParent(fs, pfs);
         fs->fs_parent = pfs;
+        fs->fs_frozen = fs->fs_readOnly ||
+                        (fs->fs_super->sb_flags & LC_SUPER_INIT);
         if (pfs->fs_super->sb_flags & LC_SUPER_ZOMBIE) {
             fs->fs_zfs = pfs;
         }
@@ -508,18 +508,22 @@ lc_initLayer(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
 
         /* Base layer */
         assert(pfs->fs_next == NULL);
+        assert(fs->fs_readOnly);
         fs->fs_prev = pfs;
         pfs->fs_next = fs;
         lc_bcacheInit(fs, LC_PCACHE_SIZE, LC_PCLOCK_COUNT);
         fs->fs_rfs = fs;
+        fs->fs_frozen = true;
     } else {
 
         /* Layer with common parent */
         assert(pfs->fs_next == NULL);
+        assert(fs->fs_readOnly || (fs->fs_super->sb_flags & LC_SUPER_INIT));
         fs->fs_prev = pfs;
         pfs->fs_next = fs;
         lc_linkParent(fs, pfs);
         fs->fs_parent = pfs->fs_parent;
+        fs->fs_frozen = true;
     }
     lc_icache_init(fs, lc_icache_size(fs));
 
@@ -609,6 +613,7 @@ lc_mount(struct gfs *gfs, char *device, size_t size) {
     lc_bcacheInit(fs, LC_PCACHE_SIZE_MIN, LC_PCLOCK_COUNT);
     gfs->gfs_fs[0] = fs;
     gfs->gfs_roots[0] = LC_ROOT_INODE;
+    lc_lock(fs, true);
 
     /* Try to find a valid superblock, if not found, format the device */
     lc_superRead(gfs, fs, fs->fs_sblock);
@@ -640,6 +645,7 @@ lc_mount(struct gfs *gfs, char *device, size_t size) {
     /* Write out the file system super block */
     gfs->gfs_super->sb_flags |= LC_SUPER_DIRTY | LC_SUPER_MOUNTED;
     lc_superWrite(gfs, fs);
+    lc_unlock(fs);
 }
 
 /* Sync a dirty file system */

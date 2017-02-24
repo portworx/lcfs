@@ -159,6 +159,9 @@ struct fs {
     /* Highest index used in the tree */
     int fs_hgindex;
 
+    /* If set, invalidate pages on delete */
+    int fs_pinval;
+
     /* Root inode of the layer */
     ino_t fs_root;
 

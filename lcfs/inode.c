@@ -1038,6 +1038,7 @@ lc_getInode(struct fs *fs, ino_t ino, struct inode *handle,
     struct inode *inode;
 
     assert(!fs->fs_removed);
+    lc_lockOwned(&fs->fs_rwlock, false);
 
     /* Check if the file handle points to the inode */
     if (handle && (handle->i_fs == fs)) {

@@ -246,8 +246,8 @@ lc_remove(struct fs *fs, ino_t parent, const char *name, void **inodep,
 static void
 lc_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
     struct fuse_entry_param ep;
-    struct inode *inode, *dir;
     struct fs *fs, *nfs = NULL;
+    struct inode *inode, *dir;
     struct timeval start;
     int gindex, err = 0;
     ino_t ino;

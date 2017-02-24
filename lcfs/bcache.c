@@ -145,11 +145,12 @@ lc_unlockPageRead(struct fs *fs, uint32_t lhash) {
 /* Remove pages from page cache and free the hash table */
 void
 lc_destroyPages(struct gfs *gfs, struct fs *fs, bool remove) {
-    uint64_t i, count = 0, pcount, gindex = fs->fs_gindex;
+    struct page *page, **prev, *fpage = NULL;
     struct lbcache *lbcache = fs->fs_bcache;
-    struct page *page, **prev;
+    uint64_t i, count = 0, pcount;
+    int gindex = fs->fs_pinval;
     struct pcache *pcache;
-    uint32_t lhash;
+    uint32_t lhash = -1;
     bool all;
 
     if (lbcache == NULL) {
@@ -158,25 +159,38 @@ lc_destroyPages(struct gfs *gfs, struct fs *fs, bool remove) {
     all = (fs->fs_parent == NULL);
 
     /* No need to process individual layers during an unmount */
-    /* XXX Disabled for now as this is slowing down layer removals */
-    if (!all && (!remove || true)) {
+    if (!all && (!remove || (gindex == 0))) {
         fs->fs_bcache = NULL;
         return;
     }
     pcache = lbcache->lb_pcache;
     for (i = 0; i < lbcache->lb_pcacheSize; i++) {
+        if (pcache[i].pc_head == NULL) {
+            continue;
+        }
         pcount = 0;
-        lhash = lc_pcLockHash(fs, i);
+        if (!all) {
+            if (fs->fs_rfs->fs_removed) {
+                break;
+            }
+            lhash = lc_pcLockHash(fs, i);
+            fpage = NULL;
+        }
         page = pcache[i].pc_head;
         prev = &pcache[i].pc_head;
         while (page) {
             if (all || (page->p_lindex == gindex)) {
                 *prev = page->p_cnext;
                 page->p_block = LC_INVALID_BLOCK;
-                page->p_cnext = NULL;
                 page->p_dvalid = 0;
-                lc_freePage(gfs, fs, page);
                 pcount++;
+                if (all) {
+                    page->p_cnext = NULL;
+                    lc_freePage(gfs, fs, page);
+                } else {
+                    page->p_cnext = fpage;
+                    fpage = page;
+                }
             } else {
                 prev = &page->p_cnext;
             }
@@ -185,8 +199,21 @@ lc_destroyPages(struct gfs *gfs, struct fs *fs, bool remove) {
         if (all) {
             assert(pcount == pcache[i].pc_pcount);
             assert(pcache[i].pc_head == NULL);
+        } else {
+            pcache[i].pc_pcount -= pcount;
+            lc_pcUnLockHash(fs, lhash);
+
+            /* Free the pages invalidated */
+            while (fpage) {
+                page = fpage;
+                fpage = page->p_cnext;
+                page->p_cnext = NULL;
+                lc_freePage(gfs, fs, page);
+            }
+            if (fs->fs_rfs->fs_removed) {
+                break;
+            }
         }
-        lc_pcUnLockHash(fs, lhash);
         count += pcount;
     }
 
@@ -339,7 +366,10 @@ lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
     /* Initialize the page structure and lock the hash list */
     assert(page->p_block == LC_INVALID_BLOCK);
     page->p_block = block;
-    page->p_lindex = fs->fs_gindex;
+    if (!fs->fs_readOnly && !(fs->fs_super->sb_flags & LC_SUPER_INIT)) {
+        page->p_lindex = fs->fs_gindex;
+        fs->fs_pinval = fs->fs_gindex;
+    }
     page->p_nocache = 1;
     lhash = lc_pcLockHash(fs, hash);
     cpage = pcache[hash].pc_head;
@@ -366,7 +396,7 @@ lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
 /* Lookup/Create a page in the block hash */
 struct page *
 lc_getPage(struct fs *fs, uint64_t block, char *data, bool read) {
-    int hash = lc_pageBlockHash(fs, block);
+    int hash = lc_pageBlockHash(fs, block), gindex = fs->fs_gindex;
     struct pcache *pcache = fs->fs_bcache->lb_pcache;
     bool hit = false, missed = false;
     struct page *page, *new = NULL;
@@ -395,7 +425,6 @@ retry:
         page = new;
         new = NULL;
         page->p_block = block;
-        page->p_lindex = fs->fs_gindex;
         page->p_cnext = pcache[hash].pc_head;
         pcache[hash].pc_head = page;
         pcache[hash].pc_pcount++;
@@ -406,6 +435,10 @@ retry:
     if (page == NULL) {
         new = lc_newPage(gfs, fs);
         assert(!new->p_dvalid);
+        if (!fs->fs_readOnly && !(fs->fs_super->sb_flags & LC_SUPER_INIT)) {
+            new->p_lindex = gindex;
+            fs->fs_pinval = gindex;
+        }
         goto retry;
     }
 
@@ -415,7 +448,7 @@ retry:
         lc_freePage(gfs, fs, new);
     }
 
-    if (page->p_lindex != fs->fs_gindex) {
+    if (page->p_lindex != gindex) {
 
         /* If a page is shared by many layers, untag it */
         page->p_lindex = 0;
