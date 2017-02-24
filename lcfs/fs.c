@@ -130,12 +130,16 @@ lc_freeLayer(struct fs *fs, bool remove) {
     lc_destroyPages(gfs, fs, remove);
     assert(fs->fs_bcache == NULL);
     lc_statsDeinit(fs);
+#ifdef LC_MUTEX_DESTROY
     pthread_mutex_destroy(&fs->fs_ilock);
     pthread_mutex_destroy(&fs->fs_dilock);
     pthread_mutex_destroy(&fs->fs_plock);
     pthread_mutex_destroy(&fs->fs_alock);
     pthread_mutex_destroy(&fs->fs_hlock);
+#endif
+#ifdef LC_RWLOCK_DESTROY
     pthread_rwlock_destroy(&fs->fs_rwlock);
+#endif
     __sync_sub_and_fetch(&gfs->gfs_count, 1);
     if (fs != lc_getGlobalFs(gfs)) {
         lc_free(fs, fs->fs_super, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
@@ -460,13 +464,17 @@ lc_gfsDeinit(struct gfs *gfs) {
             LC_MEMTYPE_GFS);
     lc_free(NULL, gfs->gfs_roots, sizeof(ino_t) * LC_LAYER_MAX,
             LC_MEMTYPE_GFS);
+#ifdef LC_COND_DESTROY
     pthread_cond_destroy(&gfs->gfs_mcond);
     pthread_cond_destroy(&gfs->gfs_flusherCond);
     pthread_cond_destroy(&gfs->gfs_cleanerCond);
+#endif
+#ifdef LC_MUTEX_DESTROY
     pthread_mutex_destroy(&gfs->gfs_lock);
     pthread_mutex_destroy(&gfs->gfs_alock);
     pthread_mutex_destroy(&gfs->gfs_clock);
     pthread_mutex_destroy(&gfs->gfs_flock);
+#endif
 }
 
 /* Initialize a file system after reading its super block */

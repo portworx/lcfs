@@ -469,7 +469,9 @@ lc_freeInode(struct inode *inode) {
     }
     assert(inode->i_xattrData == NULL);
     if (inode->i_rwlock) {
+#ifdef LC_RWLOCK_DESTROY
         pthread_rwlock_destroy(inode->i_rwlock);
+#endif
         lc_free(fs, inode->i_rwlock, sizeof(pthread_rwlock_t),
                 LC_MEMTYPE_IRWLOCK);
     }
@@ -729,7 +731,9 @@ lc_freezeLayer(struct gfs *gfs, struct fs *fs) {
                    (lc_inodeGetDirtyPageCount(inode) == 0));
 
             /* Drop locks from the inode */
+#ifdef LC_RWLOCK_DESTROY
             pthread_rwlock_destroy(inode->i_rwlock);
+#endif
             lc_free(fs, inode->i_rwlock, sizeof(pthread_rwlock_t),
                     LC_MEMTYPE_IRWLOCK);
             inode->i_rwlock = NULL;
@@ -744,9 +748,11 @@ lc_freezeLayer(struct gfs *gfs, struct fs *fs) {
             }
             inode = *prev;
         }
+#ifdef LC_MUTEX_DESTROY
         if (resize) {
             pthread_mutex_destroy(&icache[i].ic_lock);
         }
+#endif
     }
     assert(fs->fs_pcount == 0);
     if (rcount) {
@@ -754,9 +760,11 @@ lc_freezeLayer(struct gfs *gfs, struct fs *fs) {
         fs->fs_icount -= rcount;
     }
     if (resize) {
+#ifdef LC_MUTEX_DESTROY
         for (; i < icacheSize; i++) {
             pthread_mutex_destroy(&icache[i].ic_lock);
         }
+#endif
         lc_free(fs, icache, sizeof(struct icache) * icacheSize,
                 LC_MEMTYPE_ICACHE);
     }
@@ -865,7 +873,9 @@ lc_destroyInodes(struct fs *fs, bool remove) {
         }
         assert(fs->fs_icache[i].ic_head == NULL);
         //pthread_mutex_unlock(&fs->fs_icache[i].ic_lock);
+#ifdef LC_MUTEX_DESTROY
         pthread_mutex_destroy(&fs->fs_icache[i].ic_lock);
+#endif
     }
 
     /* XXX reuse this cache for another file system */

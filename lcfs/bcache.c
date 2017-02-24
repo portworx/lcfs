@@ -74,8 +74,11 @@ lc_bcacheInit(struct fs *fs, uint32_t count, uint32_t lcount) {
 void
 lc_bcacheFree(struct fs *fs) {
     struct lbcache *lbcache = fs->fs_bcache;
+    uint32_t lcount;
+#ifdef LC_MUTEX_DESTROY
     pthread_mutex_t *locks;
-    uint32_t i, lcount;
+    uint32_t lcount;
+#endif
 
     /* Free the bcache when the base layer is deleted/unmounted */
     if (fs->fs_parent == NULL) {
@@ -84,10 +87,12 @@ lc_bcacheFree(struct fs *fs) {
                 sizeof(struct pcache) * lbcache->lb_pcacheSize,
                 LC_MEMTYPE_PCACHE);
         lcount = lbcache->lb_pcacheLockCount * 2;
+#ifdef LC_MUTEX_DESTROY
         locks = lbcache->lb_pcacheLocks;
         for (i = 0; i < lcount; i++) {
             pthread_mutex_destroy(&locks[i]);
         }
+#endif
         lc_free(fs, lbcache->lb_pcacheLocks,
                 sizeof(pthread_mutex_t) * lcount, LC_MEMTYPE_PCLOCK);
         lc_free(fs, lbcache, sizeof(struct lbcache), LC_MEMTYPE_LBCACHE);

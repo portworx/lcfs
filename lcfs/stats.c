@@ -220,7 +220,9 @@ void
 lc_statsDeinit(struct fs *fs) {
     if (stats_enabled) {
         lc_displayStats(fs);
+#ifdef LC_MUTEX_DESTROY
         pthread_mutex_destroy(&fs->fs_stats->s_lock);
+#endif
         lc_free(fs, fs->fs_stats, sizeof(struct stats), LC_MEMTYPE_STATS);
     } else {
         assert(fs->fs_stats == NULL);
