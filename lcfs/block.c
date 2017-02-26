@@ -39,16 +39,17 @@ lc_reclaimSpace(struct gfs *gfs) {
     struct fs *fs;
     int i;
 
-    pthread_mutex_lock(&gfs->gfs_lock);
+    rcu_register_thread();
+    rcu_read_lock();
     for (i = 0; i <= gfs->gfs_scount; i++) {
-        fs = gfs->gfs_fs[i];
+        fs = rcu_dereference(gfs->gfs_fs[i]);
 
         /* Locking a layer would fail only when the layer is being deleted */
         if (fs &&
             (fs->fs_extents || fs->fs_blockInodesCount ||
              fs->fs_blockMetaCount || fs->fs_fextents ||
              fs->fs_mextents || fs->fs_dextents) && !lc_tryLock(fs, false)) {
-            pthread_mutex_unlock(&gfs->gfs_lock);
+            rcu_read_unlock();
 
             /* Flush dirty pages so that freed blocks can be released */
             if (fs->fs_dextents) {
@@ -82,13 +83,14 @@ lc_reclaimSpace(struct gfs *gfs) {
                 count += lc_freeLayerBlocks(gfs, fs, false, false, false);
             }
             lc_unlock(fs);
+            rcu_read_lock();
             if (count >= LC_RECLAIM_BLOCKS) {
-                return count;
+                break;
             }
-            pthread_mutex_lock(&gfs->gfs_lock);
         }
     }
-    pthread_mutex_unlock(&gfs->gfs_lock);
+    rcu_read_unlock();
+    rcu_unregister_thread();
     return count;
 }
 

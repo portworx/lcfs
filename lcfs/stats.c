@@ -178,16 +178,19 @@ lc_displayStatsAll(struct gfs *gfs) {
     struct fs *fs;
     int i;
 
-    pthread_mutex_lock(&gfs->gfs_lock);
+    rcu_register_thread();
+    rcu_read_lock();
     for (i = 0; i <= gfs->gfs_scount; i++) {
-        if ((fs = gfs->gfs_fs[i])) {
+        fs = rcu_dereference(gfs->gfs_fs[i]);
+        if (fs) {
             if (i == 0) {
                 lc_displayGlobalMemStats();
             }
             lc_displayLayerStats(fs);
         }
     }
-    pthread_mutex_unlock(&gfs->gfs_lock);
+    rcu_read_unlock();
+    rcu_unregister_thread();
 }
 
 /* Display global stats */

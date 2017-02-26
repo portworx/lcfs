@@ -790,11 +790,12 @@ lc_flusher(void *data) {
         pthread_cond_timedwait(&gfs->gfs_flusherCond, &gfs->gfs_flock,
                                &interval);
         pthread_mutex_unlock(&gfs->gfs_flock);
+        rcu_register_thread();
+        rcu_read_lock();
 
         /* Check if any layers accumulated too many dirty pages */
-        pthread_mutex_lock(&gfs->gfs_lock);
         for (i = 0; i <= gfs->gfs_scount; i++) {
-            fs = gfs->gfs_fs[i];
+            fs = rcu_dereference(gfs->gfs_fs[i]);
             if (fs == NULL) {
                 continue;
             }
@@ -813,25 +814,26 @@ lc_flusher(void *data) {
                  (force && (fs->fs_ctime < recent))) &&
                 !(fs->fs_super->sb_flags & LC_SUPER_INIT) &&
                 !lc_tryLock(fs, false)) {
-                pthread_mutex_unlock(&gfs->gfs_lock);
 
+                rcu_read_unlock();
                 if (fs->fs_pcount) {
                     lc_flushDirtyInodeList(fs, false);
                 }
                 lc_flushDirtyPages(gfs, fs);
                 lc_unlock(fs);
-                pthread_mutex_lock(&gfs->gfs_lock);
+                rcu_read_lock();
             } else if (((fs->fs_dpcount > LC_MAX_LAYER_DIRTYPAGES) ||
                         (fs->fs_dpcount && force)) && !lc_tryLock(fs, false)) {
+                rcu_read_unlock();
 
                 /* Write out dirty pages of a layer */
-                pthread_mutex_unlock(&gfs->gfs_lock);
                 lc_flushDirtyPages(gfs, fs);
                 lc_unlock(fs);
-                pthread_mutex_lock(&gfs->gfs_lock);
+                rcu_read_lock();
             }
         }
-        pthread_mutex_unlock(&gfs->gfs_lock);
+        rcu_read_unlock();
+        rcu_unregister_thread();
     }
     return NULL;
 }
@@ -941,14 +943,15 @@ lc_purgePages(struct gfs *gfs, bool force) {
     int i;
 
     gfs->gfs_pcleaning = true;
-    pthread_mutex_lock(&gfs->gfs_lock);
+    rcu_register_thread();
+    rcu_read_lock();
     for (i = 0; i <= gfs->gfs_scount; i++) {
 
         /* Start from a file system after the one processed last time */
         if (gfs->gfs_cleanerIndex > gfs->gfs_scount) {
             gfs->gfs_cleanerIndex = 0;
         }
-        fs = gfs->gfs_fs[gfs->gfs_cleanerIndex];
+        fs = rcu_dereference(gfs->gfs_fs[gfs->gfs_cleanerIndex]);
         if (fs == NULL) {
             gfs->gfs_cleanerIndex++;
             continue;
@@ -966,35 +969,37 @@ lc_purgePages(struct gfs *gfs, bool force) {
         if ((fs->fs_parent == NULL) &&
             (force || (fs->fs_ctime < recent)) &&
             !lc_tryLock(fs, false)) {
-            pthread_mutex_unlock(&gfs->gfs_lock);
 
             /* Purge clean pages for the tree */
             if (fs->fs_bcache->lb_pcount) {
+                rcu_read_unlock();
                 count += lc_purgeTreePages(gfs, fs);
+                rcu_read_lock();
                 if (lc_checkMemoryAvailable(true)) {
-                    pthread_mutex_lock(&gfs->gfs_lock);
                     lc_unlock(fs);
                     break;
                 }
             }
             lc_unlock(fs);
-            pthread_mutex_lock(&gfs->gfs_lock);
         }
         gfs->gfs_cleanerIndex++;
     }
+    rcu_read_unlock();
+    gfs->gfs_pcleaning = false;
 
     /* Wakeup flusher */
     if (!lc_checkMemoryAvailable(false)) {
         pthread_cond_signal(&gfs->gfs_flusherCond);
     }
-    gfs->gfs_pcleaning = false;
 
     /* Wakeup threads waiting for memory to become available */
+    pthread_mutex_lock(&gfs->gfs_clock);
     pthread_cond_broadcast(&gfs->gfs_mcond);
+    pthread_mutex_unlock(&gfs->gfs_clock);
+    rcu_unregister_thread();
     if (count) {
         gfs->gfs_purged += count;
     }
-    pthread_mutex_unlock(&gfs->gfs_lock);
 }
 
 /* Background thread for purging clean pages */

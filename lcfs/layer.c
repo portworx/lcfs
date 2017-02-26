@@ -39,18 +39,20 @@ lc_linkParent(struct fs *fs, struct fs *pfs) {
 
 /* Invalidate pages of the first layer in kernel page cache */
 static void
-lc_invalidateFirstLayer(struct gfs *gfs, struct fs *pfs) {
+lc_invalidateFirstLayer(struct gfs *gfs, struct fs *pfs, int gindex) {
     struct fs *fs;
 
-    pthread_mutex_lock(&gfs->gfs_lock);
-    fs = pfs->fs_child ? pfs->fs_child->fs_child : NULL;
+    rcu_register_thread();
+    rcu_read_lock();
+    fs = rcu_dereference(gfs->gfs_fs[gindex]);
     if (fs && !lc_tryLock(fs, false)) {
-        pthread_mutex_unlock(&gfs->gfs_lock);
+        rcu_read_unlock();
         lc_invalidateLayerPages(gfs, fs);
         lc_unlock(fs);
     } else {
-        pthread_mutex_unlock(&gfs->gfs_lock);
+        rcu_read_unlock();
     }
+    rcu_unregister_thread();
 }
 
 /* Create a new layer */
@@ -59,14 +61,14 @@ lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
                const char *parent, size_t size, bool rw) {
     struct fs *fs = NULL, *pfs = NULL, *rfs = NULL;
     struct inode *dir, *pdir;
-    bool base, init, inval;
     ino_t root, pinum = 0;
     struct timeval start;
     char pname[size + 1];
+    int err = 0, inval;
+    bool base, init;
     uint32_t flags;
     size_t icsize;
     void *super;
-    int err = 0;
 
     lc_statsBegin(&start);
 
@@ -201,7 +203,7 @@ out:
     }
     if (pfs) {
         if (!err && inval) {
-            lc_invalidateFirstLayer(gfs, pfs);
+            lc_invalidateFirstLayer(gfs, pfs, inval);
         }
         lc_unlock(pfs);
     }
@@ -331,19 +333,25 @@ lc_umountLayer(fuse_req_t req, struct gfs *gfs, ino_t root) {
         fs->fs_super->sb_lastInode = gfs->gfs_super->sb_ninode;
         fs->fs_frozen = true;
         fs->fs_commitInProgress = false;
+        if (fs->fs_dpcount == 0) {
+            lc_unlock(fs);
+            return;
+        }
         lc_unlock(fs);
 
         /* Sync dirty data */
-        pthread_mutex_lock(&gfs->gfs_lock);
-        fs = gfs->gfs_fs[gindex];
-        if (fs && !lc_tryLock(fs, false)) {
-            pthread_mutex_unlock(&gfs->gfs_lock);
-            assert(fs->fs_root == lc_getInodeHandle(root));
+        rcu_register_thread();
+        rcu_read_lock();
+        fs = rcu_dereference(gfs->gfs_fs[gindex]);
+        if (fs && (fs->fs_root == lc_getInodeHandle(root)) &&
+            !lc_tryLock(fs, false)) {
+            rcu_read_unlock();
             lc_flushDirtyPages(gfs, fs);
             lc_unlock(fs);
         } else {
-            pthread_mutex_unlock(&gfs->gfs_lock);
+            rcu_read_unlock();
         }
+        rcu_unregister_thread();
     } else {
         fuse_reply_ioctl(req, 0, NULL, 0);
         fs->fs_super->sb_icount = fs->fs_icount;

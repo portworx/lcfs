@@ -8,7 +8,7 @@ endif
 UNAME=$(shell uname)
 ifeq ($(UNAME),Linux)
 	CFLAGS=$(BUILD_FLAGS) -Wall -D_FILE_OFFSET_BITS=64 -I/usr/include/fuse -I/usr/local/include/fuse
-	LDFLAGS=-lz -ltcmalloc -pthread -lprofiler -lfuse
+	LDFLAGS=-lz -ltcmalloc -pthread -lprofiler -lurcu -lfuse
 	#CFLAGS=$(BUILD_FLAGS) -Wall -D_FILE_OFFSET_BITS=64 -I/usr/include/fuse3 -I/usr/local/include/fuse3
 	#LDFLAGS=-lz -ltcmalloc -pthread -lprofiler -L/usr/local/lib -lfuse3
 else

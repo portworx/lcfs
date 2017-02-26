@@ -14,6 +14,7 @@
 //#define LC_PROFILING
 
 #define _GNU_SOURCE
+#define URCU_INLINE_SMALL_FUNCTIONS
 
 #include <fuse_lowlevel.h>
 #include <stdio.h>
@@ -30,6 +31,7 @@
 #include <zlib.h>
 #include <assert.h>
 #include <sys/ioctl.h>
+#include <urcu.h>
 #ifdef __APPLE__
 #include <mach/clock.h>
 #include <mach/mach.h>
@@ -126,7 +128,7 @@ void lc_superInit(struct super *super, uint64_t root, size_t size,
 struct fs *lc_getLayerLocked(ino_t ino, bool exclusive);
 uint64_t lc_getLayerForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp);
 int lc_getIndex(struct fs *nfs, ino_t parent, ino_t ino);
-int lc_addLayer(struct gfs *gfs, struct fs *fs, struct fs *pfs, bool *inval);
+int lc_addLayer(struct gfs *gfs, struct fs *fs, struct fs *pfs, int *inval);
 void lc_removeLayer(struct gfs *gfs, struct fs *fs, int gindex);
 void lc_addChild(struct gfs *gfs, struct fs *pfs, struct fs *fs);
 void lc_removeChild(struct fs *fs);

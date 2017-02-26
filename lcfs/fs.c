@@ -265,7 +265,8 @@ void
 lc_removeLayer(struct gfs *gfs, struct fs *fs, int gindex) {
     fs->fs_removed = true;
     assert(gfs->gfs_roots[gindex] == fs->fs_root);
-    gfs->gfs_fs[gindex] = NULL;
+    rcu_assign_pointer(gfs->gfs_fs[gindex], NULL);
+    synchronize_rcu();
     gfs->gfs_roots[gindex] = 0;
     lc_removeChild(fs);
     fs->fs_gindex = -1;
@@ -376,7 +377,7 @@ lc_addChild(struct gfs *gfs, struct fs *pfs, struct fs *fs) {
 
 /* Add a file system to global list of file systems */
 int
-lc_addLayer(struct gfs *gfs, struct fs *fs, struct fs *pfs, bool *inval) {
+lc_addLayer(struct gfs *gfs, struct fs *fs, struct fs *pfs, int *inval) {
     struct fs *rfs = fs->fs_rfs;
     int i;
 
@@ -407,7 +408,9 @@ lc_addLayer(struct gfs *gfs, struct fs *fs, struct fs *pfs, bool *inval) {
         printf("Too many layers.  Retry after remount or deleting some.\n");
         return EOVERFLOW;
     }
-    *inval = pfs && pfs->fs_child && pfs->fs_child->fs_single;
+    *inval = (pfs && pfs->fs_child && pfs->fs_child->fs_single) ?
+             (pfs->fs_child->fs_child ? pfs->fs_child->fs_child->fs_gindex :
+              0) : 0;
 
     /* Add this file system to the layer list or root file systems list */
     lc_addChild(gfs, pfs, fs);
@@ -682,8 +685,6 @@ lc_umountSync(struct gfs *gfs) {
     struct fs *fs = lc_getGlobalFs(gfs);
     int err;
 
-    lc_lock(fs, true);
-
     /* XXX Combine sync and destroy */
     lc_sync(gfs, fs, false);
 
@@ -722,48 +723,41 @@ lc_syncAllLayers(struct gfs *gfs) {
     struct fs *fs;
     int i;
 
-    pthread_mutex_lock(&gfs->gfs_lock);
     for (i = 1; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
 
         /* Trylock can fail only if the fs is being removed */
         if (fs && !lc_tryLock(fs, false)) {
-            pthread_mutex_unlock(&gfs->gfs_lock);
             lc_sync(gfs, fs, true);
             lc_unlock(fs);
-            pthread_mutex_lock(&gfs->gfs_lock);
         }
     }
-    pthread_mutex_unlock(&gfs->gfs_lock);
 }
 
 /* Free the global file system as part of unmount */
 void
 lc_unmount(struct gfs *gfs) {
-    struct fs *fs;
+    struct fs *fs = lc_getGlobalFs(gfs);
     int i;
 
     assert(gfs->gfs_unmounting);
+    lc_lock(fs, true);
 
     /* Flush dirty data before destroying file systems since layers may be out
      * of order in the file system table and parent layers should not be
      * destroyed before child layers as some data structures are shared.
      */
     lc_syncAllLayers(gfs);
-    pthread_mutex_lock(&gfs->gfs_lock);
     for (i = 1; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
         if (fs && !lc_tryLock(fs, false)) {
             gfs->gfs_fs[i] = NULL;
-            pthread_mutex_unlock(&gfs->gfs_lock);
             lc_freeLayerBlocks(gfs, fs, true, false, false);
             lc_superWrite(gfs, fs);
             lc_unlock(fs);
             lc_destroyLayer(fs, false);
-            pthread_mutex_lock(&gfs->gfs_lock);
         }
     }
-    pthread_mutex_unlock(&gfs->gfs_lock);
     assert(gfs->gfs_count == 1);
     lc_umountSync(gfs);
     lc_gfsDeinit(gfs);
