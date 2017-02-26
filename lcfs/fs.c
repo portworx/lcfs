@@ -525,6 +525,9 @@ lc_initLayer(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
         fs->fs_parent = pfs->fs_parent;
         fs->fs_frozen = true;
     }
+    if (fs->fs_frozen && (fs->fs_super->sb_lastInode == 0)) {
+        fs->fs_super->sb_lastInode = gfs->gfs_super->sb_ninode;
+    }
     lc_icache_init(fs, lc_icache_size(fs));
 
     /* Add the layer to the global list */

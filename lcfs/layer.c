@@ -135,13 +135,6 @@ lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
         assert(rw || pfs->fs_readOnly);
         assert(pfs->fs_pcount == 0);
         assert(!(fs->fs_super->sb_flags & LC_SUPER_ZOMBIE));
-
-        /* Mark the layer as immutable */
-        if (!pfs->fs_frozen) {
-            pfs->fs_super->sb_lastInode = gfs->gfs_super->sb_ninode;
-            pfs->fs_frozen = true;
-            pfs->fs_commitInProgress = false;
-        }
         assert(pfs->fs_root == lc_getInodeHandle(pinum));
         lc_linkParent(fs, pfs);
     }
@@ -313,10 +306,55 @@ out:
     lc_unlock(rfs);
 }
 
+/* Unmount a layer */
+static void
+lc_umountLayer(fuse_req_t req, struct gfs *gfs, ino_t root) {
+    struct fs *fs = lc_getLayerLocked(root, false);
+    int gindex;
+
+    if (!fs->fs_frozen && (fs->fs_readOnly ||
+                           (fs->fs_super->sb_flags & LC_SUPER_INIT))) {
+        gindex = fs->fs_gindex;
+        lc_unlock(fs);
+
+        /* Allocate blocks for all dirty pages.  This must have been started by
+         * release inode calls, and taking the exclusive lock make sure all
+         * those operations are finished.
+         */
+        fs = lc_getLayerLocked(root, true);
+        assert((fs->fs_child == NULL) || fs->fs_commitInProgress);
+        assert(!fs->fs_frozen);
+        fuse_reply_ioctl(req, 0, NULL, 0);
+        lc_freezeLayer(gfs, fs);
+
+        /* Mark the layer as immutable */
+        fs->fs_super->sb_lastInode = gfs->gfs_super->sb_ninode;
+        fs->fs_frozen = true;
+        fs->fs_commitInProgress = false;
+        lc_unlock(fs);
+
+        /* Sync dirty data */
+        pthread_mutex_lock(&gfs->gfs_lock);
+        fs = gfs->gfs_fs[gindex];
+        if (fs && !lc_tryLock(fs, false)) {
+            pthread_mutex_unlock(&gfs->gfs_lock);
+            assert(fs->fs_root == lc_getInodeHandle(root));
+            lc_flushDirtyPages(gfs, fs);
+            lc_unlock(fs);
+        } else {
+            pthread_mutex_unlock(&gfs->gfs_lock);
+        }
+    } else {
+        fuse_reply_ioctl(req, 0, NULL, 0);
+        fs->fs_super->sb_icount = fs->fs_icount;
+        lc_unlock(fs);
+    }
+}
+
 /* Mount, unmount, stat a layer */
 void
 lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
-             enum ioctl_cmd cmd) {
+              enum ioctl_cmd cmd) {
     struct timeval start;
     struct fs *fs, *rfs;
     ino_t root;
@@ -371,25 +409,7 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
 
         /* Unmount a layer */
         if (err == 0) {
-            fs = lc_getLayerLocked(root, false);
-
-            /* Sync all dirty data for read only image layers and readwrite
-             * init layer so that new layers could be created on top of those.
-             */
-            if (!fs->fs_frozen &&
-                (fs->fs_readOnly ||
-                 (fs->fs_super->sb_flags & LC_SUPER_INIT))) {
-                lc_unlock(fs);
-                fs = lc_getLayerLocked(root, true);
-                assert((fs->fs_child == NULL) || fs->fs_commitInProgress);
-                assert(!fs->fs_frozen);
-                fuse_reply_ioctl(req, 0, NULL, 0);
-                lc_freezeLayer(gfs, fs);
-            } else {
-                fuse_reply_ioctl(req, 0, NULL, 0);
-            }
-            fs->fs_super->sb_icount = fs->fs_icount;
-            lc_unlock(fs);
+            lc_umountLayer(req, gfs, root);
         }
         lc_statsAdd(rfs, LC_UMOUNT, err, &start);
         break;
