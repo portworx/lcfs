@@ -17,7 +17,7 @@ else
 endif
 
 ifdef STATIC
-LCFSSTATICLIBS="libtcmalloc_and_profiler.a libfuse.a libunwind.a"
+LCFSSTATICLIBS="libtcmalloc_and_profiler.a libfuse.a libunwind.a liburcu.a"
 # use for loop to preserve library order
 LCFS_STATIC_LIBS=$(shell for fl in "$(LCFSSTATICLIBS)"; do find /usr -name $$fl 2>/dev/null; done)
 ifeq ($(shell test -z "$(LCFS_STATIC_LIBS)"; echo $$?),0)
