@@ -45,9 +45,12 @@ make clean all
 
 %install
 mkdir -p ${RPM_BUILD_ROOT}/opt/pwx/bin
+mkdir -p ${RPM_BUILD_ROOT}/opt/pwx/services
 cp -f cstat ${RPM_BUILD_ROOT}/opt/pwx/bin
 cp -f lcfs ${RPM_BUILD_ROOT}/opt/pwx/bin
 cp -f lcfs-setup.sh ${RPM_BUILD_ROOT}/opt/pwx/bin
+cp -f lcfs.systemctl ${RPM_BUILD_ROOT}/opt/pwx/services
+cp -f lcfs.systemv ${RPM_BUILD_ROOT}/opt/pwx/services
 
 %check
 
@@ -59,6 +62,8 @@ cp -f lcfs-setup.sh ${RPM_BUILD_ROOT}/opt/pwx/bin
 /opt/pwx/bin/cstat
 /opt/pwx/bin/lcfs
 /opt/pwx/bin/lcfs-setup.sh
+/opt/pwx/services/lcfs.systemctl
+/opt/pwx/services/lcfs.systemv
 
 %pre
 

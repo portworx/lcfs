@@ -62,6 +62,8 @@ echo "--- Building target for ${RPM_NAME} ---"
 mkdir -p ${MBUILDROOT}/${RPM_NAME}-src
 cd ${SOURCE_ROOT} && tar --exclude .git --exclude rpm -czf - * | (cd ${MBUILDROOT}/${RPM_NAME}-src; tar -xzf -)
 cd ${SOURCE_ROOT} && cp -a ../lcfs-setup.sh ${MBUILDROOT}/${RPM_NAME}-src
+cd ${SOURCE_ROOT} && cp -a ../lcfs.systemv ${MBUILDROOT}/${RPM_NAME}-src
+cd ${SOURCE_ROOT} && cp -a ../lcfs.systemctl ${MBUILDROOT}/${RPM_NAME}-src
 cd ${MBUILDROOT} && tar -czf ${RPMSRCROOT}/${RPM_NAME}-${RPMVERSION}.tar.gz ${RPM_NAME}-src
 cd ${RPMSPECSROOT} && eval rpmbuild -vv -ba ${BLD_MACROS[@]} ${RPMVERSION_DEFINES[@]} ${RPM_DEFINES[@]} ${SPEC}
 if [ $? -eq 0 ]; then

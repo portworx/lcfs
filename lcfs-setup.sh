@@ -144,7 +144,9 @@ function dockerd_manual_start()
 
     [ ${status} -ne 0 ] && echo "Error: failed to start docker." && cat ${out_fl}
     ${SUDO} \rm ${out_fl}
-    [ ${status} -ne 0 ] && STOP="--stop" && stop_remove_lcfs 1
+    if [ ${status} -ne 0 ]; then
+	STOP="--stop" && stop_remove_lcfs 1
+    fi
 }
 
 
@@ -158,21 +160,49 @@ function system_docker_stop()
     killprocess ${DOCKER_SRV_BIN};                              # last resort
 }
 
-function system_docker_disable_enable()
+function system_disable_enable()
 {
-    [ -z "$1" ] && echo "Warning: failed to disable docker startup." && return 1
-    [ "$1" != "enable" -a "$1" != "disable" ] && echo "Warning: failed to disable docker startup. Invalid parameter." && return 1
+    [ -z "$1" -o -z "$2" ] && echo "Warning: System startup setting failed." && return 1
+    [ "$1" != "enable" -a "$1" != "disable" ] && echo "Warning: System startup setting failed. Invalid parameter." && return 1
 
     local sysd_pid=$(ps -C systemd -o pid --no-header)
-    local sysV_docker="/etc/init.d/docker"
+    local sysV="/etc/init.d/$2"
 
-    echo "Disable docker startup..."
-    [ -n "${sysd_pid}" ] && ${SUDO} systemctl $1 docker       # Systemd enable/disable
+    echo "$1 $2 startup..."
+    [ -n "${sysd_pid}" ] && ${SUDO} systemctl $1 $2       # Systemd enable/disable
 
-    if [ -e "${sysV_docker}" ]; then
+    if [ -e "${sysV}" ]; then
 	local onoff="on"
 	[ "$1" == "disable" ] && onoff=off
-	${SUDO} chkconfig docker ${onff};                     # SystemV enable/disable
+	${SUDO} chkconfig $2 ${onff};                     # SystemV enable/disable
+    fi
+}
+
+function lcfs_startup_setup()
+{
+    local sysd_pid=$(ps -C systemd -o pid --no-header)
+
+    if [ -n "${sysd_pid}" ]; then   # Systemd setup
+	${SUDO} cp -a /opt/pwx/services/lcfs.systemctl /etc/systemd/system/lcfs.service && ${SUDO} systemctl enable lcfs
+    elif [ -d /etc/init.d ]; then   # SystemV setup
+	${SUDO} cp -a /opt/pwx/services/lcfs.systemv /etc/init.d/lcfs && ${SUDO} chkconfig lcfs on
+    fi
+
+    [ $? -ne 0 ] && echo "Warning: LCFS startup configuration failed. LCFS will not start automatically on system reboot."
+
+    return 0
+}
+
+function lcfs_startup_remove()
+{
+    local sysd_pid=$(ps -C systemd -o pid --no-header)
+
+    if [ -n "${sysd_pid}" ]; then   # Systemd setup
+	${SUDO} systemctl disable lcfs
+	${SUDO} rm -f /etc/systemd/system/lcfs.service
+    elif [ -d /etc/init.d ]; then   # SystemV setup
+	${SUDO} chkconfig lcfs off
+	${SUDO} rm /etc/init.d/lcfs
     fi
 }
 
@@ -255,6 +285,7 @@ function stop_remove_lcfs
 	    ${SUDO} \rm -f ${DEVFL}
 	fi
 	[ -e ${LCFS_ENV_FL} ] && ${SUDO} \mv -f ${LCFS_ENV_FL} ${LCFS_ENV_FL}.save
+	lcfs_startup_remove
 	restore_docker_cfg
     fi
     [ -z "${rcode}" ] && rcode=0
@@ -323,16 +354,16 @@ function docker_version_check()
     return 0
 }
 
+if [ "${_LCFS_SKIP_VERSION_CHECK_}" != "yes" ]; then
+    if [ -z "$1" -o ! -e "${LCFS_ENV_FL}" ]; then
+	docker_version_check
+    fi
 
-if [ -z "$1" -o ! -e "${LCFS_ENV_FL}" ]; then
-    docker_version_check
+    args=("$@")
+    for ((i=0; i<${#args[@]}; i++)); do
+	[ "${args[i]}" == "--configure" ] && docker_version_check
+    done
 fi
-
-args=("$@")
-for ((i=0; i<${#args[@]}; i++)); do
-    [ "${args[i]}" == "--configure" ] && docker_version_check
-done
-
 
 while [ "$1" != "" ]; do
     case $1 in
@@ -413,6 +444,9 @@ if [ -z "${START}" ]; then
     if [ $? -ne 0 ]; then
 	echo "Error: LCFS save configuration failed. Setup failed." && REMOVE=yes && stop_remove_lcfs 1  # exit(1)
     fi
-    system_docker_disable_enable "disable"    # Disable docker startup for now if LCFS is setup.
+    system_disable_enable "disable" "docker"   # Disable docker startup for now if LCFS is setup.
+    if [ $? -eq 0 ]; then
+	lcfs_startup_setup
+    fi
 fi
 cleanup_and_exit $?
