@@ -8,7 +8,7 @@ Documentation=http://lcfs.portworx.com
 [Service]
 Type=forking
 ExecStart=/opt/pwx/bin/lcfs-setup.sh --start
-ExecStop=/opt/pwx/bin/lcfs-setup.sh --stop 
+ExecStop=/opt/pwx/bin/lcfs-setup.sh --stop
 StandardOutput=syslog
 StandardError=syslog
 

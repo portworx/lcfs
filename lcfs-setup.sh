@@ -160,21 +160,29 @@ function system_docker_stop()
     killprocess ${DOCKER_SRV_BIN};                              # last resort
 }
 
-function system_disable_enable()
+function system_manage()
 {
-    [ -z "$1" -o -z "$2" ] && echo "Warning: System startup setting failed." && return 1
-    [ "$1" != "enable" -a "$1" != "disable" ] && echo "Warning: System startup setting failed. Invalid parameter." && return 1
+    [ -z "$1" -o -z "$2" ] && echo "Warning: System manage setting failed." && return 1
 
     local sysd_pid=$(ps -C systemd -o pid --no-header)
     local sysV="/etc/init.d/$2"
 
-    echo "$1 $2 startup..."
-    [ -n "${sysd_pid}" ] && ${SUDO} systemctl $1 $2       # Systemd enable/disable
+    echo "$1 $2 ..."
+    [ -n "${sysd_pid}" ] && ${SUDO} systemctl $1 $2       # Systemd Manage
 
-    if [ -e "${sysV}" ]; then
-	local onoff="on"
-	[ "$1" == "disable" ] && onoff=off
-	${SUDO} chkconfig $2 ${onff};                     # SystemV enable/disable
+    if [ -e "${sysV}" ]; then                             # SystemV Manage
+	case $1 in
+            enable)
+		${SUDO} chkconfig $2 on
+		;;
+	    disable)
+		${SUDO} chkconfig $2 off
+		;;
+            *)
+		${SUDO} ${sysV} $1
+		;;
+	esac
+
     fi
 }
 
@@ -182,8 +190,11 @@ function lcfs_startup_setup()
 {
     local sysd_pid=$(ps -C systemd -o pid --no-header)
 
+    echo "Setup LCFS startup..."
     if [ -n "${sysd_pid}" ]; then   # Systemd setup
-	${SUDO} cp -a /opt/pwx/services/lcfs.systemctl /etc/systemd/system/lcfs.service && ${SUDO} systemctl enable lcfs
+	${SUDO} cp -a /opt/pwx/services/lcfs.systemctl /etc/systemd/system/lcfs.service
+	${SUDO} systemctl daemon-reexec  # Re-exec systemd bug (http://superuser.com/questions/1125250/systemctl-access-denied-when-root).
+	${SUDO} systemctl enable lcfs
     elif [ -d /etc/init.d ]; then   # SystemV setup
 	${SUDO} cp -a /opt/pwx/services/lcfs.systemv /etc/init.d/lcfs && ${SUDO} chkconfig lcfs on
     fi
@@ -198,10 +209,10 @@ function lcfs_startup_remove()
     local sysd_pid=$(ps -C systemd -o pid --no-header)
 
     if [ -n "${sysd_pid}" ]; then   # Systemd setup
-	${SUDO} systemctl disable lcfs
+	${SUDO} systemctl disable lcfs &> /dev/null
 	${SUDO} rm -f /etc/systemd/system/lcfs.service
     elif [ -d /etc/init.d ]; then   # SystemV setup
-	${SUDO} chkconfig lcfs off
+	${SUDO} chkconfig lcfs off &> /dev/null
 	${SUDO} rm /etc/init.d/lcfs
     fi
 }
@@ -326,6 +337,14 @@ function status_lcfs()
     cleanup_and_exit $((lstatus+${dstatus}));
 }
 
+function version_lcfs()
+{
+    [ ! -e "${LCFS_BINARY}" ] && echo "LCFS is not installed." && cleanup_and_exit 0
+
+    ${SUDO} strings "${LCFS_BINARY}" | egrep '^(Release|Build):'
+    cleanup_and_exit $?
+}
+
 function help()
 {
     echo "Usage: $0 [--help] [--configure] [--start] [--stop] [--status] [--stop-docker] [--remove]"
@@ -333,8 +352,8 @@ function help()
     echo -e "\t--start: \tStart docker and lcfs."
     echo -e "\t--stop: \tStop docker and lcfs."
     echo -e "\t--status: \tStatus docker and lcfs."
-    echo -e "\t--stop-docker: \tStop the docker process."
     echo -e "\t--remove: \tStop and remove lcfs."
+    echo -e "\t--version: \tDisplay LCFS version."
     echo -e "\t--help: \tDisplay this message."
     cleanup_and_exit $?
 }
@@ -381,6 +400,7 @@ while [ "$1" != "" ]; do
 	    status_lcfs
 	    ;;
         --remove)
+	    system_manage "stop" "lcfs"
 	    REMOVE="$1"
 	    stop_remove_lcfs
             ;;
@@ -390,6 +410,9 @@ while [ "$1" != "" ]; do
             ;;
 	--configure)
 	    lcfs_configure
+            ;;
+	--version)
+	    version_lcfs
             ;;
         *)
             echo "Error: invalid input parameter."
@@ -444,9 +467,11 @@ if [ -z "${START}" ]; then
     if [ $? -ne 0 ]; then
 	echo "Error: LCFS save configuration failed. Setup failed." && REMOVE=yes && stop_remove_lcfs 1  # exit(1)
     fi
-    system_disable_enable "disable" "docker"   # Disable docker startup for now if LCFS is setup.
+    system_manage "disable" "docker"   # Disable docker startup for now if LCFS is setup.
     if [ $? -eq 0 ]; then
+	stop_remove_lcfs
 	lcfs_startup_setup
+	system_manage "start" "lcfs"   # Restart LCFS using system management (systemclt/SystemV)
     fi
 fi
 cleanup_and_exit $?
