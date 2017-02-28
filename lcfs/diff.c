@@ -486,7 +486,7 @@ lc_addName(struct fs *fs, struct cdir *cdir, ino_t ino, char *name,
 
         /* Flag the inode as tracked in change list */
         if (ctype != LC_REMOVED) {
-            inode = lc_lookupInode(fs, ino);
+            inode = lc_lookupInodeCache(fs, ino, -1);
             if (inode && ((ino > lastIno) ||
                           !(inode->i_flags & LC_INODE_MLINKS))) {
                 assert(inode->i_fs == fs);

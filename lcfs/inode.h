@@ -21,11 +21,19 @@
 /* Inode cache header */
 struct icache {
 
+#ifdef LC_IC_LOCK
     /* Lock protecting the hash chain */
     pthread_mutex_t ic_lock;
+#endif
 
     /* Inode hash chains */
     struct inode *ic_head;
+
+    /* Smallest inode number in the list */
+    ino_t ic_lowInode;
+
+    /* Smallest inode number in the list */
+    ino_t ic_highInode;
 };
 
 /* Minimum directory size before converting to hash table */

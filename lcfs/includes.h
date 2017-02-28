@@ -154,7 +154,7 @@ void lc_updateFtypeStats(struct fs *fs, mode_t mode, bool incr);
 void lc_displayFtypeStats(struct fs *fs);
 void lc_readInodes(struct gfs *gfs, struct fs *fs);
 void lc_destroyInodes(struct fs *fs, bool remove);
-struct inode *lc_lookupInode(struct fs *fs, ino_t ino);
+struct inode *lc_lookupInodeCache(struct fs *fs, ino_t ino, int hash);
 struct inode *lc_getInode(struct fs *fs, ino_t ino, struct inode *handle,
                           bool copy, bool exclusive);
 struct inode *lc_inodeInit(struct fs *fs, mode_t mode,
