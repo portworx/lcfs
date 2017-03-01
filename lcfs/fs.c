@@ -12,7 +12,9 @@ lc_newLayer(struct gfs *gfs, bool rw) {
     fs->fs_readOnly = !rw;
     fs->fs_ctime = t;
     fs->fs_atime = t;
+#ifndef LC_IC_LOCK
     pthread_mutex_init(&fs->fs_ilock, NULL);
+#endif
     pthread_mutex_init(&fs->fs_plock, NULL);
     pthread_mutex_init(&fs->fs_dilock, NULL);
     pthread_mutex_init(&fs->fs_alock, NULL);
@@ -131,7 +133,9 @@ lc_freeLayer(struct fs *fs, bool remove) {
     assert(fs->fs_bcache == NULL);
     lc_statsDeinit(fs);
 #ifdef LC_MUTEX_DESTROY
+#ifndef LC_IC_LOCK
     pthread_mutex_destroy(&fs->fs_ilock);
+#endif
     pthread_mutex_destroy(&fs->fs_dilock);
     pthread_mutex_destroy(&fs->fs_plock);
     pthread_mutex_destroy(&fs->fs_alock);

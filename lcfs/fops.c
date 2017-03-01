@@ -1193,7 +1193,7 @@ lc_fsync(fuse_req_t req, fuse_ino_t ino, int datasync,
      */
     lc_displayEntry(__func__, ino, 0, NULL);
     fuse_reply_err(req, 0);
-    lc_statsAdd(inode->i_fs, LC_LCYNC, 0, NULL);
+    lc_statsAdd(inode->i_fs, LC_FSYNC, 0, NULL);
 }
 
 /* Open a directory */
@@ -1271,7 +1271,7 @@ lc_fsyncdir(fuse_req_t req, fuse_ino_t ino, int datasync,
      */
     lc_displayEntry(__func__, ino, 0, NULL);
     fuse_reply_err(req, 0);
-    lc_statsAdd(inode->i_fs, LC_LCYNCDIR, 0, NULL);
+    lc_statsAdd(inode->i_fs, LC_FSYNCDIR, 0, NULL);
 }
 
 /* File system statfs */

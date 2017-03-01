@@ -180,8 +180,10 @@ struct fs {
     /* Page block hash table */
     struct lbcache *fs_bcache;
 
+#ifndef LC_IC_LOCK
     /* Lock serializing inode cloning */
     pthread_mutex_t fs_ilock;
+#endif
 
     /* Parent file system of this layer */
     struct fs *fs_parent;

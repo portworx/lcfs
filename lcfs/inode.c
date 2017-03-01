@@ -25,6 +25,8 @@ lc_icache_init(struct fs *fs, size_t size) {
     for (i = 0; i < size; i++) {
         pthread_mutex_init(&icache[i].ic_lock, NULL);
         icache[i].ic_head = NULL;
+        icache[i].ic_lowInode = 0;
+        icache[i].ic_highInode = 0;
     }
 #else
     memset(icache, 0, sizeof(struct icache) * size);
@@ -179,21 +181,95 @@ lc_inodeUnlock(struct inode *inode) {
     pthread_rwlock_unlock(inode->i_rwlock);
 }
 
-/* Add an inode to the hash table of the layer */
+/* Free an inode and associated resources */
 static void
-lc_addInode(struct fs *fs, struct inode *inode, int hash, bool lock) {
+lc_freeInode(struct inode *inode) {
+    size_t size = sizeof(struct inode);
+    struct fs *fs = inode->i_fs;
+
+    if (S_ISREG(inode->i_mode)) {
+
+        /* Free pages of a regular file */
+        lc_truncateFile(inode, 0, false);
+        assert(inode->i_page == NULL);
+        assert(lc_inodeGetEmap(inode) == NULL);
+        assert(lc_inodeGetPageCount(inode) == 0);
+        assert(lc_inodeGetDirtyPageCount(inode) == 0);
+        size += sizeof(struct rdata);
+    } else if (S_ISDIR(inode->i_mode)) {
+
+        /* Free directory entries */
+        lc_dirFree(inode);
+    } else if (S_ISLNK(inode->i_mode)) {
+
+        /* Free target of a symbolic link if the inode owns that */
+        if (inode->i_flags & LC_INODE_SYMLINK) {
+            lc_free(fs, inode->i_target, inode->i_size + 1,
+                    LC_MEMTYPE_SYMLINK);
+        } else if (!(inode->i_flags & LC_INODE_SHARED)) {
+            size += inode->i_size + 1;
+        }
+        inode->i_target = NULL;
+    }
+    if (inode->i_xattrData) {
+        lc_xattrFree(inode);
+    }
+    assert(inode->i_xattrData == NULL);
+    if (inode->i_rwlock) {
+#ifdef LC_RWLOCK_DESTROY
+        pthread_rwlock_destroy(inode->i_rwlock);
+#endif
+        lc_free(fs, inode->i_rwlock, sizeof(pthread_rwlock_t),
+                LC_MEMTYPE_IRWLOCK);
+    }
+    if (inode->i_emapDirExtents) {
+        lc_blockFreeExtents(fs->fs_gfs, fs, inode->i_emapDirExtents, 0);
+    }
+    lc_free(fs, inode, size, LC_MEMTYPE_INODE);
+}
+
+/* Add an inode to the hash table of the layer */
+static struct inode *
+lc_addInode(struct fs *fs, struct inode *inode, int hash, bool lock,
+            struct inode *new, struct inode *last) {
     ino_t ino = inode->i_ino;
 
     if (hash == -1) {
         hash = lc_inodeHash(fs, ino);
     }
 
-    /* Add the inode to the hash list */
-#ifdef LC_IC_LOCK
     if (lock) {
+#ifdef LC_IC_LOCK
         pthread_mutex_lock(&fs->fs_icache[hash].ic_lock);
-    }
+#else
+        pthread_mutex_lock(&fs->fs_ilock);
 #endif
+    }
+    if (new) {
+        if (last != fs->fs_icache[hash].ic_head) {
+
+            /* Check if raced with another thread */
+            inode = lc_lookupInodeCache(fs, ino, hash);
+            if (inode) {
+#ifdef LC_IC_LOCK
+                pthread_mutex_unlock(&fs->fs_icache[hash].ic_lock);
+#else
+                pthread_mutex_unlock(&fs->fs_ilock);
+#endif
+                new->i_flags |= LC_INODE_SHARED;
+                new->i_fs = fs;
+#ifdef LC_RWLOCK_DESTROY
+                lc_inodeUnlock(new);
+#endif
+                lc_freeInode(new);
+                return inode;
+            }
+        }
+        inode = new;
+    }
+    assert(lc_lookupInodeCache(fs, ino, hash) == NULL);
+
+    /* Add the inode to the hash list */
     inode->i_cnext = fs->fs_icache[hash].ic_head;
     fs->fs_icache[hash].ic_head = inode;
     if (fs->fs_icache[hash].ic_highInode < ino) {
@@ -203,11 +279,14 @@ lc_addInode(struct fs *fs, struct inode *inode, int hash, bool lock) {
         (fs->fs_icache[hash].ic_lowInode > ino)) {
         fs->fs_icache[hash].ic_lowInode = ino;
     }
-#ifdef LC_IC_LOCK
     if (lock) {
+#ifdef LC_IC_LOCK
         pthread_mutex_unlock(&fs->fs_icache[hash].ic_lock);
-    }
+#else
+        pthread_mutex_unlock(&fs->fs_ilock);
 #endif
+    }
+    return inode;
 }
 
 /* Lookup an inode in the hash list */
@@ -269,7 +348,7 @@ lc_rootInit(struct fs *fs, ino_t root) {
                                     true);
 
     lc_dinodeInit(dir, root, S_IFDIR | 0755, 0, 0, 0, 0, root);
-    lc_addInode(fs, dir, -1, false);
+    lc_addInode(fs, dir, -1, false, NULL, NULL);
     fs->fs_rootInode = dir;
     lc_markInodeDirty(dir, LC_INODE_DIRDIRTY);
 }
@@ -326,7 +405,7 @@ lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
         inode = lc_newInode(fs, (i << LC_DINODE_INDEX) | block, len,
                             reg, false, lock);
         memcpy(&inode->i_dinode, &buf[offset], sizeof(struct dinode));
-        lc_addInode(fs, inode, -1, false);
+        lc_addInode(fs, inode, -1, false, NULL, NULL);
         if (reg) {
 
             /* Read emap of fragmented regular files */
@@ -456,53 +535,6 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
     lc_free(fs, buf, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
     lc_free(fs, ibuf, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
     lc_free(fs, xbuf, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
-}
-
-/* Free an inode and associated resources */
-static void
-lc_freeInode(struct inode *inode) {
-    size_t size = sizeof(struct inode);
-    struct fs *fs = inode->i_fs;
-
-    if (S_ISREG(inode->i_mode)) {
-
-        /* Free pages of a regular file */
-        lc_truncateFile(inode, 0, false);
-        assert(inode->i_page == NULL);
-        assert(lc_inodeGetEmap(inode) == NULL);
-        assert(lc_inodeGetPageCount(inode) == 0);
-        assert(lc_inodeGetDirtyPageCount(inode) == 0);
-        size += sizeof(struct rdata);
-    } else if (S_ISDIR(inode->i_mode)) {
-
-        /* Free directory entries */
-        lc_dirFree(inode);
-    } else if (S_ISLNK(inode->i_mode)) {
-
-        /* Free target of a symbolic link if the inode owns that */
-        if (inode->i_flags & LC_INODE_SYMLINK) {
-            lc_free(fs, inode->i_target, inode->i_size + 1,
-                    LC_MEMTYPE_SYMLINK);
-        } else if (!(inode->i_flags & LC_INODE_SHARED)) {
-            size += inode->i_size + 1;
-        }
-        inode->i_target = NULL;
-    }
-    if (inode->i_xattrData) {
-        lc_xattrFree(inode);
-    }
-    assert(inode->i_xattrData == NULL);
-    if (inode->i_rwlock) {
-#ifdef LC_RWLOCK_DESTROY
-        pthread_rwlock_destroy(inode->i_rwlock);
-#endif
-        lc_free(fs, inode->i_rwlock, sizeof(pthread_rwlock_t),
-                LC_MEMTYPE_IRWLOCK);
-    }
-    if (inode->i_emapDirExtents) {
-        lc_blockFreeExtents(fs->fs_gfs, fs, inode->i_emapDirExtents, 0);
-    }
-    lc_free(fs, inode, size, LC_MEMTYPE_INODE);
 }
 
 /* Invalidate dirty inode pages */
@@ -766,7 +798,7 @@ lc_freezeLayer(struct gfs *gfs, struct fs *fs) {
             }
             if (resize) {
                 *prev = inode->i_cnext;
-                lc_addInode(fs, inode, -1, false);
+                lc_addInode(fs, inode, -1, false, NULL, NULL);
             } else {
                 prev = &inode->i_cnext;
             }
@@ -947,24 +979,12 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino, int hash,
      */
     new = lc_newInode(fs, LC_INVALID_BLOCK, 0, reg, false, true);
     memcpy(&new->i_dinode, &parent->i_dinode, sizeof(struct dinode));
-    pthread_mutex_lock(&fs->fs_ilock);
-    if (last != fs->fs_icache[hash].ic_head) {
-
-        /* Check if raced with another thread */
-        inode = lc_lookupInodeCache(fs, ino, hash);
-        if (inode) {
-            pthread_mutex_unlock(&fs->fs_ilock);
-            new->i_flags |= LC_INODE_SHARED;
-            new->i_fs = fs;
-            lc_freeInode(new);
-            lc_inodeLock(inode, exclusive);
-            return inode;
-        }
+    lc_inodeLock(new, true);
+    inode = lc_addInode(fs, new, hash, true, new, last);
+    if (inode != new) {
+        lc_inodeLock(inode, exclusive);
+        return inode;
     }
-    inode = new;
-    lc_inodeLock(inode, true);
-    lc_addInode(fs, inode, hash, true);
-    pthread_mutex_unlock(&fs->fs_ilock);
     if (reg) {
         assert(parent->i_page == NULL);
         assert(lc_inodeGetDirtyPageCount(parent) == 0);
@@ -1180,9 +1200,7 @@ lc_inodeInit(struct fs *fs, mode_t mode, uid_t uid, gid_t gid,
     }
     lc_dinodeInit(inode, lc_inodeAlloc(fs), mode, uid, gid, rdev, len, parent);
     lc_updateFtypeStats(fs, mode, true);
-    pthread_mutex_lock(&fs->fs_ilock);
-    lc_addInode(fs, inode, -1, true);
-    pthread_mutex_unlock(&fs->fs_ilock);
+    lc_addInode(fs, inode, -1, true, NULL, NULL);
     lc_inodeLock(inode, true);
     return inode;
 }
@@ -1215,7 +1233,7 @@ lc_moveInodes(struct fs *fs, struct fs *cfs) {
             inode = pinode;
             pinode = pinode->i_cnext;
             inode->i_fs = cfs;
-            lc_addInode(cfs, inode, -1, false);
+            lc_addInode(cfs, inode, -1, false, NULL, NULL);
             lc_markInodeDirty(inode,
                               S_ISDIR(inode->i_mode) ? LC_INODE_DIRDIRTY :
                               (S_ISREG(inode->i_mode) ?
@@ -1278,7 +1296,7 @@ lc_moveRootInode(struct fs *cfs, struct fs *fs) {
         inode->i_cnext = dir->i_cnext;
     }
     dir->i_fs = fs;
-    lc_addInode(fs, dir, -1, false);
+    lc_addInode(fs, dir, -1, false, NULL, NULL);
     lc_markInodeDirty(dir, LC_INODE_DIRDIRTY);
 }
 

@@ -66,8 +66,8 @@ lc_statsNew(struct fs *fs) {
     for (i = 0; i < LC_REQUEST_MAX; i++) {
 
         /* Time is not tracked for certain requests */
-        stats->s_min[i] = ((i == LC_FLUSH) || (i == LC_LCYNCDIR) ||
-                           (i == LC_LCYNC)) ?  (struct timeval){0, 0} : min;
+        stats->s_min[i] = ((i == LC_FLUSH) || (i == LC_FSYNCDIR) ||
+                           (i == LC_FSYNC)) ?  (struct timeval){0, 0} : min;
     }
     pthread_mutex_init(&stats->s_lock, NULL);
     fs->fs_stats = stats;
