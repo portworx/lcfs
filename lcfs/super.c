@@ -53,3 +53,23 @@ lc_superWrite(struct gfs *gfs, struct fs *fs) {
     lc_updateCRC(super, &super->sb_crc);
     lc_writeBlock(gfs, fs, super, fs->fs_sblock);
 }
+
+/* Mark super block dirty */
+void
+lc_markSuperDirty(struct fs *fs, bool write) {
+    struct gfs *gfs;
+
+    fs->fs_super->sb_flags |= LC_SUPER_DIRTY;
+    if (write && !fs->fs_dirty) {
+        printf("Marked superblock dirty\n");
+        gfs = fs->fs_gfs;
+        pthread_mutex_lock(&gfs->gfs_flock);
+        if (!fs->fs_dirty) {
+            lc_superWrite(gfs, fs);
+            fs->fs_dirty = true;
+        }
+        pthread_mutex_unlock(&gfs->gfs_flock);
+    } else {
+        fs->fs_dirty = true;
+    }
+}

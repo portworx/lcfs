@@ -124,6 +124,7 @@ void lc_superRead(struct gfs *gfs, struct fs *fs, uint64_t block);
 void lc_superWrite(struct gfs *gfs, struct fs *fs);
 void lc_superInit(struct super *super, uint64_t root, size_t size,
                   uint32_t flags, bool global);
+void lc_markSuperDirty(struct fs *fs, bool write);
 
 struct fs *lc_getLayerLocked(ino_t ino, bool exclusive);
 uint64_t lc_getLayerForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp);

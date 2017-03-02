@@ -265,11 +265,13 @@ struct fs {
     /* Lock protecting extent lists */
     pthread_mutex_t fs_alock;
 
+#ifdef LC_DIFF
     /* Lock protecting hardlinks list */
     pthread_mutex_t fs_hlock;
 
     /* Changes in this layer compared to parent */
     struct cdir *fs_changes;
+#endif
 
     /* Free extents */
     struct extent *fs_extents;
@@ -345,6 +347,9 @@ struct fs {
 
     /* Next index in inode block */
     uint8_t fs_inodeBlockIndex;
+
+    /* Set if file system is modified */
+    bool fs_dirty;
 
     /* Set if single read-write child of a read-only parent */
     bool fs_single;

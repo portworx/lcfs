@@ -663,9 +663,15 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
     struct iovec *iovec;
     uint64_t block = 0;
 
+    /* Mark superblock dirty before modifying something */
+    if (!fs->fs_dirty) {
+        lc_markSuperDirty(fs, lc_getGlobalFs(gfs) == fs);
+    }
+
     /* Use pwrite(2) interface if there is just one block */
     if (count == 1) {
         block = page->p_block;
+        assert(block != 0);
         lc_writeBlock(gfs, fs, page->p_data, block);
     } else {
         iovcount = (count < LC_WRITE_CLUSTER_SIZE) ?
@@ -684,6 +690,7 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
             if ((i && ((page->p_block + 1) != block)) ||
                 (bcount >= iovcount)) {
                 //lc_printf("Not contigous, block %ld previous block %ld i %ld count %ld\n", block, page->p_block, i, count);
+                assert(block != 0);
                 lc_writeBlocks(gfs, fs, &iovec[j + 1], bcount, block);
                 bcount = 0;
                 j = iovcount - 1;

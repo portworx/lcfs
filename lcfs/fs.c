@@ -18,7 +18,9 @@ lc_newLayer(struct gfs *gfs, bool rw) {
     pthread_mutex_init(&fs->fs_plock, NULL);
     pthread_mutex_init(&fs->fs_dilock, NULL);
     pthread_mutex_init(&fs->fs_alock, NULL);
+#ifdef LC_DIFF
     pthread_mutex_init(&fs->fs_hlock, NULL);
+#endif
     pthread_rwlock_init(&fs->fs_rwlock, NULL);
     __sync_add_and_fetch(&gfs->gfs_count, 1);
     return fs;
@@ -116,7 +118,9 @@ lc_freeLayer(struct fs *fs, bool remove) {
     assert(fs->fs_inodeBlockCount == 0);
     assert(fs->fs_inodeBlockPages == NULL);
     assert(fs->fs_inodeBlocks == NULL);
+#ifdef LC_DIFF
     assert(fs->fs_changes == NULL);
+#endif
     assert(fs->fs_extents == NULL);
     assert(fs->fs_aextents == NULL);
     assert(fs->fs_fextents == NULL);
@@ -127,7 +131,9 @@ lc_freeLayer(struct fs *fs, bool remove) {
     assert(!remove || (fs->fs_blocks == fs->fs_freed));
 
     lc_freeHlinks(fs);
+#ifdef LC_DIFF
     assert(fs->fs_hlinks == NULL);
+#endif
 
     lc_destroyPages(gfs, fs, remove);
     assert(fs->fs_bcache == NULL);
@@ -139,13 +145,19 @@ lc_freeLayer(struct fs *fs, bool remove) {
     pthread_mutex_destroy(&fs->fs_dilock);
     pthread_mutex_destroy(&fs->fs_plock);
     pthread_mutex_destroy(&fs->fs_alock);
+#ifdef LC_DIFF
     pthread_mutex_destroy(&fs->fs_hlock);
+#endif
 #endif
 #ifdef LC_RWLOCK_DESTROY
     pthread_rwlock_destroy(&fs->fs_rwlock);
 #endif
     __sync_sub_and_fetch(&gfs->gfs_count, 1);
     if (fs != lc_getGlobalFs(gfs)) {
+        assert(!fs->fs_dirty || fs->fs_removed);
+        assert(fs->fs_removed ||
+               !(fs->fs_super->sb_flags &
+                 (LC_SUPER_DIRTY | LC_SUPER_MOUNTED)));
         lc_free(fs, fs->fs_super, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
         lc_displayMemStats(fs);
         lc_checkMemStats(fs, false);
@@ -246,21 +258,21 @@ lc_removeChild(struct fs *fs) {
             fs->fs_next->fs_prev = NULL;
         }
         pfs->fs_super->sb_childLayer = fs->fs_super->sb_nextLayer;
-        pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
+        lc_markSuperDirty(pfs, false);
     } else {
 
         /* Remove from the common parent list */
         nfs = fs->fs_prev;
         nfs->fs_next = fs->fs_next;
         nfs->fs_super->sb_nextLayer = fs->fs_super->sb_nextLayer;
-        nfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
+        lc_markSuperDirty(nfs, false);
         if (fs->fs_next) {
             fs->fs_next->fs_prev = fs->fs_prev;
         }
     }
     if (pfs && (pfs->fs_super->sb_zombie == fs->fs_gindex)) {
         pfs->fs_super->sb_zombie = 0;
-        pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
+        lc_markSuperDirty(pfs, false);
     }
 }
 
@@ -363,7 +375,7 @@ lc_addChild(struct gfs *gfs, struct fs *pfs, struct fs *fs) {
         child->fs_next = fs;
         fs->fs_super->sb_nextLayer = child->fs_super->sb_nextLayer;
         child->fs_super->sb_nextLayer = fs->fs_sblock;
-        child->fs_super->sb_flags |= LC_SUPER_DIRTY;
+        lc_markSuperDirty(child, false);
     } else if (pfs) {
 
         /* Tag the very first read-write init layer created as the single child
@@ -375,7 +387,7 @@ lc_addChild(struct gfs *gfs, struct fs *pfs, struct fs *fs) {
         }
         pfs->fs_child = fs;
         pfs->fs_super->sb_childLayer = fs->fs_sblock;
-        pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
+        lc_markSuperDirty(pfs, false);
     }
 }
 
@@ -651,10 +663,7 @@ lc_mount(struct gfs *gfs, char *device, size_t size) {
         fs = lc_getGlobalFs(gfs);
         lc_setupSpecialInodes(gfs, fs);
     }
-
-    /* Write out the file system super block */
-    gfs->gfs_super->sb_flags |= LC_SUPER_DIRTY | LC_SUPER_MOUNTED;
-    lc_superWrite(gfs, fs);
+    fs->fs_super->sb_flags |= LC_SUPER_MOUNTED;
     lc_unlock(fs);
 }
 
@@ -663,23 +672,23 @@ void
 lc_sync(struct gfs *gfs, struct fs *fs, bool super) {
     int err;
 
-    if (fs->fs_super->sb_flags & LC_SUPER_DIRTY) {
-        if (fs->fs_super->sb_flags & LC_SUPER_MOUNTED) {
-            fs->fs_super->sb_flags &= ~LC_SUPER_MOUNTED;
-            lc_syncInodes(gfs, fs);
-            lc_flushDirtyPages(gfs, fs);
-            //lc_displayAllocStats(fs);
-            lc_processFreedBlocks(fs, true);
-            lc_freeLayerBlocks(gfs, fs, false, false, false);
-        }
+    /* Flush dirty inodes and pages */
+    if (fs->fs_super->sb_flags & LC_SUPER_MOUNTED) {
+        lc_syncInodes(gfs, fs);
+        lc_flushDirtyPages(gfs, fs);
+        //lc_displayAllocStats(fs);
+        lc_processFreedBlocks(fs, true);
+        lc_freeLayerBlocks(gfs, fs, false, false, false);
+        fs->fs_super->sb_flags &= ~LC_SUPER_MOUNTED;
+    }
 
-        /* Flush everything to disk before marking file system clean */
-        if (super && !fs->fs_removed) {
-            err = fsync(gfs->gfs_fd);
-            assert(err == 0);
-            fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
-            lc_superWrite(gfs, fs);
-        }
+    /* Flush everything to disk before marking file system clean */
+    if (super && fs->fs_dirty && !fs->fs_removed) {
+        err = fsync(gfs->gfs_fd);
+        assert(err == 0);
+        fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
+        lc_superWrite(gfs, fs);
+        fs->fs_dirty = false;
     }
 }
 
@@ -709,8 +718,11 @@ lc_umountSync(struct gfs *gfs) {
     assert(err == 0);
 
     /* Finally update superblock */
-    fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
-    lc_superWrite(gfs, fs);
+    if (fs->fs_dirty) {
+        fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
+        fs->fs_dirty = false;
+        lc_superWrite(gfs, fs);
+    }
     lc_unlock(fs);
     lc_displayGlobalStats(gfs);
     gfs->gfs_super = NULL;

@@ -693,6 +693,7 @@ lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs) {
     gfs->gfs_super->sb_extentBlock = block;
 
     /* Update space usage */
-    lc_blockFreeExtents(gfs, fs, gfs->gfs_extents, LC_EXTENT_FLUSH);
+    lc_blockFreeExtents(gfs, fs, gfs->gfs_extents,
+                        fs->fs_dirty ? LC_EXTENT_FLUSH : 0);
     gfs->gfs_extents = NULL;
 }

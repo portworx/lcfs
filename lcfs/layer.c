@@ -389,7 +389,7 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
         if (err == 0) {
             fuse_reply_ioctl(req, 0, NULL, 0);
             fs = lc_getLayerLocked(root, true);
-            fs->fs_super->sb_flags |= LC_SUPER_DIRTY | LC_SUPER_MOUNTED;
+            fs->fs_super->sb_flags |= LC_SUPER_MOUNTED;
             lc_unlock(fs);
         }
         lc_statsAdd(rfs, LC_MOUNT, err, &start);
@@ -574,10 +574,11 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
         cfs->fs_super->sb_flags &= ~LC_SUPER_RDWR;
     }
     cfs->fs_super->sb_zombie = pfs->fs_gindex;
-    cfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
-    pfs->fs_super->sb_flags |= LC_SUPER_DIRTY;
-    fs->fs_super->sb_flags |= LC_SUPER_RDWR | LC_SUPER_DIRTY;
     cfs->fs_commitInProgress = true;
+    fs->fs_super->sb_flags |= LC_SUPER_RDWR;
+    lc_markSuperDirty(cfs, false);
+    lc_markSuperDirty(pfs, false);
+    lc_markSuperDirty(fs, false);
     lc_unlock(fs);
     lc_unlock(pfs);
     lc_unlock(cfs);
