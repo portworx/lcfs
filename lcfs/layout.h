@@ -74,6 +74,9 @@
 /* local-kv.db file in root layer */
 #define LC_LAYER_LOCAL_KV_DB "local-kv.db"
 
+/* Directory in which containers are kept */
+#define LC_CONTAINER_DIR    "containers"
+
 /* File types for counting each type created in a layer */
 enum lc_ftypes {
     LC_FTYPE_REGULAR,           /* Regular file */

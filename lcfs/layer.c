@@ -222,7 +222,7 @@ lc_removeRoot(struct fs *rfs, struct inode *dir, ino_t ino, bool rmdir,
 }
 
 /* Release resources assocaited with a layer being deleted */
-static void
+void
 lc_releaseLayer(struct gfs *gfs, struct fs *fs) {
     assert(fs->fs_removed);
     lc_invalidateDirtyPages(gfs, fs);

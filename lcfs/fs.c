@@ -288,6 +288,37 @@ lc_removeLayer(struct gfs *gfs, struct fs *fs, int gindex) {
     fs->fs_gindex = -1;
 }
 
+/* Remove a layer along with parent layers when needed */
+static void
+lc_removeLayers(struct gfs *gfs, struct fs *fs, int gindex) {
+    struct fs *zfs;
+
+    lc_removeLayer(gfs, fs, gindex);
+    if ((fs->fs_super->sb_flags & LC_SUPER_RDWR) &&
+        !(fs->fs_super->sb_flags & LC_SUPER_INIT)) {
+
+        /* Remove init layer as well */
+        assert(fs->fs_zfs == NULL);
+        fs->fs_zfs = fs->fs_parent;
+        zfs = fs->fs_zfs;
+        assert(zfs->fs_super->sb_flags & LC_SUPER_INIT);
+    } else {
+
+        /* Remove zombie parent layer as well */
+        zfs = fs->fs_zfs;
+        assert((zfs == NULL) || (zfs->fs_super->sb_flags & LC_SUPER_ZOMBIE));
+    }
+    while (zfs) {
+        lc_removeLayer(gfs, zfs, zfs->fs_gindex);
+        zfs = zfs->fs_zfs;
+        assert((zfs == NULL) || (zfs->fs_super->sb_flags & LC_SUPER_ZOMBIE));
+    }
+    while (gfs->gfs_fs[gfs->gfs_scount] == NULL) {
+        assert(gfs->gfs_scount > 0);
+        gfs->gfs_scount--;
+    }
+}
+
 /* Lock a layer exclusive for removal, after taking it off the global
  * list.
  */
@@ -295,7 +326,7 @@ uint64_t
 lc_getLayerForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
     ino_t ino = lc_getInodeHandle(root);
     int gindex = lc_getFsHandle(root);
-    struct fs *fs, *zfs;
+    struct fs *fs;
 
     assert(gindex < LC_LAYER_MAX);
     pthread_mutex_lock(&gfs->gfs_lock);
@@ -329,30 +360,7 @@ lc_getLayerForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
         lc_reportError(__func__, __LINE__, root, EEXIST);
         return EEXIST;
     }
-    lc_removeLayer(gfs, fs, gindex);
-    if ((fs->fs_super->sb_flags & LC_SUPER_RDWR) &&
-        !(fs->fs_super->sb_flags & LC_SUPER_INIT)) {
-
-        /* Remove init layer as well */
-        assert(fs->fs_zfs == NULL);
-        fs->fs_zfs = fs->fs_parent;
-        zfs = fs->fs_zfs;
-        assert(zfs->fs_super->sb_flags & LC_SUPER_INIT);
-    } else {
-
-        /* Remove zombie parent layer as well */
-        zfs = fs->fs_zfs;
-        assert((zfs == NULL) || (zfs->fs_super->sb_flags & LC_SUPER_ZOMBIE));
-    }
-    while (zfs) {
-        lc_removeLayer(gfs, zfs, zfs->fs_gindex);
-        zfs = zfs->fs_zfs;
-        assert((zfs == NULL) || (zfs->fs_super->sb_flags & LC_SUPER_ZOMBIE));
-    }
-    while (gfs->gfs_fs[gfs->gfs_scount] == NULL) {
-        assert(gfs->gfs_scount > 0);
-        gfs->gfs_scount--;
-    }
+    lc_removeLayers(gfs, fs, gindex);
     pthread_mutex_unlock(&gfs->gfs_lock);
     lc_lock(fs, true);
     assert(fs->fs_root == ino);
@@ -662,6 +670,7 @@ lc_mount(struct gfs *gfs, char *device, size_t size) {
         }
         fs = lc_getGlobalFs(gfs);
         lc_setupSpecialInodes(gfs, fs);
+        lc_cleanupAfterRestart(gfs, fs);
     }
     fs->fs_super->sb_flags |= LC_SUPER_MOUNTED;
     lc_unlock(fs);
@@ -698,6 +707,11 @@ lc_umountSync(struct gfs *gfs) {
     struct fs *fs = lc_getGlobalFs(gfs);
     int err;
 
+    /* Empty /tmp directory if present */
+    if (gfs->gfs_tmp_root) {
+        lc_emptyDirectory(fs, gfs->gfs_tmp_root);
+    }
+
     /* XXX Combine sync and destroy */
     lc_sync(gfs, fs, false);
 
@@ -726,6 +740,8 @@ lc_umountSync(struct gfs *gfs) {
     lc_unlock(fs);
     lc_displayGlobalStats(gfs);
     gfs->gfs_super = NULL;
+    assert(!fs->fs_dirty);
+    assert(!(fs->fs_super->sb_flags & (LC_SUPER_DIRTY | LC_SUPER_MOUNTED)));
     lc_free(fs, fs->fs_super, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
     gfs->gfs_fs[0] = NULL;
     lc_displayMemStats(fs);
@@ -777,5 +793,45 @@ lc_unmount(struct gfs *gfs) {
     assert(gfs->gfs_count == 1);
     lc_umountSync(gfs);
     lc_gfsDeinit(gfs);
+}
+
+/* Cleanup some directories after restart */
+void
+lc_cleanupAfterRestart(struct gfs *gfs, struct fs *fs) {
+    struct fs *zfs;
+    ino_t ino;
+    int i;
+
+    /* Cleanup /tmp directory */
+    if (gfs->gfs_tmp_root) {
+        lc_emptyDirectory(fs, gfs->gfs_tmp_root);
+    }
+
+    if (fs->fs_super->sb_flags & LC_SUPER_DIRTY) {
+
+        /* Free all containers after an abnormal shutdown */
+        ino = lc_dirLookup(fs, fs->fs_rootInode, LC_CONTAINER_DIR);
+        if (ino != LC_INVALID_INODE) {
+            lc_emptyDirectory(fs, ino);
+        }
+
+        /* Remove read-write layers */
+        for (i = 1; i <= gfs->gfs_scount; i++) {
+            fs = gfs->gfs_fs[i];
+            if (fs && !fs->fs_readOnly && !fs->fs_child) {
+                lc_printf("Removing fs with parent %ld root %ld index %d\n",
+                          fs->fs_parent ? fs->fs_parent->fs_root : - 1,
+                          fs->fs_root, i);
+                lc_removeLayers(gfs, fs, fs->fs_gindex);
+                zfs = fs;
+                while (zfs) {
+                    fs = zfs;
+                    zfs = fs->fs_zfs;
+                    lc_lock(fs, true);
+                    lc_releaseLayer(gfs, fs);
+                }
+            }
+        }
+    }
 }
 

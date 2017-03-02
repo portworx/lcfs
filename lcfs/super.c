@@ -61,7 +61,6 @@ lc_markSuperDirty(struct fs *fs, bool write) {
 
     fs->fs_super->sb_flags |= LC_SUPER_DIRTY;
     if (write && !fs->fs_dirty) {
-        printf("Marked superblock dirty\n");
         gfs = fs->fs_gfs;
         pthread_mutex_lock(&gfs->gfs_flock);
         if (!fs->fs_dirty) {

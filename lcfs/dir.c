@@ -530,6 +530,20 @@ lc_removeTree(struct fs *fs, struct inode *dir) {
     }
 }
 
+/* Empty a directory */
+void
+lc_emptyDirectory(struct fs *fs, ino_t ino) {
+    struct inode *dir;
+
+    dir = lc_getInode(fs, ino, NULL, false, true);
+    if (dir->i_size) {
+        lc_printf("Cleaning up directory %ld\n", ino);
+        lc_removeTree(fs, dir);
+        lc_markInodeDirty(dir, LC_INODE_DIRDIRTY);
+    }
+    lc_inodeUnlock(dir);
+}
+
 /* Lookup an entry in the directory and remove that if present */
 int
 lc_dirRemoveName(struct fs *fs, struct inode *dir,

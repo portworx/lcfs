@@ -137,6 +137,7 @@ void lc_lock(struct fs *fs, bool exclusive);
 int lc_tryLock(struct fs *fs, bool exclusive);
 void lc_unlock(struct fs *fs);
 void lc_mount(struct gfs *gfs, char *device, size_t size);
+void lc_cleanupAfterRestart(struct gfs *gfs, struct fs *fs);
 void lc_newInodeBlock(struct gfs *gfs, struct fs *fs);
 void lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs);
 void lc_invalidateInodeBlocks(struct gfs *gfs, struct fs *fs);
@@ -192,6 +193,7 @@ void lc_dirCopy(struct inode *dir);
 void lc_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf);
 void lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir);
 void lc_removeTree(struct fs *fs, struct inode *dir);
+void lc_emptyDirectory(struct fs *fs, ino_t ino);
 int lc_dirRemoveName(struct fs *fs, struct inode *dir,
                      const char *name, bool rmdir, void **fsp, bool layer);
 void  lc_dirConvertHashed(struct fs *fs, struct inode *dir);
@@ -284,6 +286,7 @@ void lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
 void lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name);
 int lc_removeRoot(struct fs *rfs, struct inode *dir, ino_t ino, bool rmdir,
                   void **fsp);
+void lc_releaseLayer(struct gfs *gfs, struct fs *fs);
 void lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
                    enum ioctl_cmd cmd);
 void lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *name,
