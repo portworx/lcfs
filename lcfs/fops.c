@@ -586,14 +586,14 @@ lc_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
             }
         }
         fuse_reply_entry(req, &e);
-        if (flush) {
-
-            /* Flush dirty pages created before starting layer management */
-            lc_flushDirtyPages(gfs, fs);
-        }
     }
     lc_statsAdd(fs, LC_MKDIR, err, &start);
     lc_unlock(fs);
+    if (flush) {
+
+        /* Flush dirty pages created before starting layer management */
+        lc_commitRoot(gfs, 0);
+    }
 }
 
 /* Remove a file */
@@ -829,6 +829,10 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
 
 out:
     lc_statsAdd(fs, LC_RENAME, err, &start);
+    if ((err == 0) && (lc_getFsHandle(parent) == 0) &&
+        !strcmp(newname, LC_REPOSITORIES_JSON)) {
+        __sync_add_and_fetch(&fs->fs_gfs->gfs_changedLayers, 1);
+    }
     lc_unlock(fs);
 }
 

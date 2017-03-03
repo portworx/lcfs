@@ -13,6 +13,9 @@ enum lc_mountId {
     LC_MAX_MOUNTS = 2, /* Number of mount points device mounted at */
 } __attribute__((packed));
 
+/* Time in seconds syncer is woken to checkpoint file system */
+#define LC_SYNC_INTERVAL       60
+
 /* Global file system */
 struct gfs {
 
@@ -51,6 +54,9 @@ struct gfs {
 
     /* Lock used by cleaner */
     pthread_mutex_t gfs_clock;
+
+    /* Lock used by syncer */
+    pthread_mutex_t gfs_slock;
 
     /* Thread serving base mount */
     pthread_t gfs_mountThread;
@@ -95,6 +101,9 @@ struct gfs {
     /* Condition variable cleaner thread is waiting on */
     pthread_cond_t gfs_cleanerCond;
 
+    /* Condition variable syncer thread is waiting on */
+    pthread_cond_t gfs_syncerCond;
+
     /* Count of pages in use */
     uint64_t gfs_pcount;
 
@@ -127,6 +136,12 @@ struct gfs {
 
     /* Pages reused */
     uint64_t gfs_preused;
+
+    /* Count of read only layers being populated */
+    int gfs_layerInProgress;
+
+    /* Set if layers are pending flush */
+    int gfs_changedLayers;
 
     /* Layer from pages being purged */
     int gfs_cleanerIndex;

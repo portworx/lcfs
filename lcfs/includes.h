@@ -8,9 +8,9 @@
 #define FUSE_USE_VERSION 29
 #endif
 
-#define LC_FTYPE_ENABLE
-#define LC_STATS_ENABLE
-#define LC_MEMSTATS_ENABLE
+//#define LC_FTYPE_ENABLE
+//#define LC_STATS_ENABLE
+//#define LC_MEMSTATS_ENABLE
 //#define LC_PROFILING
 
 #define _GNU_SOURCE
@@ -97,12 +97,12 @@ void lc_freeExtent(struct gfs *gfs, struct fs *fs, struct extent *extent,
                    struct extent **prev, bool layer);
 
 void lc_blockAllocatorInit(struct gfs *gfs, struct fs *fs);
-void lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs);
+void lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs, bool umount);
 bool lc_hasSpace(struct gfs *gfs, bool layer);
 void lc_addSpaceExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
                        uint64_t start, uint64_t count, bool sort);
 uint64_t lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount,
-                            bool remove, bool inval);
+                            bool remove, bool keep);
 uint64_t lc_blockAlloc(struct fs *fs, uint64_t count, bool meta, bool reserve);
 uint64_t lc_blockAllocExact(struct fs *fs, uint64_t count,
                             bool meta, bool reserve);
@@ -142,6 +142,8 @@ void lc_newInodeBlock(struct gfs *gfs, struct fs *fs);
 void lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs);
 void lc_invalidateInodeBlocks(struct gfs *gfs, struct fs *fs);
 void lc_sync(struct gfs *gfs, struct fs *fs, bool super);
+void *lc_syncer(void *data);
+void lc_commitRoot(struct gfs *gfs, int count);
 void lc_unmount(struct gfs *gfs);
 void lc_syncAllLayers(struct gfs *gfs);
 struct fs *lc_newLayer(struct gfs *gfs, bool rw);

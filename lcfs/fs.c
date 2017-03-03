@@ -724,7 +724,7 @@ lc_umountSync(struct gfs *gfs) {
     lc_destroyInodes(fs, false);
 
     /* Free allocator data structures */
-    lc_blockAllocatorDeinit(gfs, fs);
+    lc_blockAllocatorDeinit(gfs, fs, true);
 
     lc_freeLayer(fs, false);
 
@@ -835,3 +835,98 @@ lc_cleanupAfterRestart(struct gfs *gfs, struct fs *fs) {
     }
 }
 
+/* Commit changes in root layer and write out superblock */
+void
+lc_commitRoot(struct gfs *gfs, int count) {
+    struct fs *fs = lc_getGlobalFs(gfs);
+    int err;
+
+    /* Flush dirty pages with shared lock */
+    if (fs->fs_dpcount || fs->fs_pcount) {
+        lc_lock(fs, false);
+        lc_flushDirtyInodeList(fs, true);
+        lc_flushDirtyPages(gfs, fs);
+        lc_unlock(fs);
+    }
+
+    /* Lock the layer exclusive and flush everything and write out superblock
+     */
+    lc_lock(fs, true);
+    if ((gfs->gfs_layerInProgress == 0) && (count == gfs->gfs_changedLayers)) {
+        lc_syncInodes(gfs, fs);
+        lc_flushDirtyPages(gfs, fs);
+        lc_processFreedBlocks(fs, false);
+        lc_freeLayerBlocks(gfs, fs, false, false, true);
+        lc_blockAllocatorDeinit(gfs, fs, false);
+        err = fsync(gfs->gfs_fd);
+        assert(err == 0);
+#if 0
+        fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
+        lc_superWrite(gfs, fs);
+        fs->fs_dirty = false;
+#endif
+        gfs->gfs_changedLayers -= count;
+        printf("file system committed to disk\n");
+    }
+    lc_unlock(fs);
+}
+
+/* Commit the file system to a consistent state */
+void
+lc_commit(struct gfs *gfs) {
+    struct fs *fs;
+    int i, count;
+
+    if (gfs->gfs_layerInProgress || (gfs->gfs_changedLayers == 0)) {
+        return;
+    }
+
+    /* Sync all frozen layers */
+    rcu_register_thread();
+    rcu_read_lock();
+    count = gfs->gfs_changedLayers;
+    for (i = 1;
+         (i <= gfs->gfs_scount) && (gfs->gfs_layerInProgress == 0) &&
+         (count == gfs->gfs_changedLayers);
+         i++) {
+        fs = rcu_dereference(gfs->gfs_fs[i]);
+        if (fs && fs->fs_frozen) {
+            if (lc_tryLock(fs, true)) {
+                rcu_read_unlock();
+                rcu_unregister_thread();
+                return;
+            }
+            lc_sync(gfs, fs, true);
+            lc_unlock(fs);
+        }
+    }
+    rcu_read_unlock();
+    rcu_unregister_thread();
+    if ((gfs->gfs_layerInProgress == 0) && (count == gfs->gfs_changedLayers)) {
+
+        /* Sync everything from the root layer */
+        lc_commitRoot(gfs, count);
+    }
+}
+
+/* Commit file system periodically */
+void *
+lc_syncer(void *data) {
+    struct gfs *gfs = getfs();
+    struct timespec interval;
+    struct timeval now;
+
+    interval.tv_nsec = 0;
+    while (!gfs->gfs_unmounting) {
+        gettimeofday(&now, NULL);
+        interval.tv_sec = now.tv_sec + LC_SYNC_INTERVAL;
+        pthread_mutex_lock(&gfs->gfs_slock);
+        pthread_cond_timedwait(&gfs->gfs_syncerCond, &gfs->gfs_slock,
+                               &interval);
+        pthread_mutex_unlock(&gfs->gfs_slock);
+        if (!gfs->gfs_unmounting) {
+            lc_commit(gfs);
+        }
+    }
+    return NULL;
+}

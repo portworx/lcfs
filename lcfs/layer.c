@@ -98,6 +98,9 @@ lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
         err = ENOSPC;
         goto out;
     }
+    if (!rfs->fs_dirty) {
+        lc_markSuperDirty(rfs, true);
+    }
 
     /* Allocate a root inode */
     root = lc_inodeAlloc(rfs);
@@ -134,6 +137,7 @@ lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
         fs->fs_rfs = fs;
     } else {
         pfs = lc_getLayerLocked(pinum, false);
+        assert(pfs->fs_frozen);
         assert(rw || pfs->fs_readOnly);
         assert(pfs->fs_pcount == 0);
         assert(!(fs->fs_super->sb_flags & LC_SUPER_ZOMBIE));
@@ -153,6 +157,10 @@ lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
         lc_blockFree(gfs, fs, fs->fs_sblock, 1, true);
         lc_freeLayerBlocks(gfs, fs, true, true, false);
         goto out;
+    }
+    if (!rw) {
+        __sync_add_and_fetch(&gfs->gfs_layerInProgress, 1);
+        __sync_add_and_fetch(&gfs->gfs_changedLayers, 1);
     }
 
     /* Respond now and complete the work. Operations in the layer will wait for
@@ -246,6 +254,9 @@ lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
     /* Find the inode in layer directory */
     lc_statsBegin(&start);
     rfs = lc_getLayerLocked(LC_ROOT_INODE, false);
+    if (!rfs->fs_dirty) {
+        lc_markSuperDirty(rfs, true);
+    }
     pdir = gfs->gfs_layerRootInode;
     lc_inodeLock(pdir, true);
 
@@ -268,6 +279,9 @@ lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
     }
     lc_inodeUnlock(pdir);
     fuse_reply_ioctl(req, 0, NULL, 0);
+    if (fs->fs_parent == NULL) {
+        __sync_add_and_fetch(&gfs->gfs_changedLayers, 1);
+    }
 
     /* This could happen when a layer is made a zombie layer, which will be
      * removed when all the child layers are removed.
@@ -333,6 +347,10 @@ lc_umountLayer(fuse_req_t req, struct gfs *gfs, ino_t root) {
         fs->fs_super->sb_lastInode = gfs->gfs_super->sb_ninode;
         fs->fs_frozen = true;
         fs->fs_commitInProgress = false;
+        if (fs->fs_readOnly) {
+            assert(gfs->gfs_layerInProgress > 0);
+            __sync_sub_and_fetch(&gfs->gfs_layerInProgress, 1);
+        }
         if (fs->fs_dpcount == 0) {
             lc_unlock(fs);
             return;
@@ -387,8 +405,8 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
 
         /* Mark a layer as mounted */
         if (err == 0) {
-            fuse_reply_ioctl(req, 0, NULL, 0);
             fs = lc_getLayerLocked(root, true);
+            fuse_reply_ioctl(req, 0, NULL, 0);
             fs->fs_super->sb_flags |= LC_SUPER_MOUNTED;
             lc_unlock(fs);
         }

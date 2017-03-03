@@ -231,6 +231,7 @@ lc_blockFreeExtents(struct gfs *gfs, struct fs *fs, struct extent *extents,
     uint64_t count = LC_EXTENT_BLOCK, pcount = 0, block, freed = 0;
     struct fs *rfs = flush ? lc_getGlobalFs(gfs) : NULL;
     struct extent *extent = extents, *tmp;
+    bool free = !(flags & LC_EXTENT_KEEP);
     bool layer = flags & LC_EXTENT_LAYER;
     uint64_t estart, ecount, bcount = 0;
     struct dextentBlock *eblock = NULL;
@@ -264,7 +265,9 @@ lc_blockFreeExtents(struct gfs *gfs, struct fs *fs, struct extent *extents,
             lc_blockFree(gfs, fs, estart, ecount, layer);
         }
         extent = extent->ex_next;
-        lc_free(fs, tmp, sizeof(struct extent), LC_MEMTYPE_EXTENT);
+        if (free) {
+            lc_free(fs, tmp, sizeof(struct extent), LC_MEMTYPE_EXTENT);
+        }
     }
     if (eblock) {
         if (count < LC_EXTENT_BLOCK) {
@@ -508,13 +511,13 @@ lc_blockFree(struct gfs *gfs, struct fs *fs, uint64_t block,
 /* Free blocks allocated/reserved by a layer */
 uint64_t
 lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount, bool remove,
-                   bool inval) {
+                   bool keep) {
     struct extent *extent;
     uint64_t freed;
 
     /* Free unused blocks from the inode pool */
     pthread_mutex_lock(&fs->fs_alock);
-    if (fs->fs_blockInodesCount) {
+    if (!keep && fs->fs_blockInodesCount) {
         lc_blockLayerFree(gfs, fs, fs->fs_blockInodes,
                           fs->fs_blockInodesCount);
         fs->fs_blockInodesCount = 0;
@@ -523,7 +526,7 @@ lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount, bool remove,
     }
 
     /* Free unused blocks from the metadata pool */
-    if (fs->fs_blockMetaCount) {
+    if (!keep && fs->fs_blockMetaCount) {
         lc_blockLayerFree(gfs, fs, fs->fs_blockMeta, fs->fs_blockMetaCount);
         fs->fs_blockMetaCount = 0;
         fs->fs_blockMeta = 0;
@@ -646,7 +649,7 @@ lc_processFreedBlocks(struct fs *fs, bool release) {
 
 /* Update free space information to disk and free extent list */
 void
-lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs) {
+lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs, bool umount) {
     uint64_t count = 0, pcount, block = LC_INVALID_BLOCK, bcount = 0;
     struct extent *extent, **prev;
     bool release;
@@ -694,6 +697,9 @@ lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs) {
 
     /* Update space usage */
     lc_blockFreeExtents(gfs, fs, gfs->gfs_extents,
-                        fs->fs_dirty ? LC_EXTENT_FLUSH : 0);
-    gfs->gfs_extents = NULL;
+                        (umount ? 0 : LC_EXTENT_KEEP) |
+                        (fs->fs_dirty ? LC_EXTENT_FLUSH : 0));
+    if (umount) {
+        gfs->gfs_extents = NULL;
+    }
 }

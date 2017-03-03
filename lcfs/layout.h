@@ -77,6 +77,9 @@
 /* Directory in which containers are kept */
 #define LC_CONTAINER_DIR    "containers"
 
+/* repositories.json file in root layer */
+#define LC_REPOSITORIES_JSON "repositories.json"
+
 /* File types for counting each type created in a layer */
 enum lc_ftypes {
     LC_FTYPE_REGULAR,           /* Regular file */
