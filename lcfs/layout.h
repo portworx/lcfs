@@ -267,6 +267,7 @@ struct iblock {
     /* Next block */
     uint64_t ib_next;
 
+    /* XXX Track checksum of inode blocks */
     /* Inode blocks */
     uint64_t ib_blks[LC_IBLOCK_MAX];
 };

@@ -146,20 +146,21 @@ struct ixattr {
     uint32_t xd_xsize;
 } __attribute__((packed));
 
-#define LC_INODE_DIRTY          0x001  /* Inode is dirty */
+#define LC_INODE_DIRTY          0x0001  /* Inode is dirty */
 /* XXX LC_INODE_EMAPDIRTY and LC_INODE_DIRDIRTY may use the same bit. */
-#define LC_INODE_EMAPDIRTY      0x002  /* Dirty pages and Emap */
-#define LC_INODE_DIRDIRTY       0x004  /* Dirty directory */
-#define LC_INODE_XATTRDIRTY     0x008  /* Dirty extended attributes */
-#define LC_INODE_REMOVED        0x010  /* File is removed */
-#define LC_INODE_SHARED         0x020  /* Sharing emap/directory with parent */
-#define LC_INODE_TMP            0x040  /* Created under /tmp */
-#define LC_INODE_HASHED         0x080  /* Hashed directory */
-#define LC_INODE_DHASHED        0x080  /* Dirty pages in a hash table */
-#define LC_INODE_NOTRUNC        0x100  /* Do not truncate this file */
-#define LC_INODE_CTRACKED       0x200  /* Inode in the change list */
-#define LC_INODE_MLINKS         0x400  /* Linked from many directories */
-#define LC_INODE_SYMLINK        0x800  /* Free symbolic link target */
+#define LC_INODE_EMAPDIRTY      0x0002  /* Dirty pages and Emap */
+#define LC_INODE_DIRDIRTY       0x0004  /* Dirty directory */
+#define LC_INODE_XATTRDIRTY     0x0008  /* Dirty extended attributes */
+#define LC_INODE_REMOVED        0x0010  /* File is removed */
+#define LC_INODE_SHARED         0x0020  /* Sharing emap/directory of parent */
+#define LC_INODE_TMP            0x0040  /* Created under /tmp */
+#define LC_INODE_HASHED         0x0080  /* Hashed directory */
+#define LC_INODE_DHASHED        0x0080  /* Dirty pages in a hash table */
+#define LC_INODE_NOTRUNC        0x0100  /* Do not truncate this file */
+#define LC_INODE_CTRACKED       0x0200  /* Inode in the change list */
+#define LC_INODE_MLINKS         0x0400  /* Linked from many directories */
+#define LC_INODE_SYMLINK        0x0800  /* Free symbolic link target */
+#define LC_INODE_DISK           0x1000  /* Inode flushed to disk */
 
 /* Fake inode number used to trigger layer commit operation */
 #define LC_COMMIT_TRIGGER_INODE     LC_ROOT_INODE
@@ -169,9 +170,6 @@ struct inode {
 
     /* Disk inode part */
     struct dinode i_dinode;
-
-    /* Location of the inode */
-    uint64_t i_block;
 
     /* Filesystem inode belongs to */
     struct fs *i_fs;
@@ -216,10 +214,10 @@ struct inode {
 #define DARWIN_INODE_SIZE 6
     char opaque[DARWIN_INODE_SIZE];
 }  __attribute__((packed));
-static_assert(sizeof(struct inode) == 360, "inode size != 360");
+static_assert(sizeof(struct inode) == 352, "inode size != 352");
 #else
 }  __attribute__((packed));
-static_assert(sizeof(struct inode) == 168, "inode size != 168");
+static_assert(sizeof(struct inode) == 160, "inode size != 160");
 #endif
 static_assert((sizeof(struct inode) % sizeof(void *)) == 0,
               "Inode size is not aligned");

@@ -1012,7 +1012,10 @@ lc_purgePages(struct gfs *gfs, bool force) {
 /* Background thread for purging clean pages */
 void *
 lc_cleaner(void *data) {
-    pthread_t flusher, syncer;
+#ifdef LC_SYNCER
+    pthread_t syncer;
+#endif
+    pthread_t flusher;
     struct gfs *gfs = getfs();
     struct timespec interval;
     struct timeval now;
@@ -1024,8 +1027,10 @@ lc_cleaner(void *data) {
     assert(err == 0);
 
     /* Start a thread to checkpoint file system periodically */
+#ifdef LC_SYNCER
     err = pthread_create(&syncer, NULL, lc_syncer, NULL);
     assert(err == 0);
+#endif
 
     /* Purge clean pages when amount of memory used for pages goes above a
      * certain threshold.
@@ -1051,8 +1056,10 @@ lc_cleaner(void *data) {
 
     /* Wait for flusher and syncer to exit */
     pthread_cond_signal(&gfs->gfs_flusherCond);
+#ifdef LC_SYNCER
     pthread_cond_signal(&gfs->gfs_syncerCond);
-    pthread_join(flusher, NULL);
     pthread_join(syncer, NULL);
+#endif
+    pthread_join(flusher, NULL);
     return NULL;
 }
