@@ -171,12 +171,17 @@ function system_manage()
     [ -n "${sysd_pid}" ] && ${SUDO} systemctl $1 $2       # Systemd Manage
 
     if [ -e "${sysV}" ]; then                             # SystemV Manage
+	local chk_config=$(${SUDO} which chkconfig)
 	case $1 in
             enable)
-		${SUDO} chkconfig $2 on
+		if [ -n "${chk_config}" ]; then
+		  ${SUDO} chkconfig $2 on
+		fi
 		;;
 	    disable)
-		${SUDO} chkconfig $2 off
+		if [ -n "${chk_config}" ]; then
+		  ${SUDO} chkconfig $2 off
+		fi
 		;;
             *)
 		${SUDO} ${sysV} $1
