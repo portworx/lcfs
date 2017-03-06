@@ -424,8 +424,8 @@ lc_purgeRemovedInodes(struct gfs *gfs, struct fs *fs, char *buf) {
 static bool
 lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
                    char *buf, void *ibuf, bool lock) {
+    bool empty = true, flush = false, reg;
     struct inode *inode, *cinode;
-    bool empty = true, reg;
     uint64_t i, len;
     off_t offset;
     ino_t ino;
@@ -443,6 +443,8 @@ lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
         /* Check if the inode is already present in cache */
         cinode = lc_lookupInodeCache(fs, ino, lc_inodeHash(fs, ino));
         if (cinode) {
+            inode->i_ino = 0;
+            flush = true;
             continue;
         }
         empty = false;
@@ -486,6 +488,9 @@ lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
             assert(S_ISDIR(inode->i_mode));
             fs->fs_rootInode = inode;
         }
+    }
+    if (!empty && flush) {
+        lc_writeBlock(gfs, fs, buf, block);
     }
     return empty;
 }
