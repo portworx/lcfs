@@ -231,6 +231,7 @@ static_assert((sizeof(struct inode) % sizeof(void *)) == 0,
 #define i_private       i_dinode.di_private
 #define i_emapDirBlock  i_dinode.di_emapdir
 #define i_extentBlock   i_dinode.di_emapdir
+#define i_block         i_dinode.di_emapdir
 #define i_extentLength  i_dinode.di_extentLength
 
 #define i_xattr         i_xattrData->xd_xattr

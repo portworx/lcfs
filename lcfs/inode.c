@@ -381,10 +381,12 @@ lc_setLayerRoot(struct gfs *gfs, ino_t ino) {
 
 /* Purge removed inodes from cache */
 static void
-lc_purgeRemovedInodes(struct fs *fs) {
+lc_purgeRemovedInodes(struct gfs *gfs, struct fs *fs, char *buf) {
     uint64_t i, count = 0, rcount = 0, icacheSize = fs->fs_icacheSize;
     struct icache *icache = fs->fs_icache;
     struct inode *inode, **prev;
+    uint64_t block;
+    off_t offset;
 
     for (i = 0; (i < icacheSize) && (count < fs->fs_icount); i++) {
         prev = &icache[i].ic_head;
@@ -393,7 +395,16 @@ lc_purgeRemovedInodes(struct fs *fs) {
             count++;
             if (inode->i_flags & LC_INODE_REMOVED) {
                 *prev = inode->i_cnext;
+                block = inode->i_block;
                 lc_freeInode(inode);
+
+                /* This inode is no longer needed on disk */
+                offset = (block >> LC_DINODE_INDEX) * LC_DINODE_SIZE;
+                block = block & LC_DINODE_BLOCK;
+                lc_readBlock(gfs, fs, block, buf);
+                inode = (struct inode *)&buf[offset];
+                inode->i_ino = 0;
+                lc_writeBlock(gfs, fs, buf, block);
                 rcount++;
             } else {
                 prev = &inode->i_cnext;
@@ -406,8 +417,6 @@ lc_purgeRemovedInodes(struct fs *fs) {
         fs->fs_ricount = 0;
         __sync_sub_and_fetch(&fs->fs_icount, rcount);
         lc_printf("Purged %ld removed inodes\n", rcount);
-
-        /* XXX Consider rewriting inode blocks after removing these inodes */
     }
 }
 
@@ -446,6 +455,8 @@ lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
         /* Check if this is a removed inode */
         if (inode->i_nlink == 0) {
             inode->i_flags |= LC_INODE_REMOVED;
+            assert(inode->i_block == LC_INVALID_BLOCK);
+            inode->i_block = (i << LC_DINODE_INDEX) | block;
             fs->fs_ricount++;
             continue;
         }
@@ -540,21 +551,18 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
                     break;
                 }
                 if (iblock == LC_INVALID_BLOCK) {
-                    for (j = i + 1; j < l; j++) {
+                    for (j = l; j >= i; j--) {
                         iblock = buf->ib_blks[j];
-                        assert(iblock);
-                        if (iblock != LC_INVALID_BLOCK) {
-                            buf->ib_blks[i] = iblock;
-                            buf->ib_blks[j] = LC_INVALID_BLOCK;
-                            k++;
-                            break;
+                        if (iblock) {
+                            l = j - 1;
+                            buf->ib_blks[j] = 0;
+                            if (iblock != LC_INVALID_BLOCK) {
+                                buf->ib_blks[i] = iblock;
+                                break;
+                            }
                         }
                     }
                 }
-            }
-            for (i = k; i < l; i++) {
-                assert(buf->ib_blks[i] == LC_INVALID_BLOCK);
-                buf->ib_blks[i] = 0;
             }
 
             /* Free next inode block if current block completely empty after
@@ -578,10 +586,10 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
     }
     assert(fs->fs_rootInode != NULL);
     assert(!flush);
+    lc_purgeRemovedInodes(gfs, fs, ibuf);
     lc_free(fs, buf, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
     lc_free(fs, ibuf, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
     lc_free(fs, xbuf, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
-    lc_purgeRemovedInodes(fs);
 }
 
 /* Invalidate dirty inode pages */
@@ -731,8 +739,11 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             block = block & LC_DINODE_BLOCK;
             assert(offset < LC_BLOCK_SIZE);
             written = true;
-            assert(!(inode->i_flags & LC_INODE_REMOVED) ||
-                   (inode->i_nlink == 0));
+            if (inode->i_flags & LC_INODE_REMOVED) {
+                assert(inode->i_nlink == 0);
+            } else {
+                inode->i_flags &= ~LC_INODE_DISK;
+            }
 
             //lc_printf("Writing inode %ld to block %ld\n", inode->i_ino, block);
             if (allocated) {
