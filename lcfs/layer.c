@@ -154,8 +154,6 @@ lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
         lc_dirRemove(pdir, name);
         pdir->i_nlink--;
         lc_inodeUnlock(pdir);
-        lc_blockFree(gfs, fs, fs->fs_sblock, 1, true);
-        lc_freeLayerBlocks(gfs, fs, true, true, false);
         goto out;
     }
     if (!rw) {
@@ -236,7 +234,9 @@ lc_releaseLayer(struct gfs *gfs, struct fs *fs) {
     lc_invalidateDirtyPages(gfs, fs);
     lc_invalidateInodePages(gfs, fs);
     lc_invalidateInodeBlocks(gfs, fs);
-    lc_blockFree(gfs, fs, fs->fs_sblock, 1, true);
+    if (fs->fs_sblock != LC_INVALID_BLOCK) {
+        lc_blockFree(gfs, lc_getGlobalFs(gfs), fs->fs_sblock, 1, true);
+    }
     lc_freeLayerBlocks(gfs, fs, true, true, fs->fs_parent);
     lc_unlock(fs);
     lc_destroyLayer(fs, true);
@@ -347,6 +347,7 @@ lc_umountLayer(fuse_req_t req, struct gfs *gfs, ino_t root) {
         fs->fs_super->sb_lastInode = gfs->gfs_super->sb_ninode;
         fs->fs_frozen = true;
         fs->fs_commitInProgress = false;
+        lc_markSuperDirty(fs, false);
         if (fs->fs_readOnly) {
             assert(gfs->gfs_layerInProgress > 0);
             __sync_sub_and_fetch(&gfs->gfs_layerInProgress, 1);
@@ -372,7 +373,10 @@ lc_umountLayer(fuse_req_t req, struct gfs *gfs, ino_t root) {
         rcu_unregister_thread();
     } else {
         fuse_reply_ioctl(req, 0, NULL, 0);
-        fs->fs_super->sb_icount = fs->fs_icount;
+        if (fs->fs_super->sb_icount != fs->fs_icount) {
+            fs->fs_super->sb_icount = fs->fs_icount;
+            lc_markSuperDirty(fs, false);
+        }
         lc_unlock(fs);
     }
 }
@@ -393,7 +397,7 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
     if (cmd == UMOUNT_ALL) {
         //ProfilerStop();
         fuse_reply_ioctl(req, 0, NULL, 0);
-        lc_syncAllLayers(gfs);
+        __sync_add_and_fetch(&gfs->gfs_changedLayers, 1);
         lc_statsAdd(rfs, LC_CLEANUP, 0, &start);
         lc_unlock(rfs);
         return;
@@ -557,12 +561,10 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
     lc_removeChild(pfs);
     pfs->fs_prev = NULL;
     pfs->fs_next = NULL;
-    pfs->fs_super->sb_nextLayer = 0;
     assert(pfs->fs_child == NULL);
     pfs->fs_parent = cfs;
     assert(cfs->fs_child == NULL);
     cfs->fs_child = pfs;
-    cfs->fs_super->sb_childLayer = pfs->fs_sblock;
 
     /* Check if old parent of parent layer is pending removal */
     tfs = pfs->fs_zfs;
@@ -576,10 +578,8 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
     lc_removeChild(fs);
     fs->fs_prev = NULL;
     fs->fs_next = NULL;
-    fs->fs_super->sb_nextLayer = 0;
     fs->fs_parent = pfs;
     pfs->fs_child = fs;
-    pfs->fs_super->sb_childLayer = fs->fs_sblock;
     pthread_mutex_unlock(&gfs->gfs_lock);
 
     /* Update super blocks */

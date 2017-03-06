@@ -12,6 +12,7 @@ lc_newLayer(struct gfs *gfs, bool rw) {
     fs->fs_readOnly = !rw;
     fs->fs_ctime = t;
     fs->fs_atime = t;
+    fs->fs_sblock = LC_INVALID_BLOCK;
 #ifndef LC_IC_LOCK
     pthread_mutex_init(&fs->fs_ilock, NULL);
 #endif
@@ -79,6 +80,7 @@ lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs) {
     fs->fs_inodeBlockCount = 0;
     fs->fs_inodeBlockPages = NULL;
     fs->fs_super->sb_inodeBlock = block;
+    lc_markSuperDirty(fs, false);
 }
 
 /* Allocate a new inode block */
@@ -257,14 +259,12 @@ lc_removeChild(struct fs *fs) {
         if (fs->fs_next) {
             fs->fs_next->fs_prev = NULL;
         }
-        pfs->fs_super->sb_childLayer = fs->fs_super->sb_nextLayer;
         lc_markSuperDirty(pfs, false);
     } else {
 
         /* Remove from the common parent list */
         nfs = fs->fs_prev;
         nfs->fs_next = fs->fs_next;
-        nfs->fs_super->sb_nextLayer = fs->fs_super->sb_nextLayer;
         lc_markSuperDirty(nfs, false);
         if (fs->fs_next) {
             fs->fs_next->fs_prev = fs->fs_prev;
@@ -350,6 +350,7 @@ lc_getLayerForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
         if ((fs->fs_super->sb_zombie == fs->fs_child->fs_gindex) &&
             (fs->fs_child->fs_next == NULL)) {
             fs->fs_super->sb_flags |= LC_SUPER_ZOMBIE;
+            lc_markSuperDirty(fs, false);
             assert(fs->fs_child->fs_zfs == NULL);
             fs->fs_child->fs_zfs = fs;
             pthread_mutex_unlock(&gfs->gfs_lock);
@@ -381,8 +382,6 @@ lc_addChild(struct gfs *gfs, struct fs *pfs, struct fs *fs) {
         }
         fs->fs_next = child->fs_next;
         child->fs_next = fs;
-        fs->fs_super->sb_nextLayer = child->fs_super->sb_nextLayer;
-        child->fs_super->sb_nextLayer = fs->fs_sblock;
         lc_markSuperDirty(child, false);
     } else if (pfs) {
 
@@ -394,7 +393,6 @@ lc_addChild(struct gfs *gfs, struct fs *pfs, struct fs *fs) {
             fs->fs_single = true;
         }
         pfs->fs_child = fs;
-        pfs->fs_super->sb_childLayer = fs->fs_sblock;
         lc_markSuperDirty(pfs, false);
     }
 }
@@ -404,8 +402,6 @@ int
 lc_addLayer(struct gfs *gfs, struct fs *fs, struct fs *pfs, int *inval) {
     struct fs *rfs = fs->fs_rfs;
     int i;
-
-    fs->fs_sblock = lc_blockAllocExact(fs, 1, true, false);
 
     /* Find a free slot and insert the new file system.
      * Do not reuse an index in a tree as that would confuse the kernel which
@@ -677,10 +673,8 @@ lc_mount(struct gfs *gfs, char *device, size_t size) {
 }
 
 /* Sync a dirty file system */
-void
-lc_sync(struct gfs *gfs, struct fs *fs, bool super) {
-    int err;
-
+static void
+lc_sync(struct gfs *gfs, struct fs *fs) {
     /* Flush dirty inodes and pages */
     if (fs->fs_super->sb_flags & LC_SUPER_MOUNTED) {
         lc_syncInodes(gfs, fs);
@@ -689,15 +683,6 @@ lc_sync(struct gfs *gfs, struct fs *fs, bool super) {
         lc_processFreedBlocks(fs, true);
         lc_freeLayerBlocks(gfs, fs, false, false, false);
         fs->fs_super->sb_flags &= ~LC_SUPER_MOUNTED;
-    }
-
-    /* Flush everything to disk before marking file system clean */
-    if (super && fs->fs_dirty && !fs->fs_removed) {
-        err = fsync(gfs->gfs_fd);
-        assert(err == 0);
-        fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
-        lc_superWrite(gfs, fs);
-        fs->fs_dirty = false;
     }
 }
 
@@ -713,7 +698,7 @@ lc_umountSync(struct gfs *gfs) {
     }
 
     /* XXX Combine sync and destroy */
-    lc_sync(gfs, fs, false);
+    lc_sync(gfs, fs);
 
     /* Release freed and unused blocks */
     lc_freeLayerBlocks(gfs, fs, true, false, false);
@@ -750,17 +735,16 @@ lc_umountSync(struct gfs *gfs) {
 }
 
 /* Sync dirty data from all layers */
-void
+static void
 lc_syncAllLayers(struct gfs *gfs) {
     struct fs *fs;
     int i;
 
     for (i = 1; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
-
-        /* Trylock can fail only if the fs is being removed */
-        if (fs && !lc_tryLock(fs, false)) {
-            lc_sync(gfs, fs, true);
+        if (fs) {
+            lc_lock(fs, true);
+            lc_sync(gfs, fs);
             lc_unlock(fs);
         }
     }
@@ -780,12 +764,16 @@ lc_unmount(struct gfs *gfs) {
      * destroyed before child layers as some data structures are shared.
      */
     lc_syncAllLayers(gfs);
+    lc_allocateSuperBlocks(gfs, fs, false);
     for (i = 1; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
-        if (fs && !lc_tryLock(fs, false)) {
+        if (fs) {
+            lc_lock(fs, true);
             gfs->gfs_fs[i] = NULL;
             lc_freeLayerBlocks(gfs, fs, true, false, false);
+            fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
             lc_superWrite(gfs, fs);
+            fs->fs_dirty = false;
             lc_unlock(fs);
             lc_destroyLayer(fs, false);
         }
@@ -851,10 +839,13 @@ lc_commitRoot(struct gfs *gfs, int count) {
 
     /* Lock the layer exclusive and flush everything and write out superblock
      */
-    lc_lock(fs, true);
+    if (lc_tryLock(fs, true)) {
+        return;
+    }
     if ((gfs->gfs_layerInProgress == 0) && (count == gfs->gfs_changedLayers)) {
         lc_syncInodes(gfs, fs);
         lc_flushDirtyPages(gfs, fs);
+        lc_allocateSuperBlocks(gfs, fs, true);
         lc_processFreedBlocks(fs, false);
         lc_freeLayerBlocks(gfs, fs, false, false, true);
         lc_blockAllocatorDeinit(gfs, fs, false);
@@ -896,7 +887,7 @@ lc_commit(struct gfs *gfs) {
                 rcu_unregister_thread();
                 return;
             }
-            lc_sync(gfs, fs, true);
+            lc_sync(gfs, fs);
             lc_unlock(fs);
         }
     }

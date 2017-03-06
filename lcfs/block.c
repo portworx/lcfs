@@ -284,6 +284,7 @@ lc_blockFreeExtents(struct gfs *gfs, struct fs *fs, struct extent *extents,
             /* Allocate a new block */
             block = lc_blockAllocExact(rfs, pcount, true, false);
             fs->fs_super->sb_extentBlock = block;
+            lc_markSuperDirty(fs, false);
         } else {
             block = gfs->gfs_super->sb_extentBlock;
             assert(block != LC_INVALID_BLOCK);
@@ -694,6 +695,7 @@ lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs, bool umount) {
     assert((bcount + gfs->gfs_super->sb_blocks + 1) ==
            gfs->gfs_super->sb_tblocks);
     gfs->gfs_super->sb_extentBlock = block;
+    lc_markSuperDirty(fs, false);
 
     /* Update space usage */
     lc_blockFreeExtents(gfs, fs, gfs->gfs_extents,

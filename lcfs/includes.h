@@ -124,6 +124,7 @@ void lc_superRead(struct gfs *gfs, struct fs *fs, uint64_t block);
 void lc_superWrite(struct gfs *gfs, struct fs *fs);
 void lc_superInit(struct super *super, uint64_t root, size_t size,
                   uint32_t flags, bool global);
+void lc_allocateSuperBlocks(struct gfs *gfs, struct fs *rfs, bool write);
 void lc_markSuperDirty(struct fs *fs, bool write);
 
 struct fs *lc_getLayerLocked(ino_t ino, bool exclusive);
@@ -141,11 +142,9 @@ void lc_cleanupAfterRestart(struct gfs *gfs, struct fs *fs);
 void lc_newInodeBlock(struct gfs *gfs, struct fs *fs);
 void lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs);
 void lc_invalidateInodeBlocks(struct gfs *gfs, struct fs *fs);
-void lc_sync(struct gfs *gfs, struct fs *fs, bool super);
 void *lc_syncer(void *data);
 void lc_commitRoot(struct gfs *gfs, int count);
 void lc_unmount(struct gfs *gfs);
-void lc_syncAllLayers(struct gfs *gfs);
 struct fs *lc_newLayer(struct gfs *gfs, bool rw);
 void lc_destroyLayer(struct fs *fs, bool remove);
 

@@ -57,9 +57,10 @@ lc_superWrite(struct gfs *gfs, struct fs *fs) {
 /* Mark super block dirty */
 void
 lc_markSuperDirty(struct fs *fs, bool write) {
+
+#if 0
     struct gfs *gfs;
 
-    fs->fs_super->sb_flags |= LC_SUPER_DIRTY;
     if (write && !fs->fs_dirty) {
         gfs = fs->fs_gfs;
         pthread_mutex_lock(&gfs->gfs_flock);
@@ -70,5 +71,43 @@ lc_markSuperDirty(struct fs *fs, bool write) {
         pthread_mutex_unlock(&gfs->gfs_flock);
     } else {
         fs->fs_dirty = true;
+    }
+#endif
+    fs->fs_super->sb_flags |= LC_SUPER_DIRTY;
+    fs->fs_dirty = true;
+}
+
+/* Allocate superblocks for layers as needed */
+void
+lc_allocateSuperBlocks(struct gfs *gfs, struct fs *rfs, bool write) {
+    uint64_t block;
+    struct fs *fs;
+    int i;
+
+    for (i = 1; i <= gfs->gfs_scount; i++) {
+        fs = gfs->gfs_fs[i];
+        if (fs && (fs->fs_sblock == LC_INVALID_BLOCK)) {
+            fs->fs_sblock = lc_blockAllocExact(rfs, 1, true, false);
+        }
+    }
+
+    /* Link the newly allocated super blocks */
+    for (i = 0; i <= gfs->gfs_scount; i++) {
+        fs = gfs->gfs_fs[i];
+        if (fs) {
+            block = fs->fs_next ? fs->fs_next->fs_sblock : 0;
+            assert(fs->fs_dirty || (fs->fs_super->sb_nextLayer == block));
+            fs->fs_super->sb_nextLayer = block;
+            block = fs->fs_child ? fs->fs_child->fs_sblock : 0;
+            assert(fs->fs_dirty || (fs->fs_super->sb_childLayer == block));
+            fs->fs_super->sb_childLayer = block;
+
+            /* Write the superblock if it is pending write */
+            if (i && write && fs->fs_dirty) {
+                fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
+                lc_superWrite(gfs, fs);
+                fs->fs_dirty = false;
+            }
+        }
     }
 }
