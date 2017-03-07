@@ -82,25 +82,44 @@ void
 lc_allocateSuperBlocks(struct gfs *gfs, struct fs *rfs, bool write) {
     uint64_t block;
     struct fs *fs;
-    int i;
+    int i, count;
 
+    /* Check if any layers are dirty */
     for (i = 1; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
-        if (fs && (fs->fs_sblock == LC_INVALID_BLOCK)) {
-            fs->fs_sblock = lc_blockAllocExact(rfs, 1, true, false);
+        if (fs && fs->fs_dirty) {
+            break;
         }
     }
+    if ((i > gfs->gfs_scount) && !rfs->fs_dirty) {
+        return;
+    }
+
+    /* Allocate new superblocks for all layers */
+    count = gfs->gfs_count - 1;
+    block = count ?
+            lc_blockAllocExact(rfs, count, true, false) : LC_INVALID_BLOCK;
+    for (i = 1; i <= gfs->gfs_scount; i++) {
+        fs = gfs->gfs_fs[i];
+        if (fs) {
+            if (fs->fs_sblock != LC_INVALID_BLOCK) {
+                lc_freeLayerMetaBlocks(rfs, fs->fs_sblock, 1);
+            }
+            fs->fs_sblock = block++;
+            fs->fs_dirty = true;
+            count--;
+        }
+    }
+    assert(count == 0);
 
     /* Link the newly allocated super blocks */
     for (i = 0; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
         if (fs) {
-            block = fs->fs_next ? fs->fs_next->fs_sblock : 0;
-            assert(fs->fs_dirty || (fs->fs_super->sb_nextLayer == block));
-            fs->fs_super->sb_nextLayer = block;
-            block = fs->fs_child ? fs->fs_child->fs_sblock : 0;
-            assert(fs->fs_dirty || (fs->fs_super->sb_childLayer == block));
-            fs->fs_super->sb_childLayer = block;
+            fs->fs_super->sb_nextLayer = fs->fs_next ?
+                                            fs->fs_next->fs_sblock : 0;
+            fs->fs_super->sb_childLayer = fs->fs_child ?
+                                            fs->fs_child->fs_sblock : 0;
 
             /* Write the superblock if it is pending write */
             if (i && write && fs->fs_dirty) {

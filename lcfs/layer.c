@@ -185,9 +185,8 @@ lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
 
     /* Allocate stat structure if enabled */
     lc_statsNew(fs);
-    lc_printf("Created fs with parent %ld root %ld index %d"
-              " block %ld name %s\n", pfs ? pfs->fs_root : -1, root,
-              fs->fs_gindex, fs->fs_sblock, name);
+    lc_printf("Created fs with parent %ld root %ld index %d name %s\n",
+              pfs ? pfs->fs_root : -1, root, fs->fs_gindex, name);
 
 out:
     if (err) {
