@@ -49,7 +49,7 @@ lc_invalidateInodeBlocks(struct gfs *gfs, struct fs *fs) {
 void
 lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs) {
     uint64_t count, block, pcount = fs->fs_inodeBlockCount;
-    struct page *page, *fpage;
+    struct page *page, *fpage, *tpage;
     struct iblock *iblock;
 
     if (pcount == 0) {
@@ -73,10 +73,11 @@ lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs) {
         iblock->ib_next = (page == fpage) ?
                           fs->fs_super->sb_inodeBlock : block + count + 1;
         lc_updateCRC(iblock, &iblock->ib_crc);
+        tpage = page;
         page = page->p_dnext;
     }
     assert(count == 0);
-    lc_flushPageCluster(gfs, fs, fpage, pcount, false);
+    lc_addPageForWriteBack(gfs, fs, fpage, tpage, pcount);
     fs->fs_inodeBlockCount = 0;
     fs->fs_inodeBlockPages = NULL;
     fs->fs_super->sb_inodeBlock = block;
@@ -110,13 +111,14 @@ void
 lc_freeLayer(struct fs *fs, bool remove) {
     struct gfs *gfs = fs->fs_gfs;
 
-    assert(fs->fs_blockInodesCount == 0);
     assert(fs->fs_blockMetaCount == 0);
     assert(fs->fs_dpcount == 0);
     assert(fs->fs_wpcount == 0);
     assert(fs->fs_dpages == NULL);
+    assert(fs->fs_dpagesLast == NULL);
     assert(fs->fs_inodePagesCount == 0);
     assert(fs->fs_inodePages == NULL);
+    assert(fs->fs_inodePagesLast == NULL);
     assert(fs->fs_inodeBlockCount == 0);
     assert(fs->fs_inodeBlockPages == NULL);
     assert(fs->fs_inodeBlocks == NULL);
@@ -678,10 +680,10 @@ lc_sync(struct gfs *gfs, struct fs *fs) {
     /* Flush dirty inodes and pages */
     if (fs->fs_super->sb_flags & LC_SUPER_MOUNTED) {
         lc_syncInodes(gfs, fs);
-        lc_flushDirtyPages(gfs, fs);
         //lc_displayAllocStats(fs);
         lc_processFreedBlocks(fs, true);
         lc_freeLayerBlocks(gfs, fs, false, false, false);
+        lc_flushDirtyPages(gfs, fs);
         fs->fs_super->sb_flags &= ~LC_SUPER_MOUNTED;
     }
 }
@@ -711,6 +713,7 @@ lc_umountSync(struct gfs *gfs) {
     /* Free allocator data structures */
     lc_blockAllocatorDeinit(gfs, fs, true);
 
+    lc_flushDirtyPages(gfs, fs);
     lc_freeLayer(fs, false);
 
     err = fsync(gfs->gfs_fd);
@@ -771,6 +774,7 @@ lc_unmount(struct gfs *gfs) {
             lc_lock(fs, true);
             gfs->gfs_fs[i] = NULL;
             lc_freeLayerBlocks(gfs, fs, true, false, false);
+            lc_flushDirtyPages(gfs, fs);
             fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
             lc_superWrite(gfs, fs);
             fs->fs_dirty = false;

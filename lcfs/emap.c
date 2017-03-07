@@ -214,8 +214,8 @@ lc_copyEmap(struct gfs *gfs, struct fs *fs, struct inode *inode) {
 static uint64_t
 lc_flushEmapBlocks(struct gfs *gfs, struct fs *fs,
                    struct page *fpage, uint64_t pcount) {
+    struct page *page = fpage, *tpage;
     uint64_t count = pcount, block;
-    struct page *page = fpage;
     struct emapBlock *eblock;
 
     block = lc_blockAllocExact(fs, pcount, true, true);
@@ -229,10 +229,11 @@ lc_flushEmapBlocks(struct gfs *gfs, struct fs *fs,
         eblock->eb_next = (page == fpage) ?
                           LC_INVALID_BLOCK : block + count + 1;
         lc_updateCRC(eblock, &eblock->eb_crc);
+        tpage = page;
         page = page->p_dnext;
     }
     assert(count == 0);
-    lc_flushPageCluster(gfs, fs, fpage, pcount, false);
+    lc_addPageForWriteBack(gfs, fs, fpage, tpage, pcount);
     return block;
 }
 
@@ -258,7 +259,7 @@ lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     }
 
     /* Flush all the dirty pages */
-    lc_flushPages(gfs, fs, inode, true, true, false);
+    lc_flushPages(gfs, fs, inode, true, false);
     extent = lc_inodeGetEmap(inode);
     if (extent) {
         lc_printf("File %ld fragmented\n", inode->i_ino);
@@ -343,8 +344,8 @@ lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
     while (block != LC_INVALID_BLOCK) {
         lc_addSpaceExtent(gfs, fs, &inode->i_emapDirExtents, block, 1, false);
         lc_readBlock(gfs, fs, block, eblock);
-        lc_verifyBlock(eblock, &eblock->eb_crc);
         assert(eblock->eb_magic == LC_EMAP_MAGIC);
+        lc_verifyBlock(eblock, &eblock->eb_crc);
 
         /* Process emap entries from the emap block */
         for (i = 0; i < LC_EMAP_BLOCK; i++) {

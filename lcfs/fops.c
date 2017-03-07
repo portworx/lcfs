@@ -1008,7 +1008,7 @@ lc_closeInode(struct fs *fs, struct inode *inode, struct fuse_file_info *fi,
              (fs->fs_gfs->gfs_dbIno != inode->i_ino))) {
 
             /* Inode emap needs to be stable before an inode could be cloned */
-            lc_flushPages(fs->fs_gfs, fs, inode, false, true, true);
+            lc_flushPages(fs->fs_gfs, fs, inode, true, true);
             return;
         } else if (!(inode->i_flags & (LC_INODE_REMOVED | LC_INODE_TMP)) &&
                    lc_inodeGetDirtyPageCount(inode)) {

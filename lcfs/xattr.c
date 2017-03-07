@@ -406,8 +406,8 @@ lc_xattrCopy(struct inode *inode, struct inode *parent) {
 static uint64_t
 lc_xattrFlushBlocks(struct gfs *gfs, struct fs *fs,
                     struct page *fpage, uint64_t pcount) {
+    struct page *page = fpage, *tpage;
     uint64_t block, count = pcount;
-    struct page *page = fpage;
     struct xblock *xblock;
 
     block = lc_blockAllocExact(fs, pcount, true, true);
@@ -421,10 +421,11 @@ lc_xattrFlushBlocks(struct gfs *gfs, struct fs *fs,
         xblock->xb_next = (page == fpage) ? LC_INVALID_BLOCK :
                                             block + count + 1;
         lc_updateCRC(xblock, &xblock->xb_crc);
+        tpage = page;
         page = page->p_dnext;
     }
     assert(count == 0);
-    lc_flushPageCluster(gfs, fs, fpage, pcount, false);
+    lc_addPageForWriteBack(gfs, fs, fpage, tpage, pcount);
     return block;
 }
 
@@ -527,8 +528,8 @@ lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
     while (block != LC_INVALID_BLOCK) {
         lc_addSpaceExtent(gfs, fs, &inode->i_xattrExtents, block, 1, false);
         lc_readBlock(gfs, fs, block, xblock);
-        lc_verifyBlock(xblock, &xblock->xb_crc);
         assert(xblock->xb_magic == LC_XATTR_MAGIC);
+        lc_verifyBlock(xblock, &xblock->xb_crc);
         xbuf = (char *)&xblock->xb_attr[0];
         remain = LC_BLOCK_SIZE - sizeof(struct xblock);
 

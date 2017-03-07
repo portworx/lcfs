@@ -234,12 +234,10 @@ struct page *lc_getPageNewData(struct fs *fs, uint64_t block, char *data);
 void lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
                          struct page *page, uint64_t block);
 void lc_freeBlocksAfterFlush(struct fs *fs, uint64_t count);
-void lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
-                         struct page *head, uint64_t count, bool bfree);
 void lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head,
                      bool inval);
 void lc_addPageForWriteBack(struct gfs *gfs, struct fs *fs, struct page *head,
-                            struct page *tail, uint64_t pcount, bool io);
+                            struct page *tail, uint64_t pcount);
 void *lc_cleaner(void *data);
 
 uint64_t lc_copyPages(struct fs *fs, off_t off, size_t size,
@@ -251,7 +249,7 @@ int lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode,
                 off_t soffset, off_t endoffset, uint64_t asize,
                 struct page **pages, char **dbuf, struct fuse_bufvec *bufv);
 void lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
-                   bool io, bool release, bool unlock);
+                   bool release, bool unlock);
 void lc_truncateFile(struct inode *inode, off_t size, bool remove);
 void lc_flushDirtyPages(struct gfs *gfs, struct fs *fs);
 void lc_addDirtyInode(struct fs *fs, struct inode *inode);

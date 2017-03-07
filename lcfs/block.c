@@ -46,7 +46,7 @@ lc_reclaimSpace(struct gfs *gfs) {
 
         /* Locking a layer would fail only when the layer is being deleted */
         if (fs &&
-            (fs->fs_extents || fs->fs_blockInodesCount ||
+            (fs->fs_extents ||
              fs->fs_blockMetaCount || fs->fs_fextents ||
              fs->fs_mextents || fs->fs_dextents) && !lc_tryLock(fs, false)) {
             rcu_read_unlock();
@@ -78,7 +78,7 @@ lc_reclaimSpace(struct gfs *gfs) {
             }
 
             /* Release any reserved blocks */
-            if (fs->fs_extents || fs->fs_blockInodesCount ||
+            if (fs->fs_extents ||
                 fs->fs_blockMetaCount) {
                 count += lc_freeLayerBlocks(gfs, fs, false, false, false);
             }
@@ -202,8 +202,8 @@ lc_findFreeBlock(struct gfs *gfs, struct fs *fs,
 static void
 lc_flushExtentPages(struct gfs *gfs, struct fs *fs, struct page *fpage,
                     uint64_t pcount, uint64_t block) {
+    struct page *page = fpage, *tpage;
     struct dextentBlock *eblock;
-    struct page *page = fpage;
     uint64_t count = pcount;
 
     //lc_printf("Writing extents to block %ld count %ld\n", block, pcount);
@@ -217,10 +217,11 @@ lc_flushExtentPages(struct gfs *gfs, struct fs *fs, struct page *fpage,
         eblock->de_next = (page == fpage) ?
                           LC_INVALID_BLOCK : block + count + 1;
         lc_updateCRC(eblock, &eblock->de_crc);
+        tpage = page;
         page = page->p_dnext;
     }
     assert(count == 0);
-    lc_flushPageCluster(gfs, fs, fpage, pcount, false);
+    lc_addPageForWriteBack(gfs, fs, fpage, tpage, pcount);
 }
 
 /* Free an extent list, and optionally updating the list on disk */
@@ -316,8 +317,8 @@ lc_readExtents(struct gfs *gfs, struct fs *fs) {
         //lc_printf("Reading extents from block %ld\n", block);
         lc_addSpaceExtent(gfs, rfs, &fs->fs_dextents, block, 1, false);
         lc_readBlock(gfs, fs, block, eblock);
-        lc_verifyBlock(eblock, &eblock->de_crc);
         assert(eblock->de_magic == LC_EXTENT_MAGIC);
+        lc_verifyBlock(eblock, &eblock->de_crc);
 
         /* Process extents in the block */
         for (i = 0; i < LC_EXTENT_BLOCK; i++) {
@@ -396,11 +397,9 @@ lc_displayAllocStats(struct fs *fs) {
         printf("\tblocks allocated %ld freed %ld in use %ld\n",
                fs->fs_blocks, fs->fs_freed, fs->fs_blocks - fs->fs_freed);
     }
-    if (fs->fs_reservedBlocks || fs->fs_blockMetaCount ||
-        fs->fs_blockInodesCount) {
-        printf("\tReserved blocks %ld Metablocks %ld Inode Blocks %ld\n",
-               fs->fs_reservedBlocks, fs->fs_blockMetaCount,
-               fs->fs_blockInodesCount);
+    if (fs->fs_reservedBlocks || fs->fs_blockMetaCount) {
+        printf("\tReserved blocks %ld Metablocks %ld\n",
+               fs->fs_reservedBlocks, fs->fs_blockMetaCount);
     }
 }
 
@@ -518,13 +517,6 @@ lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount, bool remove,
 
     /* Free unused blocks from the inode pool */
     pthread_mutex_lock(&fs->fs_alock);
-    if (!keep && fs->fs_blockInodesCount) {
-        lc_blockLayerFree(gfs, fs, fs->fs_blockInodes,
-                          fs->fs_blockInodesCount);
-        fs->fs_blockInodesCount = 0;
-        fs->fs_blockInodes = 0;
-        fs->fs_inodeBlockIndex = 0;
-    }
 
     /* Free unused blocks from the metadata pool */
     if (!keep && fs->fs_blockMetaCount) {

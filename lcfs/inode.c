@@ -515,8 +515,8 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
         if (read) {
             //lc_printf("Reading inode table from block %ld\n", block);
             lc_readBlock(gfs, fs, block, buf);
-            lc_verifyBlock(buf, &buf->ib_crc);
             assert(buf->ib_magic == LC_INODE_MAGIC);
+            lc_verifyBlock(buf, &buf->ib_crc);
         } else {
             read = true;
         }
@@ -577,8 +577,8 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
                 iblock = buf->ib_next;
                 //lc_printf("Reading inode table from block %ld, moving to %ld\n", iblock, block);
                 lc_readBlock(gfs, fs, iblock, buf);
-                lc_verifyBlock(buf, &buf->ib_crc);
                 assert(buf->ib_magic == LC_INODE_MAGIC);
+                lc_verifyBlock(buf, &buf->ib_crc);
                 lc_freeLayerMetaBlocks(fs, iblock, 1);
                 read = false;
                 continue;
@@ -605,80 +605,85 @@ lc_invalidateInodePages(struct gfs *gfs, struct fs *fs) {
     if (fs->fs_inodePagesCount) {
         page = fs->fs_inodePages;
         fs->fs_inodePages = NULL;
+        fs->fs_inodePagesLast = NULL;
         fs->fs_inodePagesCount = 0;
+        fs->fs_inodeBlockIndex = 0;
         lc_releasePages(gfs, fs, page, true);
     }
+}
+
+/* Zero last partial inode page */
+static inline void
+lc_fillupLastInodePage(struct fs *fs) {
+    off_t offset;
+
+    if (fs->fs_inodePages && (fs->fs_inodeBlockIndex < LC_INODE_BLOCK_MAX)) {
+        assert(fs->fs_inodeBlockIndex);
+        offset = fs->fs_inodeBlockIndex * LC_DINODE_SIZE;
+        memset(&fs->fs_inodePages->p_data[offset], 0, LC_BLOCK_SIZE - offset);
+    }
+    fs->fs_inodeBlockIndex = 0;
 }
 
 /* Flush dirty inodes */
 static void
 lc_flushInodePages(struct gfs *gfs, struct fs *fs) {
-    lc_flushPageCluster(gfs, fs, fs->fs_inodePages,
-                        fs->fs_inodePagesCount, false);
+    struct page *page = fs->fs_inodePages;
+    uint64_t block, count = 0;
+
+    /* Zero last partial inode page */
+    lc_fillupLastInodePage(fs);
+
+    /* Allocate inode blocks */
+    block = lc_blockAllocExact(fs, fs->fs_inodePagesCount, true, true);
+
+    /* Insert newly allocated blocks to the list of inode blocks */
+    while (count < fs->fs_inodePagesCount) {
+        if ((fs->fs_inodeBlocks == NULL) ||
+            (fs->fs_inodeIndex >= LC_IBLOCK_MAX)) {
+            lc_newInodeBlock(gfs, fs);
+        }
+
+        /* XXX Make this extent format */
+        fs->fs_inodeBlocks->ib_blks[fs->fs_inodeIndex++] = block + count;
+        lc_addPageBlockHash(gfs, fs, page, block + count);
+        page = page->p_dnext;
+        count++;
+    }
+    assert(page == NULL);
+    lc_addPageForWriteBack(gfs, fs, fs->fs_inodePages, fs->fs_inodePagesLast,
+                           fs->fs_inodePagesCount);
     fs->fs_inodePages = NULL;
+    fs->fs_inodePagesLast = NULL;
     fs->fs_inodePagesCount = 0;
+    fs->fs_inodeBlockIndex = 0;
 }
 
 /* Allocate a slot in an inode block for storing an inode */
-static bool
-fs_allocInodeBlock(struct gfs *gfs, struct fs *fs, struct inode *inode,
-                   uint64_t *iblock) {
-    bool allocated = false;
-    uint64_t block;
-
-    pthread_mutex_lock(&fs->fs_alock);
-
-    /* Allocate new inode blocks if needed.  Allocate a few together so that
-     * inode blocks can be somewhat contiguous on disk.
-     */
-    if ((fs->fs_inodeBlocks == NULL) ||
-        (fs->fs_inodeIndex >= LC_IBLOCK_MAX)) {
-        lc_newInodeBlock(gfs, fs);
-    }
+static uint64_t
+fs_allocInodeSlot(struct gfs *gfs, struct fs *fs, struct inode *inode) {
+    uint64_t offset;
 
     /* Start with a new block for symbolic links */
     if (S_ISLNK(inode->i_mode) && !(inode->i_flags & LC_INODE_REMOVED)) {
-        fs->fs_inodeBlockIndex = 0;
+        lc_fillupLastInodePage(fs);
     }
     if ((fs->fs_inodeBlockIndex == 0) ||
         (fs->fs_inodeBlockIndex >= LC_INODE_BLOCK_MAX)) {
-        if (fs->fs_blockInodesCount == 0) {
-
-            /* Reserve a few blocks for inodes */
-            pthread_mutex_unlock(&fs->fs_alock);
-            block = lc_blockAllocExact(fs, LC_INODE_CLUSTER_SIZE, true, true);
-            pthread_mutex_lock(&fs->fs_alock);
-            assert(fs->fs_blockInodesCount == 0);
-            fs->fs_blockInodesCount = LC_INODE_CLUSTER_SIZE;
-            fs->fs_blockInodes = block;
-        }
-        assert(fs->fs_blockInodes != LC_INVALID_BLOCK);
-        assert(fs->fs_blockInodes != 0);
-        assert(fs->fs_blockInodesCount > 0);
-
-        /* Pick up the next available inode block */
-        block = fs->fs_blockInodes++;
-        fs->fs_blockInodesCount--;
-        fs->fs_inodeBlocks->ib_blks[fs->fs_inodeIndex++] = block;
+        offset = 0;
         fs->fs_inodeBlockIndex = 1;
-        *iblock = block;
-        allocated = true;
     } else {
 
         /* Pick next available slot in the current inode block */
-        assert(fs->fs_blockInodes != LC_INVALID_BLOCK);
-        assert(fs->fs_blockInodes != 0);
-        *iblock = ((uint64_t)fs->fs_inodeBlockIndex <<
-                   LC_DINODE_INDEX) | (fs->fs_blockInodes - 1);
+        offset = fs->fs_inodeBlockIndex * LC_DINODE_SIZE;
         fs->fs_inodeBlockIndex++;
     }
 
     /* Use the whole block for symbolic links */
-    if (S_ISLNK(inode->i_mode)) {
+    if (S_ISLNK(inode->i_mode) && !(inode->i_flags & LC_INODE_REMOVED)) {
         fs->fs_inodeBlockIndex = LC_INODE_BLOCK_MAX;
     }
-    pthread_mutex_unlock(&fs->fs_alock);
-    return allocated;
+    return offset;
 }
 
 /* Free metadata extents allocated to an inode */
@@ -704,9 +709,8 @@ lc_inodeFreeMetaExtents(struct gfs *gfs, struct fs *fs, struct inode *inode) {
 /* Flush a dirty inode to disk */
 static int
 lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
-    bool written = false, allocated = true;
-    struct page *page = NULL;
-    uint64_t block;
+    bool written = false;
+    char *inodes;
     off_t offset;
 
     assert(inode->i_fs == fs);
@@ -739,61 +743,37 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             (inode->i_flags & LC_INODE_DISK)) {
 
             /* Find an inode block with a slot for this inode */
-            allocated = fs_allocInodeBlock(gfs, fs, inode, &block);
-            offset = (block >> LC_DINODE_INDEX) * LC_DINODE_SIZE;
-            block = block & LC_DINODE_BLOCK;
+            offset = fs_allocInodeSlot(gfs, fs, inode);
             assert(offset < LC_BLOCK_SIZE);
             written = true;
             if (inode->i_flags & LC_INODE_REMOVED) {
                 assert(inode->i_nlink == 0);
-            } else {
                 inode->i_flags &= ~LC_INODE_DISK;
-            }
-
-            //lc_printf("Writing inode %ld to block %ld\n", inode->i_ino, block);
-            if (allocated) {
-                assert(offset == 0);
-                page = lc_getPageNewData(fs, block, NULL);
-
-                /* Zero out rest of the block */
-                memset(&page->p_data[sizeof(struct dinode)], 0,
-                       LC_BLOCK_SIZE - sizeof(struct dinode));
             } else {
-                page = lc_getPage(fs, block, NULL, true);
+                inode->i_flags |= LC_INODE_DISK;
             }
-            memcpy(&page->p_data[offset], &inode->i_dinode,
-                   sizeof(struct dinode));
+
+            //lc_printf("Writing inode %ld to offset %ld\n", inode->i_ino, offset);
+            if (offset == 0) {
+                lc_mallocBlockAligned(fs->fs_rfs, (void **)&inodes,
+                                      LC_MEMTYPE_DATA);
+                fs->fs_inodePages = lc_getPageNoBlock(gfs, fs, (char *)inodes,
+                                                      fs->fs_inodePages);
+                if (fs->fs_inodePagesLast == NULL) {
+                    fs->fs_inodePagesLast = fs->fs_inodePages;
+                }
+                fs->fs_inodePagesCount++;
+            } else {
+                inodes = fs->fs_inodePages->p_data;
+            }
+            memcpy(&inodes[offset], &inode->i_dinode, sizeof(struct dinode));
 
             /* Store the target of the symbolic link in the same block */
             if (S_ISLNK(inode->i_mode) &&
                 !(inode->i_flags & LC_INODE_REMOVED)) {
                 assert(offset == 0);
-                memcpy(&page->p_data[sizeof(struct dinode)], inode->i_target,
+                memcpy(&inodes[sizeof(struct dinode)], inode->i_target,
                        inode->i_size);
-            }
-
-            /* Add the page to list of inode pages pending write, if the page
-             * is not part of that already.
-             */
-            if ((page->p_dnext == NULL) && (fs->fs_inodePages != page)) {
-                page->p_dvalid = 1;
-                if (fs->fs_inodePages &&
-                    (page->p_block != (fs->fs_inodePages->p_block + 1))) {
-
-                    /* Flush inode pages if the new block is not immediately
-                     * after the previous dirty block.
-                     */
-                    lc_flushInodePages(gfs, fs);
-                }
-                page->p_dnext = fs->fs_inodePages;
-                fs->fs_inodePages = page;
-                fs->fs_inodePagesCount++;
-                if (fs->fs_inodePagesCount >= LC_WRITE_CLUSTER_SIZE) {
-                    lc_flushInodePages(gfs, fs);
-                }
-            } else {
-                assert(page->p_dvalid);
-                lc_releasePage(gfs, fs, page, false);
             }
         }
         inode->i_flags &= ~LC_INODE_DIRTY;
@@ -844,7 +824,7 @@ lc_freezeLayer(struct gfs *gfs, struct fs *fs) {
 
             /* A newly committed layer may still have dirty pages */
             if (inode->i_flags & LC_INODE_EMAPDIRTY) {
-                lc_flushPages(gfs, fs, inode, false, true, false);
+                lc_flushPages(gfs, fs, inode, true, false);
             }
             assert(!S_ISREG(inode->i_mode) ||
                    (lc_inodeGetDirtyPageCount(inode) == 0));
@@ -904,7 +884,7 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs) {
 
     /* Start with new inode blocks */
     fs->fs_inodeIndex = LC_IBLOCK_MAX;
-    fs->fs_inodeBlockIndex = 0;
+    lc_fillupLastInodePage(fs);
 
     /* Flush the root inode first */
     inode = fs->fs_rootInode;

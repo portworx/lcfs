@@ -310,7 +310,7 @@ lc_releaseReadPages(struct gfs *gfs, struct fs *fs,
 
     for (i = 0; i < pcount; i++) {
         if (nocache) {
-            pages[i]->p_nocache = nocache;
+            pages[i]->p_nocache = 1;
         }
         lc_releasePage(gfs, fs, pages[i], !nocache);
     }
@@ -655,11 +655,11 @@ lc_freeBlocksAfterFlush(struct fs *fs, uint64_t count) {
 }
 
 /* Flush a cluster of pages */
-void
+static void
 lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
                     struct page *head, uint64_t count, bool bfree) {
-    uint64_t i, j, bcount = 0, iovcount;
     struct page *page = head;
+    uint64_t i, j, iovcount;
     struct iovec *iovec;
     uint64_t block = 0;
 
@@ -677,34 +677,31 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
         iovcount = (count < LC_WRITE_CLUSTER_SIZE) ?
                         count : LC_WRITE_CLUSTER_SIZE;
         iovec = alloca(iovcount * sizeof(struct iovec));
-        //memset(iovec, 0, iovcount * sizeof(struct iovec));
 
         /* Issue the I/O in block order */
-        for (i = 0, j = iovcount - 1; i < count; i++, j--) {
+        for (i = 0, j = 0; i < count; i++, j++) {
 
             /* Flush current set of dirty pages if the new page is not adjacent
              * to those.
              * XXX This could happen when metadata and userdata are flushed
              * concurrently OR files flushed concurrently.
              */
-            if ((i && ((page->p_block + 1) != block)) ||
-                (bcount >= iovcount)) {
+            if ((j >= iovcount) || (j && ((block + j) != page->p_block))) {
                 //lc_printf("Not contigous, block %ld previous block %ld i %ld count %ld\n", block, page->p_block, i, count);
                 assert(block != 0);
-                lc_writeBlocks(gfs, fs, &iovec[j + 1], bcount, block);
-                bcount = 0;
-                j = iovcount - 1;
-                //memset(iovec, 0, iovcount * sizeof(struct iovec));
+                lc_writeBlocks(gfs, fs, iovec, j, block);
+                j = 0;
             }
             iovec[j].iov_base = page->p_data;
             iovec[j].iov_len = LC_BLOCK_SIZE;
-            block = page->p_block;
-            bcount++;
+            if (j == 0) {
+                block = page->p_block;
+            }
             page = page->p_dnext;
         }
         assert(page == NULL);
         assert(block != 0);
-        lc_writeBlocks(gfs, fs, &iovec[iovcount - bcount], bcount, block);
+        lc_writeBlocks(gfs, fs, iovec, j, block);
     }
 
     /* Release the pages after writing */
@@ -720,27 +717,17 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
 /* Add a page to the file system dirty list for writeback */
 void
 lc_addPageForWriteBack(struct gfs *gfs, struct fs *fs, struct page *head,
-                       struct page *tail, uint64_t pcount, bool io) {
-    struct page *page = NULL;
-    uint64_t count = 0;
-
+                       struct page *tail, uint64_t pcount) {
+    assert(tail->p_dnext == NULL);
     pthread_mutex_lock(&fs->fs_plock);
-    tail->p_dnext = fs->fs_dpages;
-    fs->fs_dpages = head;
+    if (fs->fs_dpages == NULL) {
+        fs->fs_dpages = head;
+    } else {
+        fs->fs_dpagesLast->p_dnext = head;
+    }
+    fs->fs_dpagesLast = tail;
     fs->fs_dpcount += pcount;
-
-    /* Issue write when a certain number of dirty pages accumulated */
-    if (io && (fs->fs_dpcount >= LC_WRITE_CLUSTER_SIZE)) {
-        page = fs->fs_dpages;
-        fs->fs_dpages = NULL;
-        count = fs->fs_dpcount;
-        fs->fs_dpcount = 0;
-        fs->fs_wpcount += count;
-    }
     pthread_mutex_unlock(&fs->fs_plock);
-    if (count) {
-        lc_flushPageCluster(gfs, fs, page, count, true);
-    }
 }
 
 /* Flush dirty pages of a file system before unmounting it */
@@ -753,6 +740,7 @@ lc_flushDirtyPages(struct gfs *gfs, struct fs *fs) {
         pthread_mutex_lock(&fs->fs_plock);
         page = fs->fs_dpages;
         fs->fs_dpages = NULL;
+        fs->fs_dpagesLast = NULL;
         count = fs->fs_dpcount;
         fs->fs_dpcount = 0;
         fs->fs_wpcount += count;
@@ -772,6 +760,7 @@ lc_invalidateDirtyPages(struct gfs *gfs, struct fs *fs) {
         pthread_mutex_lock(&fs->fs_plock);
         page = fs->fs_dpages;
         fs->fs_dpages = NULL;
+        fs->fs_dpagesLast = NULL;
         fs->fs_dpcount = 0;
         pthread_mutex_unlock(&fs->fs_plock);
         lc_releasePages(gfs, fs, page, true);

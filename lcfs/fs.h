@@ -226,6 +226,9 @@ struct fs {
     /* Pages for writing inodes */
     struct page *fs_inodePages;
 
+    /* Pages for writing inodes */
+    struct page *fs_inodePagesLast;
+
     /* Pending count of inode pages to be written out */
     uint64_t fs_inodePagesCount;
 
@@ -261,6 +264,9 @@ struct fs {
 
     /* Dirty pages pending write */
     struct page *fs_dpages;
+
+    /* Dirty pages pending write */
+    struct page *fs_dpagesLast;
 
     /* Flusher index */
     uint64_t fs_flusher;
@@ -308,12 +314,6 @@ struct fs {
 
     /* Blocks reserved */
     uint64_t fs_reservedBlocks;
-
-    /* Blocks reserved for Inodes */
-    uint64_t fs_blockInodes;
-
-    /* Count of blocks reserved for Inodes */
-    uint64_t fs_blockInodesCount;
 
     /* Blocks reserved for metadata */
     uint64_t fs_blockMeta;
