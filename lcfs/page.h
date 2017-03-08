@@ -18,6 +18,9 @@
 /* XXX Adjust this with size of the file */
 #define LC_PAGECACHE_SIZE  32
 
+/* Maximum number of blocks grouped in a single inode read request */
+#define LC_READ_INODE_CLUSTER_SIZE    256
+
 /* Maximum number of blocks grouped in a single read request */
 #define LC_READ_CLUSTER_SIZE    32
 

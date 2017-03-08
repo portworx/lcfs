@@ -452,7 +452,6 @@ lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
     ino_t ino;
 
     //lc_printf("Reading inodes from block %ld\n", block);
-    lc_readBlock(gfs, fs, block, buf);
     for (i = 0; i < LC_INODE_BLOCK_MAX; i++) {
         offset = i * LC_DINODE_SIZE;
         inode = (struct inode *)&buf[offset];
@@ -520,18 +519,22 @@ lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
 void
 lc_readInodes(struct gfs *gfs, struct fs *fs) {
     uint64_t iblock, block = fs->fs_super->sb_inodeBlock;
+    uint32_t i, j, count, iovcnt = 1, rcount;
     struct extent *extents = NULL, *extent;
     uint64_t pcount = 0, bcount = 0;
     void *ibuf = NULL, *xbuf = NULL;
     bool lock = !fs->fs_frozen;
     struct iblock *buf = NULL;
-    uint32_t i, count;
+    struct iovec *iovec;
 
     lc_printf("Reading inodes for fs %d %ld, block %ld\n", fs->fs_gindex, fs->fs_root, block);
     assert(block != LC_INVALID_BLOCK);
     lc_mallocBlockAligned(fs, (void **)&buf, LC_MEMTYPE_BLOCK);
     lc_mallocBlockAligned(fs, (void **)&ibuf, LC_MEMTYPE_BLOCK);
     lc_mallocBlockAligned(fs, (void **)&xbuf, LC_MEMTYPE_BLOCK);
+    iovec = alloca(LC_READ_INODE_CLUSTER_SIZE * sizeof(struct iovec));
+    iovec[0].iov_base = ibuf;
+    iovec[0].iov_len = LC_BLOCK_SIZE;
 
     /* Read inode blocks linked from the super block */
     while (block != LC_INVALID_BLOCK) {
@@ -554,14 +557,37 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
             iblock = buf->ib_blks[i].ie_start;
             assert(iblock != LC_INVALID_BLOCK);
             lc_addSpaceExtent(gfs, fs, &extents, iblock, count, true);
-            while (count) {
 
-                /* XXX Issue larger I/O when possible */
-                if (lc_readInodesBlock(gfs, fs, iblock, ibuf, xbuf, lock)) {
-                    pcount++;
+            /* Initialize iovec structure */
+            if (count > iovcnt) {
+                for (j = iovcnt;
+                     (j < count) && (j < LC_READ_INODE_CLUSTER_SIZE); j++) {
+                    lc_mallocBlockAligned(fs, (void **)&iovec[j].iov_base,
+                                          LC_MEMTYPE_BLOCK);
+                    iovec[j].iov_len = LC_BLOCK_SIZE;
+                    iovcnt++;
                 }
-                iblock++;
-                count--;
+            }
+
+            /* Read each inode block */
+            while (count) {
+                j = 0;
+                rcount = (count <= iovcnt) ? count : iovcnt;
+                count -= rcount;
+                if (rcount == 1) {
+                    lc_readBlock(gfs, fs, iblock, ibuf);
+                } else {
+                    lc_readBlocks(gfs, fs, iovec, rcount, iblock);
+                }
+                while (rcount) {
+                    if (lc_readInodesBlock(gfs, fs, iblock, iovec[j].iov_base,
+                                           xbuf, lock)) {
+                        pcount++;
+                    }
+                    j++;
+                    iblock++;
+                    rcount--;
+                }
             }
         }
         block = buf->ib_next;
@@ -569,7 +595,9 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
     assert(fs->fs_rootInode != NULL);
     lc_purgeRemovedInodes(gfs, fs, ibuf);
     lc_free(fs, buf, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
-    lc_free(fs, ibuf, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
+    for (i = 0; i < iovcnt; i++) {
+        lc_free(fs, iovec[i].iov_base, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
+    }
     lc_free(fs, xbuf, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
 
     /* Rewrite inodes if some inode pages could be freed */
