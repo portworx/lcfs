@@ -115,7 +115,6 @@ void
 lc_freeLayer(struct fs *fs, bool remove) {
     struct gfs *gfs = fs->fs_gfs;
 
-    assert(fs->fs_blockMetaCount == 0);
     assert(fs->fs_dpcount == 0);
     assert(fs->fs_wpcount == 0);
     assert(fs->fs_dpages == NULL);

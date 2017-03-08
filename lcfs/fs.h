@@ -315,12 +315,6 @@ struct fs {
     /* Blocks reserved */
     uint64_t fs_reservedBlocks;
 
-    /* Blocks reserved for metadata */
-    uint64_t fs_blockMeta;
-
-    /* Count of blocks reserved for metadata */
-    uint64_t fs_blockMetaCount;
-
     /* Stats for this file system */
     struct stats *fs_stats;
 

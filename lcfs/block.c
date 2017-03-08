@@ -46,9 +46,8 @@ lc_reclaimSpace(struct gfs *gfs) {
 
         /* Locking a layer would fail only when the layer is being deleted */
         if (fs &&
-            (fs->fs_extents ||
-             fs->fs_blockMetaCount || fs->fs_fextents ||
-             fs->fs_mextents || fs->fs_dextents) && !lc_tryLock(fs, false)) {
+            (fs->fs_extents || fs->fs_fextents || fs->fs_mextents ||
+             fs->fs_dextents) && !lc_tryLock(fs, false)) {
             rcu_read_unlock();
 
             /* Flush dirty pages so that freed blocks can be released */
@@ -78,8 +77,7 @@ lc_reclaimSpace(struct gfs *gfs) {
             }
 
             /* Release any reserved blocks */
-            if (fs->fs_extents ||
-                fs->fs_blockMetaCount) {
+            if (fs->fs_extents) {
                 count += lc_freeLayerBlocks(gfs, fs, false, false, false);
             }
             lc_unlock(fs);
@@ -397,9 +395,8 @@ lc_displayAllocStats(struct fs *fs) {
         printf("\tblocks allocated %ld freed %ld in use %ld\n",
                fs->fs_blocks, fs->fs_freed, fs->fs_blocks - fs->fs_freed);
     }
-    if (fs->fs_reservedBlocks || fs->fs_blockMetaCount) {
-        printf("\tReserved blocks %ld Metablocks %ld\n",
-               fs->fs_reservedBlocks, fs->fs_blockMetaCount);
+    if (fs->fs_reservedBlocks) {
+        printf("\tReserved blocks %ld\n", fs->fs_reservedBlocks);
     }
 }
 
@@ -410,62 +407,9 @@ lc_blockAlloc(struct fs *fs, uint64_t count, bool meta, bool reserve) {
     uint64_t block;
 
     pthread_mutex_lock(&fs->fs_alock);
-    if (meta) {
 
-        /* Check if space available in the reserve pool.  If not, try to get
-         * some.
-         */
-        if (fs->fs_blockMetaCount < count) {
-
-            /* Release previous reservation */
-            if (fs->fs_blockMetaCount) {
-                lc_blockLayerFree(gfs, fs, fs->fs_blockMeta,
-                                  fs->fs_blockMetaCount);
-            }
-
-            /* Try to make a larger reservation */
-            fs->fs_blockMetaCount = (!reserve || count > LC_META_RESERVE) ?
-                                    count : LC_META_RESERVE;
-            fs->fs_blockMeta = lc_findFreeBlock(gfs, fs,
-                                                fs->fs_blockMetaCount,
-                                                reserve, true);
-
-            /* Retry without reservation */
-            if ((fs->fs_blockMeta == LC_INVALID_BLOCK) &&
-                (count < fs->fs_blockMetaCount)) {
-                fs->fs_blockMetaCount = count;
-                fs->fs_blockMeta = lc_findFreeBlock(gfs, fs,
-                                                    fs->fs_blockMetaCount,
-                                                    false, true);
-                if (fs->fs_blockMeta == LC_INVALID_BLOCK) {
-                    fs->fs_blockMetaCount = 0;
-                    pthread_mutex_unlock(&fs->fs_alock);
-                    return LC_INVALID_BLOCK;
-                }
-            }
-        }
-
-        /* Make the allocation */
-        assert(fs->fs_blockMeta != LC_INVALID_BLOCK);
-        assert(fs->fs_blockMetaCount >= count);
-        block = fs->fs_blockMeta;
-        fs->fs_blockMeta += count;
-        fs->fs_blockMetaCount -= count;
-    } else {
-
-        /* Allocation for regular data */
-        block = lc_findFreeBlock(gfs, fs, count, true, true);
-
-        /* If allocation failed, but space available in metadata reservation,
-         * use that.
-         */
-        if ((block == LC_INVALID_BLOCK) && (count == 1) &&
-            fs->fs_blockMetaCount) {
-            block = fs->fs_blockMeta;
-            fs->fs_blockMeta += count;
-            fs->fs_blockMetaCount -= count;
-        }
-    }
+    /* Allocation for regular data */
+    block = lc_findFreeBlock(gfs, fs, count, true, true);
     pthread_mutex_unlock(&fs->fs_alock);
     assert(((block + count) < gfs->gfs_super->sb_tblocks) ||
            (block == LC_INVALID_BLOCK));
@@ -511,31 +455,29 @@ lc_blockFree(struct gfs *gfs, struct fs *fs, uint64_t block,
 /* Free blocks allocated/reserved by a layer */
 uint64_t
 lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount, bool remove,
-                   bool keep) {
+                   bool flush) {
     struct extent *extent;
     uint64_t freed;
 
     /* Free unused blocks from the inode pool */
     pthread_mutex_lock(&fs->fs_alock);
 
-    /* Free unused blocks from the metadata pool */
-    if (!keep && fs->fs_blockMetaCount) {
-        lc_blockLayerFree(gfs, fs, fs->fs_blockMeta, fs->fs_blockMetaCount);
-        fs->fs_blockMetaCount = 0;
-        fs->fs_blockMeta = 0;
-    }
-
     /* If the layer is being removed, then free any blocks allocated in the
      * layer, otherwise free the list after writing that to disk.
      */
     extent = fs->fs_aextents;
-    if (unmount && extent) {
-        fs->fs_aextents = NULL;
+    if ((flush || unmount) && extent) {
         assert(fs != lc_getGlobalFs(gfs));
-        fs->fs_freed += lc_blockFreeExtents(gfs, fs, extent,
-                                            remove ? LC_EXTENT_EFREE :
-                                            (LC_EXTENT_FLUSH |
-                                             LC_EXTENT_LAYER));
+        if (unmount) {
+            fs->fs_aextents = NULL;
+        }
+        freed = lc_blockFreeExtents(gfs, fs, extent,
+                                    (flush ? LC_EXTENT_KEEP : 0) |
+                                    (remove ? LC_EXTENT_EFREE :
+                                     (LC_EXTENT_FLUSH | LC_EXTENT_LAYER)));
+        if (unmount) {
+            fs->fs_freed += freed;
+        }
 
         /* Free blocks used for allocation extents earlier */
         if (fs->fs_dextents) {
