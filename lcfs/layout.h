@@ -240,6 +240,7 @@ static_assert(sizeof(struct dinode) == 104, "dinode size != 104");
 #endif
 
 /* Size of disk inode */
+/* XXX This is wasting around 768 bytes in a block */
 #define LC_DINODE_SIZE      128
 static_assert(sizeof(struct dinode) <= LC_DINODE_SIZE,
               "dinode size > LC_DINODE_SIZE");
@@ -253,8 +254,20 @@ static_assert(sizeof(struct dinode) <= LC_DINODE_SIZE,
 /* Mask for finding the inode block number from i_block */
 #define LC_DINODE_BLOCK     0x0000FFFFFFFFFFFFul
 
+/* Inode extent */
+struct iextent {
+
+    /* Extent start block */
+    uint64_t ie_start;
+
+    /* Number of blocks in the extent */
+    uint32_t ie_count;
+} __attribute__((packed));
+
 /* Number of inode block numbers that can be stored in a block */
-#define LC_IBLOCK_MAX  ((LC_BLOCK_SIZE / sizeof(uint64_t)) - 2)
+#define LC_IBLOCK_MAX  ((LC_BLOCK_SIZE - \
+                         ((2 * sizeof(uint32_t)) + sizeof(uint64_t))) \
+                        / sizeof(struct iextent))
 
 /* Inode block table */
 struct iblock {
@@ -268,8 +281,8 @@ struct iblock {
     uint64_t ib_next;
 
     /* XXX Track checksum of inode blocks */
-    /* Inode blocks */
-    uint64_t ib_blks[LC_IBLOCK_MAX];
+    /* Inode extents */
+    struct iextent ib_blks[LC_IBLOCK_MAX];
 };
 static_assert(sizeof(struct iblock) == LC_BLOCK_SIZE, "iblock size != LC_BLOCK_SIZE");
 

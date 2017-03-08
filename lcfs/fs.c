@@ -45,6 +45,23 @@ lc_invalidateInodeBlocks(struct gfs *gfs, struct fs *fs) {
     }
 }
 
+/* Get a page for the last inode block */
+void
+lc_releaseInodeBlock(struct gfs *gfs, struct fs *fs) {
+    if (fs->fs_inodeBlocks != NULL) {
+        if (fs->fs_inodeIndex < LC_IBLOCK_MAX) {
+            memset(&fs->fs_inodeBlocks->ib_blks[fs->fs_inodeIndex], 0,
+                   (LC_IBLOCK_MAX - fs->fs_inodeIndex) *
+                   sizeof(struct iextent));
+        }
+        fs->fs_inodeBlockPages = lc_getPageNoBlock(gfs, fs,
+                                                   (char *)fs->fs_inodeBlocks,
+                                                   fs->fs_inodeBlockPages);
+        fs->fs_inodeBlocks = NULL;
+    }
+    fs->fs_inodeIndex = 0;
+}
+
 /* Flush inode block map pages */
 void
 lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs) {
@@ -55,12 +72,7 @@ lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs) {
     if (pcount == 0) {
         return;
     }
-    if (fs->fs_inodeBlocks != NULL) {
-        fs->fs_inodeBlockPages = lc_getPageNoBlock(gfs, fs,
-                                                   (char *)fs->fs_inodeBlocks,
-                                                   fs->fs_inodeBlockPages);
-        fs->fs_inodeBlocks = NULL;
-    }
+    lc_releaseInodeBlock(gfs, fs);
     block = lc_blockAllocExact(fs, pcount, true, true);
     fpage = fs->fs_inodeBlockPages;
     page = fpage;
@@ -87,21 +99,13 @@ lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs) {
 /* Allocate a new inode block */
 void
 lc_newInodeBlock(struct gfs *gfs, struct fs *fs) {
-    if (fs->fs_inodeBlockCount >= LC_WRITE_CLUSTER_SIZE) {
-        lc_flushInodeBlocks(gfs, fs);
-    }
 
     /* Instantiate a new page and link the inode buffer to list of inode pages
      * pending write.
      */
-    if (fs->fs_inodeBlocks != NULL) {
-        fs->fs_inodeBlockPages = lc_getPageNoBlock(gfs, fs,
-                                                   (char *)fs->fs_inodeBlocks,
-                                                   fs->fs_inodeBlockPages);
-    }
+    lc_releaseInodeBlock(gfs, fs);
     lc_mallocBlockAligned(fs->fs_rfs, (void **)&fs->fs_inodeBlocks,
                           LC_MEMTYPE_DATA);
-    memset(fs->fs_inodeBlocks, 0, LC_BLOCK_SIZE);
     fs->fs_inodeIndex = 0;
     fs->fs_inodeBlockCount++;
 }

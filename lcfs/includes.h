@@ -140,6 +140,7 @@ void lc_unlock(struct fs *fs);
 void lc_mount(struct gfs *gfs, char *device, size_t size);
 void lc_cleanupAfterRestart(struct gfs *gfs, struct fs *fs);
 void lc_newInodeBlock(struct gfs *gfs, struct fs *fs);
+void lc_releaseInodeBlock(struct gfs *gfs, struct fs *fs);
 void lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs);
 void lc_invalidateInodeBlocks(struct gfs *gfs, struct fs *fs);
 void *lc_syncer(void *data);

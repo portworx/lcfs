@@ -162,6 +162,9 @@ struct ixattr {
 /* Fake inode number used to trigger layer commit operation */
 #define LC_COMMIT_TRIGGER_INODE     LC_ROOT_INODE
 
+/* Number of inode pages which can be freed if inodes are re-written */
+#define LC_INODE_RELOCATE_PCOUNT    10
+
 /* Inode structure */
 struct inode {
 
