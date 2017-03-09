@@ -99,7 +99,7 @@ lc_allocateSuperBlocks(struct gfs *gfs, struct fs *rfs, bool write) {
         fs = gfs->gfs_fs[i];
         if (fs) {
             if (fs->fs_sblock != LC_INVALID_BLOCK) {
-                lc_freeLayerMetaBlocks(rfs, fs->fs_sblock, 1);
+                lc_freeLayerDataBlocks(rfs, fs->fs_sblock, 1, true);
             }
             fs->fs_sblock = block++;
             fs->fs_dirty = true;

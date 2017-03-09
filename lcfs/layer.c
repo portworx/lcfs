@@ -234,7 +234,7 @@ lc_releaseLayer(struct gfs *gfs, struct fs *fs) {
     lc_invalidateInodePages(gfs, fs);
     lc_invalidateInodeBlocks(gfs, fs);
     if (fs->fs_sblock != LC_INVALID_BLOCK) {
-        lc_blockFree(gfs, lc_getGlobalFs(gfs), fs->fs_sblock, 1, true);
+        lc_blockFree(gfs, lc_getGlobalFs(gfs), fs->fs_sblock, 1, true, true);
     }
     lc_freeLayerBlocks(gfs, fs, true, true, false);
     lc_unlock(fs);

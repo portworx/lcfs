@@ -544,7 +544,7 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
 
     /* Read inode blocks linked from the super block */
     while (block != LC_INVALID_BLOCK) {
-        lc_addSpaceExtent(gfs, fs, &extents, block, 1, true);
+        lc_addSpaceExtent(gfs, fs, &extents, block, 1, false);
         lc_readBlock(gfs, fs, block, buf);
         assert(buf->ib_magic == LC_INODE_MAGIC);
         lc_verifyBlock(buf, &buf->ib_crc);
@@ -562,7 +562,7 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
             }
             iblock = buf->ib_blks[i].ie_start;
             assert(iblock != LC_INVALID_BLOCK);
-            lc_addSpaceExtent(gfs, fs, &extents, iblock, count, true);
+            lc_addSpaceExtent(gfs, fs, &extents, iblock, count, false);
 
             /* Initialize iovec structure */
             if (count > iovcnt) {
@@ -610,8 +610,13 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
     if ((pcount + (bcount / 2)) > LC_INODE_RELOCATE_PCOUNT) {
         lc_printf("Rewriting inodes, pcount %ld bcount %ld\n", pcount, bcount);
         lc_markAllInodesDirty(gfs, fs);
-        assert(fs->fs_mextents == NULL);
-        fs->fs_mextents = extents;
+        if (fs == lc_getGlobalFs(gfs)) {
+            assert(fs->fs_fextents == NULL);
+            fs->fs_fextents = extents;
+        } else {
+            assert(fs->fs_mextents == NULL);
+            fs->fs_mextents = extents;
+        }
     } else while (extents) {
 
         /* Release extents used to track inode blocks */
@@ -717,14 +722,12 @@ lc_inodeFreeMetaExtents(struct gfs *gfs, struct fs *fs, struct inode *inode) {
 
     /* Free metadata blocks allocated to the inode */
     if (inode->i_emapDirExtents) {
-        lc_blockFreeExtents(gfs, fs, inode->i_emapDirExtents,
-                            LC_EXTENT_EFREE | LC_EXTENT_LAYER);
+        lc_freeLayerMetaExtents(fs, inode->i_emapDirExtents);
         inode->i_emapDirExtents = NULL;
     }
     inode->i_emapDirBlock = LC_INVALID_BLOCK;
     if (inode->i_xattrData && inode->i_xattrExtents) {
-        lc_blockFreeExtents(gfs, fs, inode->i_xattrExtents,
-                            LC_EXTENT_EFREE | LC_EXTENT_LAYER);
+        lc_freeLayerMetaExtents(fs, inode->i_xattrExtents);
         inode->i_xattrExtents = NULL;
     }
     inode->i_xattrBlock = LC_INVALID_BLOCK;

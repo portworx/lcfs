@@ -116,7 +116,6 @@ lc_freeLayer(struct fs *fs, bool remove) {
     struct gfs *gfs = fs->fs_gfs;
 
     assert(fs->fs_dpcount == 0);
-    assert(fs->fs_wpcount == 0);
     assert(fs->fs_dpages == NULL);
     assert(fs->fs_dpagesLast == NULL);
     assert(fs->fs_inodePagesCount == 0);
@@ -132,6 +131,7 @@ lc_freeLayer(struct fs *fs, bool remove) {
     assert(fs->fs_aextents == NULL);
     assert(fs->fs_fextents == NULL);
     assert(fs->fs_mextents == NULL);
+    assert(fs->fs_rextents == NULL);
     assert(fs->fs_icount == 0);
     assert(fs->fs_pcount == 0);
     assert(!remove || (fs->fs_blocks == fs->fs_freed));
@@ -483,6 +483,7 @@ lc_gfsDeinit(struct gfs *gfs) {
     assert(gfs->gfs_dcount == 0);
     assert(gfs->gfs_extents == NULL);
     assert(gfs->gfs_fextents == NULL);
+    assert(gfs->gfs_aextents == NULL);
     if (gfs->gfs_fd) {
         err = fsync(gfs->gfs_fd);
         assert(err == 0);
@@ -680,13 +681,14 @@ lc_mount(struct gfs *gfs, char *device, size_t size) {
 
 /* Sync a dirty file system */
 static void
-lc_sync(struct gfs *gfs, struct fs *fs) {
+lc_sync(struct gfs *gfs, struct fs *fs, bool unmount) {
+
     /* Flush dirty inodes and pages */
     if (fs->fs_super->sb_flags & LC_SUPER_MOUNTED) {
         lc_syncInodes(gfs, fs);
         //lc_displayAllocStats(fs);
         lc_processFreedBlocks(fs, true);
-        lc_freeLayerBlocks(gfs, fs, false, false, false);
+        lc_freeLayerBlocks(gfs, fs, unmount, false, !unmount);
         lc_flushDirtyPages(gfs, fs);
         fs->fs_super->sb_flags &= ~LC_SUPER_MOUNTED;
     }
@@ -704,7 +706,7 @@ lc_umountSync(struct gfs *gfs) {
     }
 
     /* XXX Combine sync and destroy */
-    lc_sync(gfs, fs);
+    lc_sync(gfs, fs, true);
 
     /* Release freed and unused blocks */
     lc_freeLayerBlocks(gfs, fs, true, false, false);
@@ -751,7 +753,7 @@ lc_syncAllLayers(struct gfs *gfs) {
         fs = gfs->gfs_fs[i];
         if (fs) {
             lc_lock(fs, true);
-            lc_sync(gfs, fs);
+            lc_sync(gfs, fs, true);
             lc_unlock(fs);
         }
     }
@@ -854,7 +856,7 @@ lc_commitRoot(struct gfs *gfs, int count) {
         lc_syncInodes(gfs, fs);
         lc_flushDirtyPages(gfs, fs);
         lc_allocateSuperBlocks(gfs, fs, true);
-        lc_processFreedBlocks(fs, false);
+        lc_processFreedBlocks(fs, true);
         lc_freeLayerBlocks(gfs, fs, false, false, true);
         lc_blockAllocatorDeinit(gfs, fs, false);
         err = fsync(gfs->gfs_fd);
@@ -895,7 +897,7 @@ lc_commit(struct gfs *gfs) {
                 rcu_unregister_thread();
                 return;
             }
-            lc_sync(gfs, fs);
+            lc_sync(gfs, fs, false);
             lc_unlock(fs);
         }
     }

@@ -179,9 +179,10 @@ lc_extentAdjacent(uint64_t estart, uint64_t eblock, uint64_t count,
 }
 
 /* Flags used to manage extent list operations */
-#define LC_EXTENT_EFREE 0x1  /* Free extents */
-#define LC_EXTENT_FLUSH 0x2  /* Flush extent list to disk */
-#define LC_EXTENT_LAYER 0x4  /* Keep the extents in layer pool */
-#define LC_EXTENT_KEEP  0x8  /* Keep the extents after flush */
+#define LC_EXTENT_EFREE 0x01  /* Free extents */
+#define LC_EXTENT_FLUSH 0x02  /* Flush extent list to disk */
+#define LC_EXTENT_LAYER 0x04  /* Keep the extents in layer pool */
+#define LC_EXTENT_KEEP  0x08  /* Keep the extents after flush */
+#define LC_EXTENT_REUSE 0x10  /* Do not release to free pool */
 
 #endif

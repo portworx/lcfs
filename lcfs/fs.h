@@ -89,6 +89,9 @@ struct gfs {
     /* Extents to be freed after commit */
     struct extent *gfs_fextents;
 
+    /* Extents to be freed after next commit */
+    struct extent *gfs_aextents;
+
     /* Lock protecting allocations */
     pthread_mutex_t gfs_alock;
 
@@ -277,9 +280,6 @@ struct fs {
     /* Dirty page count */
     uint64_t fs_dpcount;
 
-    /* Count of dirty pages being written */
-    uint64_t fs_wpcount;
-
     /* pcache purged last */
     uint64_t fs_purgeIndex;
 
@@ -307,10 +307,10 @@ struct fs {
     struct extent *fs_fextents;
 
     /* Extents to be freed after flushing done */
-    struct extent *fs_fdextents;
-
-    /* Metadata extents to be freed */
     struct extent *fs_mextents;
+
+    /* Extents which can be reused */
+    struct extent *fs_rextents;
 
     /* Blocks reserved */
     uint64_t fs_reservedBlocks;

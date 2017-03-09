@@ -107,8 +107,8 @@ uint64_t lc_blockAlloc(struct fs *fs, uint64_t count, bool meta, bool reserve);
 uint64_t lc_blockAllocExact(struct fs *fs, uint64_t count,
                             bool meta, bool reserve);
 void lc_blockFree(struct gfs *gfs, struct fs *fs, uint64_t block,
-                  uint64_t count, bool layer);
-void lc_freeLayerMetaBlocks(struct fs *fs, uint64_t block, uint64_t count);
+                  uint64_t count, bool layer, bool reuse);
+void lc_freeLayerMetaExtents(struct fs *fs, struct extent *extent);
 void lc_freeLayerDataBlocks(struct fs *fs, uint64_t block, uint64_t count,
                             bool allocated);
 void lc_processFreedBlocks(struct fs *fs, bool release);
@@ -234,7 +234,6 @@ int lc_invalPage(struct gfs *gfs, struct fs *fs, uint64_t block);
 struct page *lc_getPageNewData(struct fs *fs, uint64_t block, char *data);
 void lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
                          struct page *page, uint64_t block);
-void lc_freeBlocksAfterFlush(struct fs *fs, uint64_t count);
 void lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head,
                      bool inval);
 void lc_addPageForWriteBack(struct gfs *gfs, struct fs *fs, struct page *head,

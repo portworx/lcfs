@@ -365,6 +365,7 @@ lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
 
     /* Initialize the page structure and lock the hash list */
     assert(page->p_block == LC_INVALID_BLOCK);
+    assert(page->p_refCount == 1);
     page->p_block = block;
     if (!fs->fs_readOnly && !(fs->fs_super->sb_flags & LC_SUPER_INIT)) {
         page->p_lindex = fs->fs_gindex;
@@ -627,37 +628,10 @@ lc_readPages(struct gfs *gfs, struct fs *fs, struct page **pages,
     }
 }
 
-/* Release any blocks freed, pending in progress writes to complete */
-void
-lc_freeBlocksAfterFlush(struct fs *fs, uint64_t count) {
-    struct extent *extents = NULL;
-
-    pthread_mutex_lock(&fs->fs_plock);
-    assert(fs->fs_wpcount >= count);
-    fs->fs_wpcount -= count;
-
-    /* If no writes are pending and none in progress, then release the
-     * freed blocks for reuse.
-     */
-    if ((fs->fs_wpcount == 0) && (fs->fs_dpcount == 0) &&
-        fs->fs_fdextents) {
-        pthread_mutex_lock(&fs->fs_alock);
-        extents = fs->fs_fdextents;
-        fs->fs_fdextents = NULL;
-        pthread_mutex_unlock(&fs->fs_alock);
-    }
-    pthread_mutex_unlock(&fs->fs_plock);
-    if (extents) {
-        lc_blockFreeExtents(fs->fs_gfs, fs, extents,
-                            fs->fs_removed ? 0 :
-                            (LC_EXTENT_EFREE | LC_EXTENT_LAYER));
-    }
-}
-
 /* Flush a cluster of pages */
 static void
 lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
-                    struct page *head, uint64_t count, bool bfree) {
+                    struct page *head, uint64_t count) {
     struct page *page = head;
     uint64_t i, j, iovcount;
     struct iovec *iovec;
@@ -707,11 +681,6 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
     /* Release the pages after writing */
     lc_releasePages(gfs, fs, head,
                     fs->fs_removed || (fs == lc_getGlobalFs(gfs)));
-
-    /* Check any of the freed blocks can be released to the free pool */
-    if (bfree) {
-        lc_freeBlocksAfterFlush(fs, count);
-    }
 }
 
 /* Add a page to the file system dirty list for writeback */
@@ -743,10 +712,9 @@ lc_flushDirtyPages(struct gfs *gfs, struct fs *fs) {
         fs->fs_dpagesLast = NULL;
         count = fs->fs_dpcount;
         fs->fs_dpcount = 0;
-        fs->fs_wpcount += count;
         pthread_mutex_unlock(&fs->fs_plock);
         if (count) {
-            lc_flushPageCluster(gfs, fs, page, count, true);
+            lc_flushPageCluster(gfs, fs, page, count);
         }
     }
 }

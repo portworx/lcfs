@@ -1104,7 +1104,7 @@ out:
         /* If some blocks are not used when zero pages are skipped, return
          * those back to the free pool.
          */
-        lc_blockFree(gfs, fs, block + count, rcount - count, true);
+        lc_blockFree(gfs, fs, block + count, rcount - count, true, true);
     }
 }
 

@@ -489,9 +489,9 @@ reply:
 out:
     lc_statsAdd(fs, LC_SETATTR, err, &start);
 
-    /* Try to free space freed after flushing any pending writes */
-    if (flush && fs->fs_fdextents) {
-        lc_flushDirtyPages(fs->fs_gfs, fs);
+    /* Queue a checkpoint if blocks are freed */
+    if (flush && fs->fs_dpcount) {
+        __sync_add_and_fetch(&fs->fs_gfs->gfs_changedLayers, 1);
     }
     lc_unlock(fs);
 }
@@ -620,9 +620,9 @@ lc_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
     }
     lc_statsAdd(fs, LC_UNLINK, err, &start);
 
-    /* Release freed blocks after flushing pending writes */
-    if (flush && fs->fs_fdextents) {
-        lc_flushDirtyPages(fs->fs_gfs, fs);
+    /* Queue a checkpoint if blocks are freed */
+    if (flush && fs->fs_dpcount) {
+        __sync_add_and_fetch(&fs->fs_gfs->gfs_changedLayers, 1);
     }
     lc_unlock(fs);
 }
