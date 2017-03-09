@@ -463,7 +463,13 @@ lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
         /* Check if the inode is already present in cache */
         cinode = lc_lookupInodeCache(fs, ino, lc_inodeHash(fs, ino));
         if (cinode) {
-            inode->i_ino = 0;
+            if (S_ISLNK(inode->i_mode) && inode->i_nlink) {
+                assert(i == 0);
+                memset(buf, 0, LC_BLOCK_SIZE);
+                i = LC_INODE_BLOCK_MAX;
+            } else {
+                inode->i_ino = 0;
+            }
             flush = true;
             continue;
         }
@@ -491,12 +497,12 @@ lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
             /* Read directory entries */
             lc_dirRead(gfs, fs, inode, ibuf);
         } else if (len) {
+            assert(i == 0);
 
             /* Setup target of a symbolic link */
             inode->i_target = (((char *)inode) + sizeof(struct inode));
             memcpy(inode->i_target, &buf[offset + sizeof(struct dinode)], len);
             inode->i_target[len] = 0;
-            assert(i == 0);
             i = LC_INODE_BLOCK_MAX;
         }
 
@@ -766,6 +772,7 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             written = true;
             if (inode->i_flags & LC_INODE_REMOVED) {
                 assert(inode->i_nlink == 0);
+                assert(inode->i_block == LC_INVALID_BLOCK);
                 inode->i_flags &= ~LC_INODE_DISK;
             } else {
                 inode->i_flags |= LC_INODE_DISK;

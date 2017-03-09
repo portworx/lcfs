@@ -86,6 +86,9 @@ struct gfs {
     /* Free extents */
     struct extent *gfs_extents;
 
+    /* Extents to be freed after commit */
+    struct extent *gfs_fextents;
+
     /* Lock protecting allocations */
     pthread_mutex_t gfs_alock;
 
@@ -308,9 +311,6 @@ struct fs {
 
     /* Metadata extents to be freed */
     struct extent *fs_mextents;
-
-    /* Blocks currently used to store extents */
-    struct extent *fs_dextents;
 
     /* Blocks reserved */
     uint64_t fs_reservedBlocks;

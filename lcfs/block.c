@@ -24,7 +24,7 @@ lc_blockAllocatorInit(struct gfs *gfs, struct fs *fs) {
     /* Initialize a space extent covering the whole device */
     extent = lc_malloc(fs, sizeof(struct extent), LC_MEMTYPE_EXTENT);
     lc_initExtent(gfs, extent, LC_EXTENT_SPACE, LC_START_BLOCK,
-                  0, gfs->gfs_super->sb_tblocks - LC_START_BLOCK - 1, NULL);
+                  0, gfs->gfs_super->sb_tblocks - LC_START_BLOCK, NULL);
     gfs->gfs_extents = extent;
     gfs->gfs_blocksReserved = (gfs->gfs_super->sb_tblocks *
                                LC_RESERVED_BLOCKS) / 100ul;
@@ -46,12 +46,12 @@ lc_reclaimSpace(struct gfs *gfs) {
 
         /* Locking a layer would fail only when the layer is being deleted */
         if (fs &&
-            (fs->fs_extents || fs->fs_fextents || fs->fs_mextents ||
-             fs->fs_dextents) && !lc_tryLock(fs, false)) {
+            (fs->fs_extents || fs->fs_fextents || fs->fs_fdextents ||
+             fs->fs_mextents) && !lc_tryLock(fs, false)) {
             rcu_read_unlock();
 
             /* Flush dirty pages so that freed blocks can be released */
-            if (fs->fs_dextents) {
+            if (fs->fs_fdextents) {
                 lc_flushDirtyPages(gfs, fs);
                 lc_freeBlocksAfterFlush(fs, 0);
             }
@@ -299,21 +299,28 @@ lc_blockFreeExtents(struct gfs *gfs, struct fs *fs, struct extent *extents,
 void
 lc_readExtents(struct gfs *gfs, struct fs *fs) {
     struct fs *rfs = lc_getGlobalFs(gfs);
+    uint64_t block, count = 0, ecount = 0;
+    struct extent **extents, **fextents;
     struct dextentBlock *eblock;
-    uint64_t block, count = 0;
     struct dextent *dextent;
-    struct extent **extents;
     bool allocated;
     int i;
 
     block = fs->fs_super->sb_extentBlock;
     assert(block != LC_INVALID_BLOCK);
     allocated = (fs != lc_getGlobalFs(gfs));
-    extents = allocated ? &fs->fs_aextents : &gfs->gfs_extents;
+    if (allocated) {
+        extents = &fs->fs_aextents;
+        fextents = &fs->fs_mextents;
+    } else {
+        extents = &gfs->gfs_extents;
+        fextents = &gfs->gfs_fextents;
+    }
     lc_mallocBlockAligned(fs, (void **)&eblock, LC_MEMTYPE_BLOCK);
     while (block != LC_INVALID_BLOCK) {
         //lc_printf("Reading extents from block %ld\n", block);
-        lc_addSpaceExtent(gfs, rfs, &fs->fs_dextents, block, 1, false);
+        lc_addSpaceExtent(gfs, rfs, fextents, block, 1, false);
+        ecount++;
         lc_readBlock(gfs, fs, block, eblock);
         assert(eblock->de_magic == LC_EXTENT_MAGIC);
         lc_verifyBlock(eblock, &eblock->de_crc);
@@ -337,8 +344,10 @@ lc_readExtents(struct gfs *gfs, struct fs *fs) {
     } else {
         lc_printf("Total free blocks %ld used blocks %ld total blocks %ld\n",
                   count, gfs->gfs_super->sb_blocks, gfs->gfs_super->sb_tblocks);
-        assert((count + gfs->gfs_super->sb_blocks + 1) ==
+        assert((count + gfs->gfs_super->sb_blocks) ==
                gfs->gfs_super->sb_tblocks);
+        assert(gfs->gfs_super->sb_blocks >= ecount);
+        gfs->gfs_super->sb_blocks -= ecount;
         gfs->gfs_blocksReserved = (gfs->gfs_super->sb_tblocks *
                                    LC_RESERVED_BLOCKS) / 100ul;
     }
@@ -407,8 +416,6 @@ lc_blockAlloc(struct fs *fs, uint64_t count, bool meta, bool reserve) {
     uint64_t block;
 
     pthread_mutex_lock(&fs->fs_alock);
-
-    /* Allocation for regular data */
     block = lc_findFreeBlock(gfs, fs, count, true, true);
     pthread_mutex_unlock(&fs->fs_alock);
     assert(((block + count) < gfs->gfs_super->sb_tblocks) ||
@@ -445,7 +452,7 @@ lc_blockFree(struct gfs *gfs, struct fs *fs, uint64_t block,
 
         /* Add blocks back to the global free list */
         pthread_mutex_lock(&gfs->gfs_alock);
-        lc_addSpaceExtent(gfs, rfs, &gfs->gfs_extents, block, count, true);
+        lc_addSpaceExtent(gfs, rfs, &gfs->gfs_fextents, block, count, true);
         assert(gfs->gfs_super->sb_blocks >= count);
         gfs->gfs_super->sb_blocks -= count;
         pthread_mutex_unlock(&gfs->gfs_alock);
@@ -477,13 +484,6 @@ lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount, bool remove,
                                      (LC_EXTENT_FLUSH | LC_EXTENT_LAYER)));
         if (unmount) {
             fs->fs_freed += freed;
-        }
-
-        /* Free blocks used for allocation extents earlier */
-        if (fs->fs_dextents) {
-            lc_blockFreeExtents(gfs, lc_getGlobalFs(gfs), fs->fs_dextents,
-                                LC_EXTENT_EFREE | LC_EXTENT_LAYER);
-            fs->fs_dextents = NULL;
         }
     }
 
@@ -589,9 +589,15 @@ lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs, bool umount) {
     struct extent *extent, **prev;
     bool release;
 
-    /* Free previously used blocks for storing free extent info */
-    lc_blockFreeExtents(gfs, fs, fs->fs_dextents, LC_EXTENT_EFREE);
-    fs->fs_dextents = NULL;
+    /* Transfer all the extents freed */
+    extent = gfs->gfs_fextents;
+    gfs->gfs_fextents = NULL;
+    while (extent) {
+        lc_addSpaceExtent(gfs, fs, &gfs->gfs_extents,
+                          lc_getExtentStart(extent), lc_getExtentCount(extent),
+                          true);
+        extent = extent->ex_next;
+    }
 
     /* Count the number of free extents to find number of blocks needed */
     extent = gfs->gfs_extents;
@@ -626,8 +632,7 @@ lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs, bool umount) {
     assert((block + pcount) < gfs->gfs_super->sb_tblocks);
     gfs->gfs_super->sb_blocks += pcount;
     bcount -= pcount;
-    assert((bcount + gfs->gfs_super->sb_blocks + 1) ==
-           gfs->gfs_super->sb_tblocks);
+    assert((bcount + gfs->gfs_super->sb_blocks) == gfs->gfs_super->sb_tblocks);
     gfs->gfs_super->sb_extentBlock = block;
     lc_markSuperDirty(fs, false);
 

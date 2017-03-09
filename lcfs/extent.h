@@ -71,7 +71,7 @@ lc_validateExtent(struct gfs *gfs, struct extent *extent) {
     assert((gfs == NULL) ||
            ((((extent->ex_type == LC_EXTENT_SPACE) ?
               lc_getExtentStart(extent) : lc_getExtentBlock(extent)) +
-             lc_getExtentCount(extent)) < gfs->gfs_super->sb_tblocks));
+             lc_getExtentCount(extent)) <= gfs->gfs_super->sb_tblocks));
 }
 
 /* Set start of the extent */

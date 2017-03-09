@@ -57,10 +57,9 @@ lc_superWrite(struct gfs *gfs, struct fs *fs) {
 /* Mark super block dirty */
 void
 lc_markSuperDirty(struct fs *fs, bool write) {
-
-#if 0
     struct gfs *gfs;
 
+    fs->fs_super->sb_flags |= LC_SUPER_DIRTY;
     if (write && !fs->fs_dirty) {
         gfs = fs->fs_gfs;
         pthread_mutex_lock(&gfs->gfs_flock);
@@ -72,9 +71,6 @@ lc_markSuperDirty(struct fs *fs, bool write) {
     } else {
         fs->fs_dirty = true;
     }
-#endif
-    fs->fs_super->sb_flags |= LC_SUPER_DIRTY;
-    fs->fs_dirty = true;
 }
 
 /* Allocate superblocks for layers as needed */

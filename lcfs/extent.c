@@ -49,7 +49,7 @@ lc_addExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
 
     /* Look if the new extent could be merged to an existing extent */
     eblock = block ? block : start;
-    assert((eblock + count) < gfs->gfs_super->sb_tblocks);
+    assert((eblock + count) <= gfs->gfs_super->sb_tblocks);
     while (extent) {
         estart = lc_getExtentStart(extent);
         eblock = lc_getExtentBlock(extent);

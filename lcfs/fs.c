@@ -132,7 +132,6 @@ lc_freeLayer(struct fs *fs, bool remove) {
     assert(fs->fs_aextents == NULL);
     assert(fs->fs_fextents == NULL);
     assert(fs->fs_mextents == NULL);
-    assert(fs->fs_dextents == NULL);
     assert(fs->fs_icount == 0);
     assert(fs->fs_pcount == 0);
     assert(!remove || (fs->fs_blocks == fs->fs_freed));
@@ -482,6 +481,8 @@ lc_gfsDeinit(struct gfs *gfs) {
 
     assert(gfs->gfs_pcount == 0);
     assert(gfs->gfs_dcount == 0);
+    assert(gfs->gfs_extents == NULL);
+    assert(gfs->gfs_fextents == NULL);
     if (gfs->gfs_fd) {
         err = fsync(gfs->gfs_fd);
         assert(err == 0);
