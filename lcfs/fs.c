@@ -177,7 +177,6 @@ void
 lc_destroyLayer(struct fs *fs, bool remove) {
     lc_freeChangeList(fs);
     lc_destroyInodes(fs, remove);
-    lc_processFreedBlocks(fs, false);
     lc_freeLayer(fs, remove);
 }
 
@@ -687,8 +686,7 @@ lc_sync(struct gfs *gfs, struct fs *fs, bool unmount) {
     if (fs->fs_super->sb_flags & LC_SUPER_MOUNTED) {
         lc_syncInodes(gfs, fs);
         //lc_displayAllocStats(fs);
-        lc_processFreedBlocks(fs, true);
-        lc_freeLayerBlocks(gfs, fs, unmount, false, !unmount);
+        lc_processLayerBlocks(gfs, fs, unmount, false, !unmount);
         lc_flushDirtyPages(gfs, fs);
         fs->fs_super->sb_flags &= ~LC_SUPER_MOUNTED;
     }
@@ -709,7 +707,7 @@ lc_umountSync(struct gfs *gfs) {
     lc_sync(gfs, fs, true);
 
     /* Release freed and unused blocks */
-    lc_freeLayerBlocks(gfs, fs, true, false, false);
+    lc_processLayerBlocks(gfs, fs, true, false, false);
 
     /* Destroy all inodes.  This also releases metadata blocks of removed
      * inodes.
@@ -779,7 +777,7 @@ lc_unmount(struct gfs *gfs) {
         if (fs) {
             lc_lock(fs, true);
             gfs->gfs_fs[i] = NULL;
-            lc_freeLayerBlocks(gfs, fs, true, false, false);
+            lc_processLayerBlocks(gfs, fs, true, false, false);
             lc_flushDirtyPages(gfs, fs);
             fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
             lc_superWrite(gfs, fs);
@@ -856,8 +854,7 @@ lc_commitRoot(struct gfs *gfs, int count) {
         lc_syncInodes(gfs, fs);
         lc_flushDirtyPages(gfs, fs);
         lc_allocateSuperBlocks(gfs, fs, true);
-        lc_processFreedBlocks(fs, true);
-        lc_freeLayerBlocks(gfs, fs, false, false, true);
+        lc_processLayerBlocks(gfs, fs, false, false, true);
         lc_blockAllocatorDeinit(gfs, fs, false);
         err = fsync(gfs->gfs_fd);
         assert(err == 0);

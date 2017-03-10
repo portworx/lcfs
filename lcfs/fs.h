@@ -83,13 +83,15 @@ struct gfs {
     /* Number of blocks reserved */
     uint64_t gfs_blocksReserved;
 
-    /* Free extents */
+    /* Global list of extents tracking unused space */
     struct extent *gfs_extents;
 
-    /* Extents to be freed after commit */
+    /* Extents freed from layers. Not for reuse until commit */
     struct extent *gfs_fextents;
 
-    /* Extents to be freed after next commit */
+    /* Extents currently used for keeping track of extents allocated to
+     * layers.  These will be freed when those extents are overwritten.
+     */
     struct extent *gfs_aextents;
 
     /* Lock protecting allocations */
@@ -297,19 +299,19 @@ struct fs {
     struct cdir *fs_changes;
 #endif
 
-    /* Free extents */
+    /* Unused extents reserved by a layer */
     struct extent *fs_extents;
 
-    /* Extents allocated */
+    /* Extents allocated by a layer.  Not used for root layer */
     struct extent *fs_aextents;
 
-    /* Extents to be freed */
+    /* Extents freed in layer, including inherited from parent layer */
     struct extent *fs_fextents;
 
-    /* Extents to be freed after flushing done */
+    /* Extents freed in layer, which were allocated in the layer */
     struct extent *fs_mextents;
 
-    /* Extents which can be reused */
+    /* Extents allocated and freed in layer and can be reused */
     struct extent *fs_rextents;
 
     /* Blocks reserved */

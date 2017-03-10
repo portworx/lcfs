@@ -300,7 +300,7 @@ lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     }
     if (pcount) {
         block = lc_flushEmapBlocks(gfs, fs, page, pcount);
-        lc_replaceMetaBlocks(fs, &inode->i_emapDirExtents, block, pcount);
+        lc_replaceFreedExtents(fs, &inode->i_emapDirExtents, block, pcount);
     }
 
     /* Store the first emap block information in inode */
@@ -372,8 +372,8 @@ lc_freeInodeDataBlocks(struct fs *fs, struct inode *inode,
     struct extent *extent = *extents, *tmp;
 
     while (extent) {
-        lc_freeLayerDataBlocks(fs, lc_getExtentStart(extent),
-                               lc_getExtentCount(extent), inode->i_private);
+        lc_addFreedBlocks(fs, lc_getExtentStart(extent),
+                          lc_getExtentCount(extent), inode->i_private);
         tmp = extent;
         extent = extent->ex_next;
         lc_free(fs, tmp, sizeof(struct extent), LC_MEMTYPE_EXTENT);

@@ -5,7 +5,7 @@
  */
 #define LC_RESERVED_BLOCKS  10ul
 
-/* Number of blocks reserved by a layer from the global pool */
+/* Number of blocks reserved by a layer from the global pool at a time */
 #define LC_BLOCK_RESERVE    8192
 
 /* Minimum number of blocks attempted to reclaim in one pass */
@@ -25,6 +25,18 @@ lc_blockAllocatorInit(struct gfs *gfs, struct fs *fs) {
                                LC_RESERVED_BLOCKS) / 100ul;
 }
 
+/* Release any unused reserved blocks */
+static uint64_t
+lc_releaseReservedBlocks(struct gfs *gfs, struct fs *fs) {
+    uint64_t freed;
+
+    freed = lc_blockFreeExtents(gfs, fs, fs->fs_extents, LC_EXTENT_EFREE);
+    assert(fs->fs_reservedBlocks == freed);
+    fs->fs_reservedBlocks -= freed;
+    fs->fs_extents = NULL;
+    return freed;
+}
+
 /* Reclaim reserved space from all layers */
 static uint64_t
 lc_reclaimSpace(struct gfs *gfs) {
@@ -37,20 +49,22 @@ lc_reclaimSpace(struct gfs *gfs) {
     rcu_read_lock();
     for (i = 0; i <= gfs->gfs_scount; i++) {
         fs = rcu_dereference(gfs->gfs_fs[i]);
-
-        /* Locking a layer would fail only when the layer is being deleted */
         if (fs) {
 
             /* Queue a checkpoint */
-            if (!queued && (fs->fs_fextents || fs->fs_mextents)) {
+            if (!queued &&
+                (fs->fs_fextents || fs->fs_mextents || fs->fs_rextents)) {
                 __sync_add_and_fetch(&gfs->gfs_changedLayers, 1);
+                pthread_cond_signal(&gfs->gfs_syncerCond);
                 queued = true;
             }
 
             /* Release any reserved blocks */
             if (fs->fs_extents && !lc_tryLock(fs, false)) {
                 rcu_read_unlock();
-                count += lc_freeLayerBlocks(gfs, fs, false, false, false);
+                pthread_mutex_lock(&fs->fs_alock);
+                count += lc_releaseReservedBlocks(gfs, fs);
+                pthread_mutex_unlock(&fs->fs_alock);
                 lc_unlock(fs);
                 rcu_read_lock();
                 if (count >= LC_RECLAIM_BLOCKS) {
@@ -97,9 +111,14 @@ lc_allocateBlock(struct gfs *gfs, struct fs *fs, uint64_t count, bool layer) {
 
     if (layer) {
         if (fs->fs_rextents) {
+            assert(fs != lc_getGlobalFs(gfs));
+
+            /* Check the list of extents which are ready for re-use */
             extents = &fs->fs_rextents;
             reserved = false;
         } else if (fs->fs_extents) {
+
+            /* Check list of extents in the reserve pool */
             extents = &fs->fs_extents;
             reserved = true;
         } else {
@@ -115,6 +134,8 @@ retry:
     extent = *extents;
     while (extent) {
         if (lc_getExtentCount(extent) >= count) {
+
+            /* Remove the requested number of blocks from the extent */
             block = lc_getExtentStart(extent);
             lc_incrExtentStart(NULL, extent, count);
             release = lc_decrExtentCount(gfs, extent, count);
@@ -125,12 +146,14 @@ retry:
             }
 
             if (layer) {
+
+                /* Update reserved pool and register this extent in the
+                 * allocated list of extents.
+                 */
                 if (reserved) {
                     assert(fs->fs_reservedBlocks >= count);
                     fs->fs_reservedBlocks -= count;
                     if (fs != lc_getGlobalFs(gfs)) {
-
-                        /* Track allocated extents for a layer */
                         lc_addSpaceExtent(gfs, fs, &fs->fs_aextents, block,
                                           count, true);
                         fs->fs_blocks += count;
@@ -148,6 +171,8 @@ retry:
         prev = &extent->ex_next;
         extent = extent->ex_next;
     }
+
+    /* If nothing found in the list for reuse, try the reserved pool */
     if (layer && !reserved && fs->fs_extents) {
         extents = &fs->fs_extents;
         reserved = true;
@@ -225,7 +250,7 @@ lc_flushExtentPages(struct gfs *gfs, struct fs *fs, struct page *fpage,
     lc_addPageForWriteBack(gfs, fs, fpage, tpage, pcount);
 }
 
-/* Free an extent list, and optionally updating the list on disk */
+/* Perform requested actions on the extent list */
 uint64_t
 lc_blockFreeExtents(struct gfs *gfs, struct fs *fs, struct extent *extents,
                     uint8_t flags) {
@@ -268,10 +293,14 @@ lc_blockFreeExtents(struct gfs *gfs, struct fs *fs, struct extent *extents,
             lc_blockFree(gfs, fs, estart, ecount, layer, reuse);
         }
         extent = extent->ex_next;
+
+        /* Free the extent structure unless requested not to do so */
         if (free) {
             lc_free(fs, tmp, sizeof(struct extent), LC_MEMTYPE_EXTENT);
         }
     }
+
+    /* Allocate page for the last block */
     if (eblock) {
         if (count < LC_EXTENT_BLOCK) {
             eblock->de_extents[count].de_start = 0;
@@ -293,9 +322,13 @@ lc_blockFreeExtents(struct gfs *gfs, struct fs *fs, struct extent *extents,
                                   block, pcount, false);
             }
         } else {
+
+            /* Use the pre-allocated block */
             block = gfs->gfs_super->sb_extentBlock;
             assert(block != LC_INVALID_BLOCK);
         }
+
+        /* Queue write of newly created pages */
         lc_flushExtentPages(gfs, rfs, page, pcount, block);
     }
     return freed;
@@ -320,8 +353,14 @@ lc_readExtents(struct gfs *gfs, struct fs *fs) {
     lc_mallocBlockAligned(fs, (void **)&eblock, LC_MEMTYPE_BLOCK);
     while (block != LC_INVALID_BLOCK) {
         //lc_printf("Reading extents from block %ld\n", block);
+
+        /* Keep track of blocks so that they could be freed when this is
+         * re-written.
+         */
         lc_addSpaceExtent(gfs, rfs, fextents, block, 1, false);
         ecount++;
+
+        /* Read and validate the block */
         lc_readBlock(gfs, fs, block, eblock);
         assert(eblock->de_magic == LC_EXTENT_MAGIC);
         lc_verifyBlock(eblock, &eblock->de_crc);
@@ -350,6 +389,8 @@ lc_readExtents(struct gfs *gfs, struct fs *fs) {
         gfs->gfs_blocksReserved = (gfs->gfs_super->sb_tblocks *
                                    LC_RESERVED_BLOCKS) / 100ul;
     }
+
+    /* Update usage as if current blocks are freed */
     if (ecount) {
         assert(gfs->gfs_super->sb_blocks >= ecount);
         gfs->gfs_super->sb_blocks -= ecount;
@@ -361,15 +402,23 @@ static void
 lc_freeLayerExtent(struct fs *fs, uint64_t block, uint64_t count, bool reuse) {
     uint64_t freed;
 
+    assert(fs != lc_getGlobalFs(fs->fs_gfs));
+
     /* Check if the extent was allocated for the layer */
     while (count) {
+
+        /* Find the portion of the extent which is allocated in the layer */
         freed = lc_removeExtent(fs, &fs->fs_aextents, block, count);
         if (freed) {
 
-            /* Free the blocks which were allocated in the layer */
+            /* Move the allocated extent to a list for reuse, unless asked not
+             * to do so.
+             */
             lc_addSpaceExtent(fs->fs_gfs, fs,
                               reuse ? &fs->fs_mextents : &fs->fs_extents,
                               block, freed, false);
+
+            /* If not reusing, update the reserved count */
             if (!reuse) {
                 fs->fs_freed += freed;
                 fs->fs_reservedBlocks += freed;
@@ -386,9 +435,11 @@ lc_freeLayerExtent(struct fs *fs, uint64_t block, uint64_t count, bool reuse) {
     }
 }
 
-/* Add the extent to free list for reuse or deferred processing */
+/* If the block being freed is tracked in a allocated list of extents, free the
+ * block after updating that list.  Otherwise, add the block to reserved pool.
+ */
 static void
-lc_blockLayerFree(struct gfs *gfs, struct fs *fs, uint64_t block,
+lc_blockFreeLayer(struct gfs *gfs, struct fs *fs, uint64_t block,
                   uint64_t count, bool reuse) {
 
     /* Extents allocated in a layer can be removed only after updating the
@@ -454,7 +505,7 @@ lc_blockFree(struct gfs *gfs, struct fs *fs, uint64_t block,
 
         /* Add blocks to the file system list for deferred processing */
         pthread_mutex_lock(&fs->fs_alock);
-        lc_blockLayerFree(gfs, fs, block, count, reuse);
+        lc_blockFreeLayer(gfs, fs, block, count, reuse);
         pthread_mutex_unlock(&fs->fs_alock);
     } else {
         rfs = lc_getGlobalFs(gfs);
@@ -468,93 +519,42 @@ lc_blockFree(struct gfs *gfs, struct fs *fs, uint64_t block,
     }
 }
 
-/* Free blocks allocated/reserved by a layer */
-uint64_t
-lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount, bool remove,
-                   bool flush) {
-    struct fs *rfs = lc_getGlobalFs(gfs);
-    struct extent *extent, *tmp;
+/* Perform the requested operation on the list of extents allocated to the
+ * layer.
+ */
+static void
+lc_flushAllocatedExtents(struct gfs *gfs, struct fs *fs,
+                         bool unmount, bool remove, bool flush) {
+    struct extent *extent = fs->fs_aextents;
+    int flags = flush ? LC_EXTENT_KEEP : 0;
+    bool release = unmount || remove;
     uint64_t freed;
 
-    /* Free blocks allocated and freed in the layer */
-    if (fs->fs_mextents) {
-        assert(fs != rfs);
-        if (flush) {
+    flags |= remove ? LC_EXTENT_EFREE : (LC_EXTENT_FLUSH | LC_EXTENT_LAYER);
+    if (release) {
 
-            /* Move extents freed, but still marked as allocated to the list
-             * for reusing.
-             */
-            extent = fs->fs_mextents;
-            while (extent) {
-                tmp = extent;
-                lc_addSpaceExtent(gfs, fs, &fs->fs_rextents,
-                                  lc_getExtentStart(extent),
-                                  lc_getExtentCount(extent), false);
-                extent = extent->ex_next;
-                lc_free(fs, tmp, sizeof(struct extent), LC_MEMTYPE_EXTENT);
-            }
-        } else {
-            lc_blockFreeExtents(gfs, fs, fs->fs_mextents,
-                                (remove ?
-                                 0 : LC_EXTENT_EFREE | LC_EXTENT_LAYER));
-        }
-        fs->fs_mextents = NULL;
+        /* Reset this so that extents being freed will not be consulted with
+         * this list again.
+         */
+        fs->fs_aextents = NULL;
     }
-
-    /* Free blocks kept for reusing */
-    if (!flush && fs->fs_rextents) {
-        lc_blockFreeExtents(gfs, fs, fs->fs_rextents,
-                            (remove ? 0 : LC_EXTENT_EFREE | LC_EXTENT_LAYER));
-        fs->fs_rextents = NULL;
+    freed = lc_blockFreeExtents(gfs, fs, extent, flags);
+    if (release) {
+        fs->fs_freed += freed;
     }
-
-    /* If the layer is being removed, then free any blocks allocated in the
-     * layer, otherwise free the list after writing that to disk.
-     */
-    pthread_mutex_lock(&fs->fs_alock);
-    extent = fs->fs_aextents;
-    if ((flush || unmount) && extent) {
-        assert(fs != rfs);
-        if (unmount) {
-            fs->fs_aextents = NULL;
-        }
-        freed = lc_blockFreeExtents(gfs, fs, extent,
-                                    (flush ? LC_EXTENT_KEEP : 0) |
-                                    (remove ? LC_EXTENT_EFREE :
-                                     (LC_EXTENT_FLUSH | LC_EXTENT_LAYER)));
-        if (unmount) {
-            fs->fs_freed += freed;
-        }
-    }
-
-    /* Release any unused reserved blocks */
-    freed = lc_blockFreeExtents(gfs, fs, fs->fs_extents, LC_EXTENT_EFREE);
-    assert(fs->fs_reservedBlocks == freed);
-    fs->fs_reservedBlocks -= freed;
-    fs->fs_extents = NULL;
-    pthread_mutex_unlock(&fs->fs_alock);
-    return freed;
 }
 
-/* Data extent for pending removal */
-void
-lc_freeLayerDataBlocks(struct fs *fs, uint64_t block, uint64_t count,
-                       bool allocated) {
-    struct fs *rfs = lc_getGlobalFs(fs->fs_gfs);
-    bool reuse = (fs != rfs) && allocated;
+/* Insert the list of extents to another */
+static inline void
+lc_moveExtents(struct fs *fs, struct extent **extents,
+               struct extent *extent, bool empty) {
+    struct extent *last = extent;
 
-    assert(allocated || (fs != rfs));
-    pthread_mutex_lock(&fs->fs_alock);
-    lc_addSpaceExtent(fs->fs_gfs, fs,
-                      reuse ? &fs->fs_mextents : &fs->fs_fextents,
-                      block, count, false);
-    pthread_mutex_unlock(&fs->fs_alock);
-}
-
-/* Extent list for delayed removal */
-void
-lc_freeLayerMetaExtents(struct fs *fs, struct extent *extent) {
-    struct extent *last = extent, **extents;
+    if (empty) {
+        assert(*extents == NULL);
+        *extents = extent;
+        return;
+    }
 
     /* Find the last extent in the list */
     while (last && last->ex_next) {
@@ -563,18 +563,103 @@ lc_freeLayerMetaExtents(struct fs *fs, struct extent *extent) {
     assert(last->ex_next == NULL);
 
     /* Link the provided list to list of the layer */
-    extents = (fs == lc_getGlobalFs(fs->fs_gfs)) ?
-              &fs->fs_fextents : &fs->fs_mextents;
-    pthread_mutex_lock(&fs->fs_alock);
+    if (fs) {
+        pthread_mutex_lock(&fs->fs_alock);
+    }
     last->ex_next = *extents;
     *extents = extent;
+    if (fs) {
+        pthread_mutex_unlock(&fs->fs_alock);
+    }
+}
+
+/* Process blocks allocated/freed in a layer */
+uint64_t
+lc_processLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount,
+                       bool remove, bool flush) {
+    int flags = remove ? 0 : (LC_EXTENT_EFREE | LC_EXTENT_LAYER);
+    struct fs *rfs = lc_getGlobalFs(gfs);
+    uint64_t freed;
+
+    /* Process blocks freed in layer.  These blocks may or may not be
+     * allocated in the layer
+     */
+    if (fs->fs_fextents) {
+        lc_blockFreeExtents(gfs, fs, fs->fs_fextents,
+                            flags |
+                            ((unmount || remove) ? 0 : LC_EXTENT_REUSE));
+        fs->fs_fextents = NULL;
+    }
+
+    /* Process blocks allocated and freed in the layer */
+    if (fs->fs_mextents) {
+        assert(fs != rfs);
+        if (flush) {
+
+            /* Move extents freed, but still marked as allocated to the list
+             * for reusing.
+             */
+            lc_moveExtents(NULL, &fs->fs_rextents, fs->fs_mextents,
+                           fs->fs_rextents == NULL);
+        } else {
+            lc_blockFreeExtents(gfs, fs, fs->fs_mextents, flags);
+        }
+        fs->fs_mextents = NULL;
+    }
+
+    /* Process blocks kept for reusing */
+    if (!flush && fs->fs_rextents) {
+        assert(fs != rfs);
+        lc_blockFreeExtents(gfs, fs, fs->fs_rextents, flags);
+        fs->fs_rextents = NULL;
+    }
+
+    /* If the layer is being removed, then free any blocks allocated in the
+     * layer, otherwise free the list after writing that to disk.
+     */
+    if (fs->fs_aextents) {
+        assert(fs != rfs);
+        lc_flushAllocatedExtents(gfs, fs, unmount, remove, flush);
+    }
+
+    /* Release any unused reserved blocks */
+    freed = lc_releaseReservedBlocks(gfs, fs);
+    return freed;
+}
+
+/* Track an extent freed from a layer */
+void
+lc_addFreedBlocks(struct fs *fs, uint64_t block, uint64_t count,
+                  bool allocated) {
+    struct fs *rfs = lc_getGlobalFs(fs->fs_gfs);
+    bool reuse = (fs != rfs) && allocated;
+
+    /* Blocks freed in layers which track allocated extents explicitly, keep
+     * them in a separate list for reusing for other allocations.  This may not
+     * be done right now, if there is a chance for the blocks to be inherited
+     * from a parent layer.
+     */
+    assert(allocated || (fs != rfs));
+    pthread_mutex_lock(&fs->fs_alock);
+    lc_addSpaceExtent(fs->fs_gfs, fs,
+                      reuse ? &fs->fs_mextents : &fs->fs_fextents,
+                      block, count, false);
     pthread_mutex_unlock(&fs->fs_alock);
 }
 
-/* Replace the metadata list with the new extent */
+/* Track a list of extents freed from a layer */
 void
-lc_replaceMetaBlocks(struct fs *fs, struct extent **extents,
-                     uint64_t block, uint64_t count) {
+lc_addFreedExtents(struct fs *fs, struct extent *extent, bool empty) {
+    lc_moveExtents(fs, (fs == lc_getGlobalFs(fs->fs_gfs)) ?
+                   &fs->fs_fextents : &fs->fs_mextents, extent, empty);
+}
+
+/* Replace extents in the specified list with new extent provided.
+ * Old extents will be moved to freed list
+ */
+void
+lc_replaceFreedExtents(struct fs *fs, struct extent **extents,
+                       uint64_t block, uint64_t count) {
     struct extent *extent = *extents, *tmp;
     struct gfs *gfs = fs->fs_gfs;
     bool insert = true;
@@ -585,8 +670,8 @@ lc_replaceMetaBlocks(struct fs *fs, struct extent **extents,
         lc_validateExtent(gfs, extent);
 
         /* Free blocks covered by this extent */
-        lc_freeLayerDataBlocks(fs, lc_getExtentStart(extent),
-                               lc_getExtentCount(extent), true);
+        lc_addFreedBlocks(fs, lc_getExtentStart(extent),
+                          lc_getExtentCount(extent), true);
         if (insert) {
 
             /* Use the same extent to track new blocks */
@@ -596,6 +681,7 @@ lc_replaceMetaBlocks(struct fs *fs, struct extent **extents,
             insert = false;
             extent = tmp;
         } else {
+            assert(insert);
 
             /* Free the extent */
             tmp = extent;
@@ -611,28 +697,14 @@ lc_replaceMetaBlocks(struct fs *fs, struct extent **extents,
     }
 }
 
-/* Free blocks allocated and freed in a layer */
-void
-lc_processFreedBlocks(struct fs *fs, bool release) {
-    struct gfs *gfs = fs->fs_gfs;
-
-    /* These blocks may or may not be allocated for the layer */
-    if (fs->fs_fextents) {
-        lc_blockFreeExtents(gfs, fs, fs->fs_fextents,
-                            release ? (LC_EXTENT_REUSE | LC_EXTENT_EFREE |
-                                       LC_EXTENT_LAYER) : 0);
-        fs->fs_fextents = NULL;
-    }
-}
-
-/* Update free space information to disk and free extent list */
+/* Flush and/or release global list of free extents to disk */
 void
 lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs, bool umount) {
     uint64_t count = 0, pcount, block = LC_INVALID_BLOCK, bcount = 0;
     struct extent *extent, **prev;
     bool release;
 
-    /* Transfer all the extents freed */
+    /* Transfer all the extents freed so far */
     extent = gfs->gfs_fextents;
     gfs->gfs_fextents = NULL;
     while (extent) {
@@ -679,16 +751,21 @@ lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs, bool umount) {
     gfs->gfs_super->sb_extentBlock = block;
     lc_markSuperDirty(fs, false);
 
-    /* Update space usage */
+    /* Flush global list of free extents to disk */
     lc_blockFreeExtents(gfs, fs, gfs->gfs_extents,
                         (umount ? 0 : LC_EXTENT_KEEP) |
                         (fs->fs_dirty ? LC_EXTENT_FLUSH : 0));
     if (umount) {
         gfs->gfs_extents = NULL;
     } else {
+
+        /* Transfer blocks used for storing allocated extents for layers */
         assert(gfs->gfs_fextents == NULL);
         gfs->gfs_fextents = gfs->gfs_aextents;
         gfs->gfs_aextents = NULL;
+
+        /* Add newly allocated extent for storing global list of free extents
+         */
         lc_addSpaceExtent(gfs, fs, &gfs->gfs_fextents, block, pcount, true);
         assert(gfs->gfs_super->sb_blocks >= pcount);
         gfs->gfs_super->sb_blocks -= pcount;

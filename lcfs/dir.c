@@ -431,7 +431,7 @@ lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
     }
     if (count) {
         block = lc_dirFlushBlocks(gfs, fs, page, count);
-        lc_replaceMetaBlocks(fs, &dir->i_emapDirExtents, block, count);
+        lc_replaceFreedExtents(fs, &dir->i_emapDirExtents, block, count);
     }
 
     /* Update directory inode with the first directory block information */

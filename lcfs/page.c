@@ -1024,9 +1024,8 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
         /* Free any old blocks present */
         if (inode->i_extentLength) {
             if (inode->i_extentBlock != eblock) {
-                lc_freeLayerDataBlocks(fs, inode->i_extentBlock,
-                                       inode->i_extentLength,
-                                       inode->i_private);
+                lc_addFreedBlocks(fs, inode->i_extentBlock,
+                                  inode->i_extentLength, inode->i_private);
             }
         } else if (lc_inodeGetEmap(inode)) {
 

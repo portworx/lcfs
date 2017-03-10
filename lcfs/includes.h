@@ -101,21 +101,21 @@ void lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs, bool umount);
 bool lc_hasSpace(struct gfs *gfs, bool layer);
 void lc_addSpaceExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
                        uint64_t start, uint64_t count, bool sort);
-uint64_t lc_freeLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount,
-                            bool remove, bool keep);
+uint64_t lc_processLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount,
+                                bool remove, bool keep);
 uint64_t lc_blockAlloc(struct fs *fs, uint64_t count, bool meta, bool reserve);
 uint64_t lc_blockAllocExact(struct fs *fs, uint64_t count,
                             bool meta, bool reserve);
 void lc_blockFree(struct gfs *gfs, struct fs *fs, uint64_t block,
                   uint64_t count, bool layer, bool reuse);
-void lc_freeLayerMetaExtents(struct fs *fs, struct extent *extent);
-void lc_freeLayerDataBlocks(struct fs *fs, uint64_t block, uint64_t count,
-                            bool allocated);
+void lc_addFreedExtents(struct fs *fs, struct extent *extent, bool empty);
+void lc_addFreedBlocks(struct fs *fs, uint64_t block, uint64_t count,
+                       bool allocated);
 void lc_processFreedBlocks(struct fs *fs, bool release);
 uint64_t lc_blockFreeExtents(struct gfs *gfs, struct fs *fs,
                              struct extent *extents, uint8_t flags);
-void lc_replaceMetaBlocks(struct fs *fs, struct extent **extents,
-                          uint64_t block, uint64_t count);
+void lc_replaceFreedExtents(struct fs *fs, struct extent **extents,
+                            uint64_t block, uint64_t count);
 void lc_readExtents(struct gfs *gfs, struct fs *fs);
 void lc_displayAllocStats(struct fs *fs);
 

@@ -420,11 +420,9 @@ main(int argc, char *argv[]) {
             break;
         }
     }
-    if (err) {
-        if (!gfs->gfs_unmounting) {
-            gfs->gfs_unmounting = true;
-            lc_unmount(gfs);
-        }
+    if (err && !gfs->gfs_unmounting) {
+        gfs->gfs_unmounting = true;
+        lc_unmount(gfs);
     }
     assert(gfs->gfs_unmounting);
 

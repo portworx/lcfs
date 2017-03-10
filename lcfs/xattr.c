@@ -491,7 +491,7 @@ lc_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     }
     if (pcount) {
         block = lc_xattrFlushBlocks(gfs, fs, page, pcount);
-        lc_replaceMetaBlocks(fs, &inode->i_xattrExtents, block, pcount);
+        lc_replaceFreedExtents(fs, &inode->i_xattrExtents, block, pcount);
     }
     assert(size == 0);
 
