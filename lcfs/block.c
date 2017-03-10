@@ -316,6 +316,7 @@ lc_blockFreeExtents(struct gfs *gfs, struct fs *fs, struct extent *extents,
             /* Allocate a new block */
             block = lc_blockAllocExact(rfs, pcount, true, false);
             fs->fs_super->sb_extentBlock = block;
+            fs->fs_super->sb_extentCount = pcount;
             lc_markSuperDirty(fs, false);
             if (!free) {
                 lc_addSpaceExtent(gfs, rfs, &gfs->gfs_aextents,
@@ -337,8 +338,8 @@ lc_blockFreeExtents(struct gfs *gfs, struct fs *fs, struct extent *extents,
 /* Read extents list */
 void
 lc_readExtents(struct gfs *gfs, struct fs *fs) {
+    uint64_t block, lblock, count = 0, ecount = 0;
     struct fs *rfs = lc_getGlobalFs(gfs);
-    uint64_t block, count = 0, ecount = 0;
     struct extent **extents, **fextents;
     struct dextentBlock *eblock;
     struct dextent *dextent;
@@ -347,6 +348,7 @@ lc_readExtents(struct gfs *gfs, struct fs *fs) {
 
     block = fs->fs_super->sb_extentBlock;
     assert(block != LC_INVALID_BLOCK);
+    lblock = block;
     allocated = (fs != lc_getGlobalFs(gfs));
     extents = allocated ? &fs->fs_aextents : &gfs->gfs_extents;
     fextents = &gfs->gfs_fextents;
@@ -375,8 +377,18 @@ lc_readExtents(struct gfs *gfs, struct fs *fs) {
                               dextent->de_count, true);
             count += dextent->de_count;
         }
+        lblock = block;
         block = eblock->de_next;
     }
+
+    /* Check if more blocks allocated for this, but used less than that */
+    while (fs->fs_super->sb_extentCount > ecount) {
+        assert(!allocated);
+        ecount++;
+        lblock++;
+        lc_addSpaceExtent(gfs, rfs, fextents, lblock, 1, false);
+    }
+    assert(ecount == fs->fs_super->sb_extentCount);
     lc_free(fs, eblock, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
     if (allocated) {
         fs->fs_blocks = count;
@@ -697,32 +709,32 @@ lc_replaceFreedExtents(struct fs *fs, struct extent **extents,
     }
 }
 
-/* Flush and/or release global list of free extents to disk */
-void
-lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs, bool umount) {
-    uint64_t count = 0, pcount, block = LC_INVALID_BLOCK, bcount = 0;
-    struct extent *extent, **prev;
-    bool release;
+/* Count number of extents in the list */
+static uint64_t
+lc_countExtents(struct gfs *gfs, struct extent *extent, uint64_t *bcount) {
+    uint64_t count = 0, total = 0;
 
-    /* Transfer all the extents freed so far */
-    extent = gfs->gfs_fextents;
-    gfs->gfs_fextents = NULL;
-    while (extent) {
-        lc_addSpaceExtent(gfs, fs, &gfs->gfs_extents,
-                          lc_getExtentStart(extent), lc_getExtentCount(extent),
-                          true);
-        extent = extent->ex_next;
-    }
-
-    /* Count the number of free extents to find number of blocks needed */
-    extent = gfs->gfs_extents;
     while (extent) {
         assert(extent->ex_type == LC_EXTENT_SPACE);
         lc_validateExtent(gfs, extent);
         count++;
-        bcount += lc_getExtentCount(extent);
+        total += lc_getExtentCount(extent);
         extent = extent->ex_next;
     }
+    *bcount += total;
+    return count;
+}
+
+/* Flush and/or release global list of free extents to disk */
+void
+lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs, bool umount) {
+    uint64_t count, pcount, block = LC_INVALID_BLOCK, bcount = 0;
+    struct extent *extent, **prev;
+    bool release;
+
+    /* Count the number of free extents to find number of blocks needed */
+    count = lc_countExtents(gfs, gfs->gfs_extents, &bcount);
+    count += lc_countExtents(gfs, gfs->gfs_fextents, &bcount);
     pcount = (count + LC_EXTENT_BLOCK - 1) / LC_EXTENT_BLOCK;
     assert(pcount);
 
@@ -745,10 +757,23 @@ lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs, bool umount) {
     }
     assert(block != LC_INVALID_BLOCK);
     assert((block + pcount) < gfs->gfs_super->sb_tblocks);
+
+    /* Transfer all the extents freed so far */
+    extent = gfs->gfs_fextents;
+    gfs->gfs_fextents = NULL;
+    while (extent) {
+        lc_addSpaceExtent(gfs, fs, &gfs->gfs_extents,
+                          lc_getExtentStart(extent), lc_getExtentCount(extent),
+                          true);
+        extent = extent->ex_next;
+    }
+
+    /* XXX Recalculate new extent count and adjust the extent size */
     gfs->gfs_super->sb_blocks += pcount;
     bcount -= pcount;
     assert((bcount + gfs->gfs_super->sb_blocks) == gfs->gfs_super->sb_tblocks);
     gfs->gfs_super->sb_extentBlock = block;
+    gfs->gfs_super->sb_extentCount = pcount;
     lc_markSuperDirty(fs, false);
 
     /* Flush global list of free extents to disk */

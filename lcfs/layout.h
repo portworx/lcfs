@@ -104,6 +104,9 @@ struct super {
     /* Allocated/free extent list */
     uint64_t sb_extentBlock;
 
+    /* Number of blocks used for Allocated/free extent list */
+    uint64_t sb_extentCount;
+
     /* Inode start block */
     uint64_t sb_inodeBlock;
 
@@ -152,7 +155,7 @@ struct super {
     uint64_t sb_ftypes[LC_FTYPE_MAX];
 
     /* Padding for filling up a block */
-    uint8_t  sb_pad[LC_BLOCK_SIZE - 156];
+    uint8_t  sb_pad[LC_BLOCK_SIZE - 164];
 } __attribute__((packed));
 static_assert(sizeof(struct super) == LC_BLOCK_SIZE, "superblock size != LC_BLOCK_SIZE");
 
