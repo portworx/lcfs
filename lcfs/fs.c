@@ -93,7 +93,6 @@ lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs) {
     fs->fs_inodeBlockCount = 0;
     fs->fs_inodeBlockPages = NULL;
     fs->fs_super->sb_inodeBlock = block;
-    lc_markSuperDirty(fs, false);
 }
 
 /* Allocate a new inode block */
@@ -162,8 +161,7 @@ lc_freeLayer(struct fs *fs, bool remove) {
     if (fs != lc_getGlobalFs(gfs)) {
         assert(!fs->fs_dirty || fs->fs_removed);
         assert(fs->fs_removed ||
-               !(fs->fs_super->sb_flags &
-                 (LC_SUPER_DIRTY | LC_SUPER_MOUNTED)));
+               !(fs->fs_super->sb_flags & LC_SUPER_MOUNTED));
         lc_free(fs, fs->fs_super, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
         lc_displayMemStats(fs);
         lc_checkMemStats(fs, false);
@@ -262,20 +260,20 @@ lc_removeChild(struct fs *fs) {
         if (fs->fs_next) {
             fs->fs_next->fs_prev = NULL;
         }
-        lc_markSuperDirty(pfs, false);
+        lc_markSuperDirty(pfs);
     } else {
 
         /* Remove from the common parent list */
         nfs = fs->fs_prev;
         nfs->fs_next = fs->fs_next;
-        lc_markSuperDirty(nfs, false);
+        lc_markSuperDirty(nfs);
         if (fs->fs_next) {
             fs->fs_next->fs_prev = fs->fs_prev;
         }
     }
     if (pfs && (pfs->fs_super->sb_zombie == fs->fs_gindex)) {
         pfs->fs_super->sb_zombie = 0;
-        lc_markSuperDirty(pfs, false);
+        lc_markSuperDirty(pfs);
     }
 }
 
@@ -353,7 +351,7 @@ lc_getLayerForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
         if ((fs->fs_super->sb_zombie == fs->fs_child->fs_gindex) &&
             (fs->fs_child->fs_next == NULL)) {
             fs->fs_super->sb_flags |= LC_SUPER_ZOMBIE;
-            lc_markSuperDirty(fs, false);
+            lc_markSuperDirty(fs);
             assert(fs->fs_child->fs_zfs == NULL);
             fs->fs_child->fs_zfs = fs;
             pthread_mutex_unlock(&gfs->gfs_lock);
@@ -385,7 +383,7 @@ lc_addChild(struct gfs *gfs, struct fs *pfs, struct fs *fs) {
         }
         fs->fs_next = child->fs_next;
         child->fs_next = fs;
-        lc_markSuperDirty(child, false);
+        lc_markSuperDirty(child);
     } else if (pfs) {
 
         /* Tag the very first read-write init layer created as the single child
@@ -396,7 +394,7 @@ lc_addChild(struct gfs *gfs, struct fs *pfs, struct fs *fs) {
             fs->fs_single = true;
         }
         pfs->fs_child = fs;
-        lc_markSuperDirty(pfs, false);
+        lc_markSuperDirty(pfs);
     }
 }
 
@@ -482,7 +480,6 @@ lc_gfsDeinit(struct gfs *gfs) {
     assert(gfs->gfs_dcount == 0);
     assert(gfs->gfs_extents == NULL);
     assert(gfs->gfs_fextents == NULL);
-    assert(gfs->gfs_aextents == NULL);
     if (gfs->gfs_fd) {
         err = fsync(gfs->gfs_fd);
         assert(err == 0);
@@ -650,14 +647,10 @@ lc_mount(struct gfs *gfs, char *device, size_t size) {
     /* Try to find a valid superblock, if not found, format the device */
     lc_superRead(gfs, fs, fs->fs_sblock);
     gfs->gfs_super = fs->fs_super;
-    if (!lc_superValid(gfs->gfs_super) ||
-        (gfs->gfs_super->sb_flags & LC_SUPER_DIRTY)) {
-
-        /* XXX Recreate file system after abnormal shutdown for now */
+    if (!lc_superValid(gfs->gfs_super)) {
         printf("Formatting %s, size %ld\n", device, size);
         lc_format(gfs, fs, size);
     } else {
-        assert(!(gfs->gfs_super->sb_flags & LC_SUPER_DIRTY));
         assert(size == (gfs->gfs_super->sb_tblocks * LC_BLOCK_SIZE));
         gfs->gfs_super->sb_mounts++;
         printf("Mounting %s, size %ld nmounts %ld\n",
@@ -678,16 +671,13 @@ lc_mount(struct gfs *gfs, char *device, size_t size) {
     lc_unlock(fs);
 }
 
-/* Sync a dirty file system */
+/* Sync a dirty inodes in a layer */
 static void
-lc_sync(struct gfs *gfs, struct fs *fs, bool unmount) {
+lc_sync(struct gfs *gfs, struct fs *fs) {
 
     /* Flush dirty inodes and pages */
     if (fs->fs_super->sb_flags & LC_SUPER_MOUNTED) {
         lc_syncInodes(gfs, fs);
-        //lc_displayAllocStats(fs);
-        lc_processLayerBlocks(gfs, fs, unmount, false, !unmount);
-        lc_flushDirtyPages(gfs, fs);
         fs->fs_super->sb_flags &= ~LC_SUPER_MOUNTED;
     }
 }
@@ -704,36 +694,32 @@ lc_umountSync(struct gfs *gfs) {
     }
 
     /* XXX Combine sync and destroy */
-    lc_sync(gfs, fs, true);
+    lc_sync(gfs, fs);
+
+    /* Destroy all inodes. */
+    lc_destroyInodes(fs, false);
 
     /* Release freed and unused blocks */
     lc_processLayerBlocks(gfs, fs, true, false, false);
 
-    /* Destroy all inodes.  This also releases metadata blocks of removed
-     * inodes.
-     */
-    lc_destroyInodes(fs, false);
+    /* Flush global list of free extents */
+    lc_processFreeExtents(gfs, fs, true);
 
-    /* Free allocator data structures */
-    lc_blockAllocatorDeinit(gfs, fs, true);
-
+    /* Flush all dirty data */
     lc_flushDirtyPages(gfs, fs);
-    lc_freeLayer(fs, false);
-
     err = fsync(gfs->gfs_fd);
     assert(err == 0);
 
     /* Finally update superblock */
     if (fs->fs_dirty) {
-        fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
-        fs->fs_dirty = false;
         lc_superWrite(gfs, fs);
     }
+    lc_freeLayer(fs, false);
     lc_unlock(fs);
     lc_displayGlobalStats(gfs);
     gfs->gfs_super = NULL;
     assert(!fs->fs_dirty);
-    assert(!(fs->fs_super->sb_flags & (LC_SUPER_DIRTY | LC_SUPER_MOUNTED)));
+    assert(!(fs->fs_super->sb_flags & LC_SUPER_MOUNTED));
     lc_free(fs, fs->fs_super, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
     gfs->gfs_fs[0] = NULL;
     lc_displayMemStats(fs);
@@ -751,7 +737,9 @@ lc_syncAllLayers(struct gfs *gfs) {
         fs = gfs->gfs_fs[i];
         if (fs) {
             lc_lock(fs, true);
-            lc_sync(gfs, fs, true);
+            lc_sync(gfs, fs);
+            lc_processLayerBlocks(gfs, fs, true, false, false);
+            lc_flushDirtyPages(gfs, fs);
             lc_unlock(fs);
         }
     }
@@ -777,11 +765,11 @@ lc_unmount(struct gfs *gfs) {
         if (fs) {
             lc_lock(fs, true);
             gfs->gfs_fs[i] = NULL;
-            lc_processLayerBlocks(gfs, fs, true, false, false);
-            lc_flushDirtyPages(gfs, fs);
-            fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
-            lc_superWrite(gfs, fs);
-            fs->fs_dirty = false;
+            if (fs->fs_dirty) {
+
+                /* XXX Avoid synchronous writes */
+                lc_superWrite(gfs, fs);
+            }
             lc_unlock(fs);
             lc_destroyLayer(fs, false);
         }
@@ -855,14 +843,14 @@ lc_commitRoot(struct gfs *gfs, int count) {
         lc_flushDirtyPages(gfs, fs);
         lc_allocateSuperBlocks(gfs, fs, true);
         lc_processLayerBlocks(gfs, fs, false, false, true);
-        lc_blockAllocatorDeinit(gfs, fs, false);
+        lc_processFreeExtents(gfs, fs, false);
         err = fsync(gfs->gfs_fd);
         assert(err == 0);
-#if 0
-        fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
-        lc_superWrite(gfs, fs);
-        fs->fs_dirty = false;
-#endif
+        if (fs->fs_dirty) {
+            lc_superWrite(gfs, fs);
+            err = fsync(gfs->gfs_fd);
+            assert(err == 0);
+        }
         gfs->gfs_changedLayers -= count;
         printf("file system committed to disk\n");
     }
@@ -872,14 +860,14 @@ lc_commitRoot(struct gfs *gfs, int count) {
 /* Commit the file system to a consistent state */
 void
 lc_commit(struct gfs *gfs) {
+    int i, count, gindex;
     struct fs *fs;
-    int i, count;
 
     if (gfs->gfs_layerInProgress || (gfs->gfs_changedLayers == 0)) {
         return;
     }
 
-    /* Sync all frozen layers */
+    /* Sync all layers */
     rcu_register_thread();
     rcu_read_lock();
     count = gfs->gfs_changedLayers;
@@ -888,14 +876,70 @@ lc_commit(struct gfs *gfs) {
          (count == gfs->gfs_changedLayers);
          i++) {
         fs = rcu_dereference(gfs->gfs_fs[i]);
-        if (fs && fs->fs_frozen) {
-            if (lc_tryLock(fs, true)) {
+        if (fs && fs->fs_dirty) {
+            gindex = fs->fs_gindex;
+
+            /* Flush dirty pages with shared lock first */
+            if (fs->fs_dpcount) {
+                if (lc_tryLock(fs, false)) {
+                    rcu_read_unlock();
+                    rcu_unregister_thread();
+                    return;
+                }
+                rcu_read_unlock();
+
+                /* Check if raced with a layer commit */
+                if (gindex != fs->fs_gindex) {
+                    lc_unlock(fs);
+                    rcu_unregister_thread();
+                    return;
+                }
+                lc_flushDirtyInodeList(fs, true);
+                lc_flushDirtyPages(gfs, fs);
+                lc_unlock(fs);
+                rcu_read_lock();
+                fs = rcu_dereference(gfs->gfs_fs[i]);
+            }
+
+            /* Lock the layer exclusive and flush all dirty inodes and
+             * allocated extent list.
+             */
+            if ((fs == NULL) || lc_tryLock(fs, true)) {
                 rcu_read_unlock();
                 rcu_unregister_thread();
                 return;
             }
-            lc_sync(gfs, fs, false);
+            rcu_read_unlock();
+
+            /* Check if raced with a layer commit */
+            if (gindex != fs->fs_gindex) {
+                lc_unlock(fs);
+                rcu_unregister_thread();
+                return;
+            }
+            lc_sync(gfs, fs);
+            lc_processLayerBlocks(gfs, fs, false, false, true);
             lc_unlock(fs);
+            rcu_read_lock();
+        }
+    }
+
+    /* Flush all dirty pages */
+    for (i = 1;
+         (i <= gfs->gfs_scount) && (gfs->gfs_layerInProgress == 0) &&
+         (count == gfs->gfs_changedLayers);
+         i++) {
+        fs = rcu_dereference(gfs->gfs_fs[i]);
+        if (fs && fs->fs_dpcount) {
+            if (lc_tryLock(fs, false)) {
+                rcu_read_unlock();
+                rcu_unregister_thread();
+                return;
+            }
+            rcu_read_unlock();
+            lc_flushDirtyPages(gfs, fs);
+            lc_unlock(fs);
+            rcu_read_lock();
         }
     }
     rcu_read_unlock();

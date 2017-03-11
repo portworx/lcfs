@@ -383,6 +383,7 @@ lc_markInodeDirty(struct inode *inode, uint32_t flags) {
         inode->i_flags &= ~LC_INODE_NOTRUNC;
     }
     inode->i_flags |= flags | LC_INODE_DIRTY;
+    lc_markSuperDirty(inode->i_fs);
 }
 
 /* Check an inode is dirty or not */
@@ -395,8 +396,8 @@ lc_inodeDirty(struct inode *inode) {
 /* Find size of icache size based on number of inodes */
 static inline size_t
 lc_icache_size(struct fs *fs) {
-    uint64_t icount, icsize = 1;
     struct super *super = fs->fs_super;
+    uint64_t icount, icsize = 1;
 
     if (super->sb_flags & LC_SUPER_INIT) {
         return LC_ICACHE_SIZE_MIN;

@@ -404,6 +404,8 @@ lc_purgeRemovedInodes(struct gfs *gfs, struct fs *fs, char *buf) {
                 lc_readBlock(gfs, fs, block, buf);
                 inode = (struct inode *)&buf[offset];
                 inode->i_ino = 0;
+
+                /* XXX Avoid synchronous write during mount */
                 lc_writeBlock(gfs, fs, buf, block);
                 rcount++;
             } else {
@@ -437,8 +439,7 @@ lc_markAllInodesDirty(struct gfs *gfs, struct fs *fs) {
         }
     }
     fs->fs_super->sb_inodeBlock = LC_INVALID_BLOCK;
-    lc_markSuperDirty(fs, false);
-    __sync_add_and_fetch(&gfs->gfs_changedLayers, 1);
+    lc_layerChanged(gfs, false);
 }
 
 /* Read inodes from an inode block */
@@ -516,6 +517,8 @@ lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
         }
     }
     if (flush) {
+
+        /* XXX Avoid synchronous write during mount */
         lc_writeBlock(gfs, fs, buf, block);
     }
     return empty;
@@ -832,9 +835,9 @@ lc_freezeLayer(struct gfs *gfs, struct fs *fs) {
 
             /* Removed inodes can be taken out of the cache */
             if ((inode->i_flags & LC_INODE_REMOVED) &&
-                !(inode->i_flags & LC_INODE_NOTRUNC)) {
+                !(inode->i_flags & LC_INODE_NOTRUNC) &&
+                !(inode->i_flags & LC_INODE_DISK)) {
                 assert(inode->i_ocount == 0);
-                assert(!(inode->i_flags & LC_INODE_DISK));
                 assert((inode->i_size == 0) || !S_ISREG(inode->i_mode));
                 lc_inodeFreeMetaExtents(gfs, fs, inode);
                 *prev = inode->i_cnext;
@@ -879,8 +882,11 @@ lc_freezeLayer(struct gfs *gfs, struct fs *fs) {
     }
     assert(fs->fs_pcount == 0);
     if (rcount) {
-        assert(fs->fs_ricount == rcount);
         fs->fs_icount -= rcount;
+        if (fs->fs_ricount != rcount) {
+            assert(fs->fs_ricount > rcount);
+            fs->fs_super->sb_icount += fs->fs_ricount - rcount;
+        }
     }
     if (resize) {
 #ifdef LC_MUTEX_DESTROY

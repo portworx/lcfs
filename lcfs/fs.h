@@ -89,11 +89,6 @@ struct gfs {
     /* Extents freed from layers. Not for reuse until commit */
     struct extent *gfs_fextents;
 
-    /* Extents currently used for keeping track of extents allocated to
-     * layers.  These will be freed when those extents are overwritten.
-     */
-    struct extent *gfs_aextents;
-
     /* Lock protecting allocations */
     pthread_mutex_t gfs_alock;
 
@@ -386,6 +381,23 @@ struct fs {
     /* Set while a layer commit is in progress */
     bool fs_commitInProgress;
 } __attribute__((packed));
+
+/* Let the syncer know something changed and a checkpoint could be triggered */
+static inline void
+lc_layerChanged(struct gfs *gfs, bool wakeup) {
+    __sync_add_and_fetch(&gfs->gfs_changedLayers, 1);
+    if (wakeup) {
+        pthread_cond_signal(&gfs->gfs_syncerCond);
+    }
+}
+
+/* Mark super block dirty */
+static inline void
+lc_markSuperDirty(struct fs *fs) {
+    if (!fs->fs_dirty) {
+        fs->fs_dirty = true;
+    }
+}
 
 /* Set up inode handle using inode number and file system id */
 static inline uint64_t

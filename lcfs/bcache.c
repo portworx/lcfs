@@ -638,9 +638,7 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
     uint64_t block = 0;
 
     /* Mark superblock dirty before modifying something */
-    if (!fs->fs_dirty) {
-        lc_markSuperDirty(fs, lc_getGlobalFs(gfs) == fs);
-    }
+    lc_markSuperDirty(fs);
 
     /* Use pwrite(2) interface if there is just one block */
     if (count == 1) {
@@ -663,7 +661,11 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
             if ((j >= iovcount) || (j && ((block + j) != page->p_block))) {
                 //lc_printf("Not contigous, block %ld previous block %ld i %ld count %ld\n", block, page->p_block, i, count);
                 assert(block != 0);
-                lc_writeBlocks(gfs, fs, iovec, j, block);
+                if (j == 1) {
+                    lc_writeBlock(gfs, fs, iovec[0].iov_base, block);
+                } else {
+                    lc_writeBlocks(gfs, fs, iovec, j, block);
+                }
                 j = 0;
             }
             iovec[j].iov_base = page->p_data;
@@ -675,7 +677,11 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
         }
         assert(page == NULL);
         assert(block != 0);
-        lc_writeBlocks(gfs, fs, iovec, j, block);
+        if (j == 1) {
+            lc_writeBlock(gfs, fs, iovec[0].iov_base, block);
+        } else {
+            lc_writeBlocks(gfs, fs, iovec, j, block);
+        }
     }
 
     /* Release the pages after writing */
@@ -969,10 +975,7 @@ lc_purgePages(struct gfs *gfs, bool force) {
 /* Background thread for purging clean pages */
 void *
 lc_cleaner(void *data) {
-#ifdef LC_SYNCER
-    pthread_t syncer;
-#endif
-    pthread_t flusher;
+    pthread_t flusher, syncer;
     struct gfs *gfs = getfs();
     struct timespec interval;
     struct timeval now;
@@ -984,10 +987,8 @@ lc_cleaner(void *data) {
     assert(err == 0);
 
     /* Start a thread to checkpoint file system periodically */
-#ifdef LC_SYNCER
     err = pthread_create(&syncer, NULL, lc_syncer, NULL);
     assert(err == 0);
-#endif
 
     /* Purge clean pages when amount of memory used for pages goes above a
      * certain threshold.
@@ -1013,10 +1014,8 @@ lc_cleaner(void *data) {
 
     /* Wait for flusher and syncer to exit */
     pthread_cond_signal(&gfs->gfs_flusherCond);
-#ifdef LC_SYNCER
     pthread_cond_signal(&gfs->gfs_syncerCond);
     pthread_join(syncer, NULL);
-#endif
     pthread_join(flusher, NULL);
     return NULL;
 }

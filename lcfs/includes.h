@@ -97,7 +97,7 @@ void lc_freeExtent(struct gfs *gfs, struct fs *fs, struct extent *extent,
                    struct extent **prev, bool layer);
 
 void lc_blockAllocatorInit(struct gfs *gfs, struct fs *fs);
-void lc_blockAllocatorDeinit(struct gfs *gfs, struct fs *fs, bool umount);
+void lc_processFreeExtents(struct gfs *gfs, struct fs *fs, bool umount);
 bool lc_hasSpace(struct gfs *gfs, bool layer);
 void lc_addSpaceExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
                        uint64_t start, uint64_t count, bool sort);
@@ -125,7 +125,6 @@ void lc_superWrite(struct gfs *gfs, struct fs *fs);
 void lc_superInit(struct super *super, uint64_t root, size_t size,
                   uint32_t flags, bool global);
 void lc_allocateSuperBlocks(struct gfs *gfs, struct fs *rfs, bool write);
-void lc_markSuperDirty(struct fs *fs, bool write);
 
 struct fs *lc_getLayerLocked(ino_t ino, bool exclusive);
 uint64_t lc_getLayerForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp);

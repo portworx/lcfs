@@ -49,28 +49,12 @@ void
 lc_superWrite(struct gfs *gfs, struct fs *fs) {
     struct super *super = fs->fs_super;
 
+    assert(fs->fs_dirty);
+
     /* Update checksum before writing to disk */
     lc_updateCRC(super, &super->sb_crc);
     lc_writeBlock(gfs, fs, super, fs->fs_sblock);
-}
-
-/* Mark super block dirty */
-void
-lc_markSuperDirty(struct fs *fs, bool write) {
-    struct gfs *gfs;
-
-    fs->fs_super->sb_flags |= LC_SUPER_DIRTY;
-    if (write && !fs->fs_dirty) {
-        gfs = fs->fs_gfs;
-        pthread_mutex_lock(&gfs->gfs_flock);
-        if (!fs->fs_dirty) {
-            lc_superWrite(gfs, fs);
-            fs->fs_dirty = true;
-        }
-        pthread_mutex_unlock(&gfs->gfs_flock);
-    } else {
-        fs->fs_dirty = true;
-    }
+    fs->fs_dirty = false;
 }
 
 /* Allocate superblocks for layers as needed */
@@ -80,7 +64,7 @@ lc_allocateSuperBlocks(struct gfs *gfs, struct fs *rfs, bool write) {
     struct fs *fs;
     int i, count;
 
-    /* Check if any layers are dirty */
+    /* Check if superblock of any layers is dirty */
     for (i = 1; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
         if (fs && fs->fs_dirty) {
@@ -90,6 +74,7 @@ lc_allocateSuperBlocks(struct gfs *gfs, struct fs *rfs, bool write) {
     if ((i > gfs->gfs_scount) && !rfs->fs_dirty) {
         return;
     }
+    lc_markSuperDirty(rfs);
 
     /* Allocate new superblocks for all layers */
     count = gfs->gfs_count - 1;
@@ -102,7 +87,7 @@ lc_allocateSuperBlocks(struct gfs *gfs, struct fs *rfs, bool write) {
                 lc_addFreedBlocks(rfs, fs->fs_sblock, 1, true);
             }
             fs->fs_sblock = block++;
-            fs->fs_dirty = true;
+            lc_markSuperDirty(fs);
             count--;
         }
     }
@@ -118,10 +103,14 @@ lc_allocateSuperBlocks(struct gfs *gfs, struct fs *rfs, bool write) {
                                             fs->fs_child->fs_sblock : 0;
 
             /* Write the superblock if it is pending write */
-            if (i && write && fs->fs_dirty) {
-                fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
+            if (i && write) {
+                lc_lock(fs, true);
+
+                /* XXX Avoid synchronous writes */
                 lc_superWrite(gfs, fs);
-                fs->fs_dirty = false;
+                lc_unlock(fs);
+            } else {
+                assert(fs->fs_dirty);
             }
         }
     }

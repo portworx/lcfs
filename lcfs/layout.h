@@ -77,8 +77,9 @@
 /* Directory in which containers are kept */
 #define LC_CONTAINER_DIR    "containers"
 
-/* repositories.json file in root layer */
-#define LC_REPOSITORIES_JSON "repositories.json"
+/* extension for json files */
+#define LC_JSON_EXTN ".json"
+#define LC_JSON_LENGTH 5
 
 /* File types for counting each type created in a layer */
 enum lc_ftypes {

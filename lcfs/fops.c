@@ -491,7 +491,7 @@ out:
 
     /* Queue a checkpoint if blocks are freed */
     if (flush && fs->fs_dpcount) {
-        __sync_add_and_fetch(&fs->fs_gfs->gfs_changedLayers, 1);
+        lc_layerChanged(fs->fs_gfs, false);
     }
     lc_unlock(fs);
 }
@@ -579,8 +579,7 @@ lc_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
                 (strcmp(name, LC_LAYER_ROOT_DIR) == 0)) {
                 lc_setLayerRoot(gfs, e.ino);
                 flush = true;
-            } else if (!gfs->gfs_tmp_root &&
-                       (strcmp(name, LC_LAYER_TMP_DIR) == 0)) {
+            } else if (strcmp(name, LC_LAYER_TMP_DIR) == 0) {
                 gfs->gfs_tmp_root = e.ino;
                 printf("tmp root %ld\n", e.ino);
             }
@@ -622,7 +621,7 @@ lc_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
 
     /* Queue a checkpoint if blocks are freed */
     if (flush && fs->fs_dpcount) {
-        __sync_add_and_fetch(&fs->fs_gfs->gfs_changedLayers, 1);
+        lc_layerChanged(fs->fs_gfs, false);
     }
     lc_unlock(fs);
 }
@@ -674,6 +673,19 @@ lc_symlink(fuse_req_t req, const char *link, fuse_ino_t parent,
     }
     lc_statsAdd(fs, LC_SYMLINK, err, &start);
     lc_unlock(fs);
+}
+
+/* Detect json files created in root layer and use that as a trigger for
+ * creating a checkpoint.
+ */
+static void
+lc_checkJsonFile(struct fs *fs, const char *name) {
+    int len = strlen(name);
+
+    if ((len > LC_JSON_LENGTH) && ((name[0] == 'r') || (name[0] == 'c')) &&
+        !strcmp(&name[len - LC_JSON_LENGTH], LC_JSON_EXTN)) {
+        lc_layerChanged(fs->fs_gfs, false);
+    }
 }
 
 /* Rename a file to another (mv) */
@@ -829,9 +841,8 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
 
 out:
     lc_statsAdd(fs, LC_RENAME, err, &start);
-    if ((err == 0) && (lc_getFsHandle(parent) == 0) &&
-        !strcmp(newname, LC_REPOSITORIES_JSON)) {
-        __sync_add_and_fetch(&fs->fs_gfs->gfs_changedLayers, 1);
+    if ((err == 0) && (lc_getFsHandle(parent) == 0)) {
+        lc_checkJsonFile(fs, newname);
     }
     lc_unlock(fs);
 }
