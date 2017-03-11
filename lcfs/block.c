@@ -775,13 +775,15 @@ lc_processFreeExtents(struct gfs *gfs, struct fs *fs, bool umount) {
     }
 
     /* Transfer all the extents freed so far */
+    prev = &gfs->gfs_fextents;
     extent = gfs->gfs_fextents;
-    gfs->gfs_fextents = NULL;
     while (extent) {
         lc_addSpaceExtent(gfs, fs, &gfs->gfs_extents,
                           lc_getExtentStart(extent), lc_getExtentCount(extent),
                           true);
-        extent = extent->ex_next;
+        *prev = extent->ex_next;
+        lc_free(fs, extent, sizeof(struct extent), LC_MEMTYPE_EXTENT);
+        extent = *prev;
     }
 
     /* Flush global list of free extents to disk */

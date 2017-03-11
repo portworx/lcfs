@@ -46,20 +46,30 @@ lc_superRead(struct gfs *gfs, struct fs *fs, uint64_t block) {
 
 /* Write out file system superblock */
 void
-lc_superWrite(struct gfs *gfs, struct fs *fs) {
+lc_superWrite(struct gfs *gfs, struct fs *fs, struct fs *rfs) {
     struct super *super = fs->fs_super;
+    struct page *page;
 
     assert(fs->fs_dirty);
 
     /* Update checksum before writing to disk */
     lc_updateCRC(super, &super->sb_crc);
-    lc_writeBlock(gfs, fs, super, fs->fs_sblock);
+    if (rfs == NULL) {
+        lc_writeBlock(gfs, fs, super, fs->fs_sblock);
+    } else {
+
+        /* Queue the superblock for write */
+        page = lc_getPageNoBlock(gfs, rfs, (char *)super, NULL);
+        page->p_nofree = 1;
+        lc_addPageBlockHash(gfs, rfs, page, fs->fs_sblock);
+        lc_addPageForWriteBack(gfs, rfs, page, page, 1);
+    }
     fs->fs_dirty = false;
 }
 
 /* Allocate superblocks for layers as needed */
 void
-lc_allocateSuperBlocks(struct gfs *gfs, struct fs *rfs, bool write) {
+lc_allocateSuperBlocks(struct gfs *gfs, struct fs *rfs) {
     uint64_t block;
     struct fs *fs;
     int i, count;
@@ -103,11 +113,9 @@ lc_allocateSuperBlocks(struct gfs *gfs, struct fs *rfs, bool write) {
                                             fs->fs_child->fs_sblock : 0;
 
             /* Write the superblock if it is pending write */
-            if (i && write) {
+            if (i) {
                 lc_lock(fs, true);
-
-                /* XXX Avoid synchronous writes */
-                lc_superWrite(gfs, fs);
+                lc_superWrite(gfs, fs, rfs);
                 lc_unlock(fs);
             } else {
                 assert(fs->fs_dirty);

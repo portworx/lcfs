@@ -385,8 +385,6 @@ lc_purgeRemovedInodes(struct gfs *gfs, struct fs *fs, char *buf) {
     uint64_t i, count = 0, rcount = 0, icacheSize = fs->fs_icacheSize;
     struct icache *icache = fs->fs_icache;
     struct inode *inode, **prev;
-    uint64_t block;
-    off_t offset;
 
     for (i = 0; (i < icacheSize) && (count < fs->fs_icount); i++) {
         prev = &icache[i].ic_head;
@@ -395,18 +393,7 @@ lc_purgeRemovedInodes(struct gfs *gfs, struct fs *fs, char *buf) {
             count++;
             if (inode->i_flags & LC_INODE_REMOVED) {
                 *prev = inode->i_cnext;
-                block = inode->i_block;
                 lc_freeInode(inode);
-
-                /* This inode is no longer needed on disk */
-                offset = (block >> LC_DINODE_INDEX) * LC_DINODE_SIZE;
-                block = block & LC_DINODE_BLOCK;
-                lc_readBlock(gfs, fs, block, buf);
-                inode = (struct inode *)&buf[offset];
-                inode->i_ino = 0;
-
-                /* XXX Avoid synchronous write during mount */
-                lc_writeBlock(gfs, fs, buf, block);
                 rcount++;
             } else {
                 prev = &inode->i_cnext;
@@ -439,6 +426,8 @@ lc_markAllInodesDirty(struct gfs *gfs, struct fs *fs) {
         }
     }
     fs->fs_super->sb_inodeBlock = LC_INVALID_BLOCK;
+    fs->fs_super->sb_flags |= LC_SUPER_MOUNTED;
+    assert(fs->fs_dirty);
     lc_layerChanged(gfs, false);
 }
 
@@ -446,8 +435,8 @@ lc_markAllInodesDirty(struct gfs *gfs, struct fs *fs) {
 static bool
 lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
                    char *buf, void *ibuf, bool lock) {
-    bool empty = true, flush = false, reg;
     struct inode *inode, *cinode;
+    bool empty = true, reg;
     uint64_t i, len;
     off_t offset;
     ino_t ino;
@@ -466,15 +455,10 @@ lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
         if (cinode) {
             if (S_ISLNK(inode->i_mode) && inode->i_nlink) {
                 assert(i == 0);
-                memset(buf, 0, LC_BLOCK_SIZE);
                 i = LC_INODE_BLOCK_MAX;
-            } else {
-                inode->i_ino = 0;
             }
-            flush = true;
             continue;
         }
-        empty = false;
         reg = S_ISREG(inode->i_mode);
         len = S_ISLNK(inode->i_mode) ? inode->i_size : 0;
         inode = lc_newInode(fs, len, reg, false, lock, true);
@@ -484,11 +468,10 @@ lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
         /* Check if this is a removed inode */
         if (inode->i_nlink == 0) {
             inode->i_flags |= LC_INODE_REMOVED;
-            assert(inode->i_block == LC_INVALID_BLOCK);
-            inode->i_block = (i << LC_DINODE_INDEX) | block;
             fs->fs_ricount++;
             continue;
         }
+        empty = false;
         if (reg) {
 
             /* Read emap of fragmented regular files */
@@ -515,11 +498,6 @@ lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
             assert(S_ISDIR(inode->i_mode));
             fs->fs_rootInode = inode;
         }
-    }
-    if (flush) {
-
-        /* XXX Avoid synchronous write during mount */
-        lc_writeBlock(gfs, fs, buf, block);
     }
     return empty;
 }
@@ -772,7 +750,7 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             written = true;
             if (inode->i_flags & LC_INODE_REMOVED) {
                 assert(inode->i_nlink == 0);
-                assert(inode->i_block == LC_INVALID_BLOCK);
+                assert(inode->i_extentBlock == LC_INVALID_BLOCK);
                 inode->i_flags &= ~LC_INODE_DISK;
             } else {
                 inode->i_flags |= LC_INODE_DISK;

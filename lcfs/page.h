@@ -112,9 +112,12 @@ struct page {
     uint32_t p_refCount;
 
     /* Page cache hitcount */
-    uint32_t p_hitCount:30;
+    uint32_t p_hitCount:29;
 
-    /* Set if data is valid */
+    /* Don't free p_data if set */
+    uint32_t p_nofree:1;
+
+    /* Set to invalidate when released */
     uint32_t p_nocache:1;
 
     /* Set if data is valid */

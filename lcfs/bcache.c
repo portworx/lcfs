@@ -19,10 +19,11 @@ lc_newPage(struct gfs *gfs, struct fs *fs) {
     page->p_block = LC_INVALID_BLOCK;
     page->p_refCount = 1;
     page->p_hitCount = 0;
-    page->p_cnext = NULL;
-    page->p_dnext = NULL;
+    page->p_nofree = 0;
     page->p_nocache = 0;
     page->p_dvalid = 0;
+    page->p_cnext = NULL;
+    page->p_dnext = NULL;
     __sync_add_and_fetch(&fs->fs_bcache->lb_pcount, 1);
     __sync_add_and_fetch(&gfs->gfs_pcount, 1);
     return page;
@@ -36,7 +37,7 @@ lc_freePage(struct gfs *gfs, struct fs *fs, struct page *page) {
     assert(page->p_cnext == NULL);
     assert(page->p_dnext == NULL);
 
-    if (page->p_data) {
+    if (page->p_data && !page->p_nofree) {
         lc_freePageData(gfs, fs->fs_rfs, page->p_data);
     }
     lc_free(fs->fs_rfs, page, sizeof(struct page), LC_MEMTYPE_PAGE);
