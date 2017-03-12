@@ -60,11 +60,11 @@ void
 lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
                const char *parent, size_t size, bool rw) {
     struct fs *fs = NULL, *pfs = NULL, *rfs = NULL;
-    struct inode *dir, *pdir;
     ino_t root, pinum = 0;
     struct timeval start;
     char pname[size + 1];
     int err = 0, inval;
+    struct inode *pdir;
     bool base, init;
     uint32_t flags;
     size_t icsize;
@@ -175,8 +175,7 @@ lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
     } else {
 
         /* Copy the parent root directory */
-        dir = fs->fs_rootInode;
-        lc_cloneRootDir(pfs->fs_rootInode, dir);
+        lc_cloneRootDir(pfs->fs_rootInode, fs->fs_rootInode);
     }
 
     /* Allocate stat structure if enabled */
@@ -320,6 +319,8 @@ lc_umountLayer(fuse_req_t req, struct gfs *gfs, ino_t root) {
 
     mcount = __sync_sub_and_fetch(&fs->fs_mcount, 1);
     if (mcount) {
+        lc_unlock(fs);
+        fuse_reply_ioctl(req, 0, NULL, 0);
         return;
     }
     if (!fs->fs_frozen && (fs->fs_readOnly ||

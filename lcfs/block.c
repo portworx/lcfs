@@ -360,7 +360,14 @@ lc_readExtents(struct gfs *gfs, struct fs *fs) {
     int i;
 
     block = fs->fs_super->sb_extentBlock;
-    assert(block != LC_INVALID_BLOCK);
+    if (block == LC_INVALID_BLOCK) {
+
+        /* This could happen if layer crashed before unmounting */
+        assert(fs->fs_gindex);
+        assert(!fs->fs_frozen);
+        assert(fs->fs_super->sb_flags & LC_SUPER_DIRTY);
+        return;
+    }
     extents = allocated ? &fs->fs_aextents : &gfs->gfs_extents;
     lc_mallocBlockAligned(fs, (void **)&eblock, LC_MEMTYPE_BLOCK);
     while (block != LC_INVALID_BLOCK) {

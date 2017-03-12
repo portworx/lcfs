@@ -513,8 +513,19 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
     struct iblock *buf = NULL;
     struct iovec *iovec;
 
+    if (block == LC_INVALID_BLOCK) {
+
+        /* This could happen if layer crashed before unmounting */
+        assert(fs->fs_gindex);
+        assert(!fs->fs_frozen);
+        assert(fs->fs_super->sb_flags & LC_SUPER_DIRTY);
+
+        /* Instantiate root inode for the layer */
+        lc_rootInit(fs, fs->fs_root);
+        lc_cloneRootDir(fs->fs_parent->fs_rootInode, fs->fs_rootInode);
+        return;
+    }
     lc_printf("Reading inodes for fs %d %ld, block %ld\n", fs->fs_gindex, fs->fs_root, block);
-    assert(block != LC_INVALID_BLOCK);
     lc_mallocBlockAligned(fs, (void **)&buf, LC_MEMTYPE_BLOCK);
     lc_mallocBlockAligned(fs, (void **)&ibuf, LC_MEMTYPE_BLOCK);
     lc_mallocBlockAligned(fs, (void **)&xbuf, LC_MEMTYPE_BLOCK);

@@ -516,7 +516,7 @@ lc_initLayer(struct gfs *gfs, struct fs *pfs, uint64_t block, bool child) {
     lc_superRead(gfs, fs, block);
     assert(lc_superValid(fs->fs_super));
     fs->fs_readOnly = !(fs->fs_super->sb_flags & LC_SUPER_RDWR);
-    assert(!(fs->fs_super->sb_flags & LC_SUPER_DIRTY));
+    assert(!(pfs->fs_super->sb_flags & LC_SUPER_DIRTY));
     fs->fs_restarted = true;
     fs->fs_root = fs->fs_super->sb_root;
     if (child) {
@@ -767,40 +767,10 @@ lc_unmount(struct gfs *gfs) {
 /* Cleanup some directories after restart */
 void
 lc_cleanupAfterRestart(struct gfs *gfs, struct fs *fs) {
-    struct fs *zfs;
-    ino_t ino;
-    int i;
 
     /* Cleanup /tmp directory */
     if (gfs->gfs_tmp_root) {
         lc_emptyDirectory(fs, gfs->gfs_tmp_root);
-    }
-
-    if (fs->fs_super->sb_flags & LC_SUPER_DIRTY) {
-
-        /* Free all containers after an abnormal shutdown */
-        ino = lc_dirLookup(fs, fs->fs_rootInode, LC_CONTAINER_DIR);
-        if (ino != LC_INVALID_INODE) {
-            lc_emptyDirectory(fs, ino);
-        }
-
-        /* Remove read-write layers */
-        for (i = 1; i <= gfs->gfs_scount; i++) {
-            fs = gfs->gfs_fs[i];
-            if (fs && !fs->fs_readOnly && !fs->fs_child) {
-                lc_printf("Removing fs with parent %ld root %ld index %d\n",
-                          fs->fs_parent ? fs->fs_parent->fs_root : - 1,
-                          fs->fs_root, i);
-                lc_removeLayers(gfs, fs, fs->fs_gindex);
-                zfs = fs;
-                while (zfs) {
-                    fs = zfs;
-                    zfs = fs->fs_zfs;
-                    lc_lock(fs, true);
-                    lc_releaseLayer(gfs, fs);
-                }
-            }
-        }
     }
 }
 
