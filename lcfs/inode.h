@@ -382,7 +382,7 @@ lc_markInodeDirty(struct inode *inode, uint32_t flags) {
         inode->i_flags &= ~LC_INODE_NOTRUNC;
     }
     inode->i_flags |= flags | LC_INODE_DIRTY;
-    lc_markSuperDirty(inode->i_fs);
+    lc_markInodesDirty(inode->i_fs);
 }
 
 /* Check an inode is dirty or not */
@@ -425,8 +425,7 @@ lc_icache_size(struct fs *fs) {
 /* Invalidate pages of an inode in kernel page cache */
 static inline void
 lc_invalInodePages(struct gfs *gfs, ino_t ino) {
-    if ((gfs->gfs_super->sb_flags & LC_SUPER_MOUNTED) &&
-        !gfs->gfs_unmounting) {
+    if (lc_getGlobalFs(gfs)->fs_mcount) {
         fuse_lowlevel_notify_inval_inode(
 #ifdef FUSE3
                                      gfs->gfs_se[LC_LAYER_MOUNT],

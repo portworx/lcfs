@@ -74,8 +74,8 @@ lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
 
     /* layers created with suffix "-init" are considered thin */
     init = rw && (strstr(name, "-init") != NULL);
-    flags = LC_SUPER_DIRTY | LC_SUPER_MOUNTED |
-            (rw ? LC_SUPER_RDWR : 0) | (init ? LC_SUPER_INIT : 0);
+    flags = LC_SUPER_DIRTY | (rw ? LC_SUPER_RDWR : 0) |
+            (init ? LC_SUPER_INIT : 0);
 
     /* Check if parent is specified */
     if (size) {
@@ -316,8 +316,12 @@ out:
 static void
 lc_umountLayer(fuse_req_t req, struct gfs *gfs, ino_t root) {
     struct fs *fs = lc_getLayerLocked(root, false);
-    int gindex;
+    int gindex, mcount;
 
+    mcount = __sync_sub_and_fetch(&fs->fs_mcount, 1);
+    if (mcount) {
+        return;
+    }
     if (!fs->fs_frozen && (fs->fs_readOnly ||
                            (fs->fs_super->sb_flags & LC_SUPER_INIT))) {
         gindex = fs->fs_gindex;
@@ -398,9 +402,10 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
 
         /* Mark a layer as mounted */
         if (err == 0) {
-            fs = lc_getLayerLocked(root, true);
+            fs = lc_getLayerLocked(root, false);
+            __sync_add_and_fetch(&fs->fs_mcount, 1);
+            fs->fs_super->sb_flags |= LC_SUPER_DIRTY;
             fuse_reply_ioctl(req, 0, NULL, 0);
-            fs->fs_super->sb_flags |= LC_SUPER_MOUNTED;
             lc_unlock(fs);
         }
         lc_statsAdd(rfs, LC_MOUNT, err, &start);

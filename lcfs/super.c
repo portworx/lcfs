@@ -51,6 +51,10 @@ lc_superWrite(struct gfs *gfs, struct fs *fs, struct fs *rfs) {
     struct page *page;
 
     assert(fs->fs_dirty);
+    assert(!fs->fs_extentsDirty ||
+           (!fs->fs_frozen && !gfs->gfs_unmounting));
+    assert(!fs->fs_inodesDirty ||
+           (!fs->fs_frozen && !gfs->gfs_unmounting));
 
     /* Update checksum before writing to disk */
     lc_updateCRC(super, &super->sb_crc);
@@ -115,6 +119,9 @@ lc_allocateSuperBlocks(struct gfs *gfs, struct fs *rfs) {
             /* Write the superblock if it is pending write */
             if (i) {
                 lc_lock(fs, true);
+                if (gfs->gfs_unmounting || fs->fs_frozen) {
+                    fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
+                }
                 lc_superWrite(gfs, fs, rfs);
                 lc_unlock(fs);
             } else {

@@ -31,12 +31,15 @@ lc_mergeExtents(struct gfs *gfs, struct fs *fs,
 /* Add a new extent */
 static inline void
 lc_newExtent(struct fs *fs, uint64_t start, uint64_t block, uint64_t count,
-             struct extent *extent, struct extent **prev) {
+             struct extent *extent, struct extent **prev, bool sort) {
     struct extent *new;
 
     new = lc_malloc(fs, sizeof(struct extent), LC_MEMTYPE_EXTENT);
     lc_initExtent(NULL, new, block ? LC_EXTENT_EMAP : LC_EXTENT_SPACE,
                   start, block, count, extent);
+    assert(!sort || (extent == NULL) ||
+           (lc_getExtentStart(extent) >=
+            (lc_getExtentStart(new) + lc_getExtentCount(new))));
     *prev = new;
 }
 
@@ -97,7 +100,7 @@ lc_addExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
     }
 
     /* Need to add a new extent */
-    lc_newExtent(fs, start, block, count, extent, prev);
+    lc_newExtent(fs, start, block, count, extent, prev, sort);
 }
 
 /* Remove an extent from the list and free it */

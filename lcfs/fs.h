@@ -351,11 +351,20 @@ struct fs {
     /* Next index in inode block array */
     int fs_inodeIndex;
 
+    /* Number of times layer is mounted */
+    int fs_mcount;
+
     /* Next index in inode block */
     uint8_t fs_inodeBlockIndex;
 
-    /* Set if file system is modified */
+    /* Set if superblock is dirty */
     bool fs_dirty;
+
+    /* Set if inodes are dirty */
+    bool fs_inodesDirty;
+
+    /* Set if extents are dirty */
+    bool fs_extentsDirty;
 
     /* Set if single read-write child of a read-only parent */
     bool fs_single;
@@ -396,6 +405,22 @@ static inline void
 lc_markSuperDirty(struct fs *fs) {
     if (!fs->fs_dirty) {
         fs->fs_dirty = true;
+    }
+}
+
+/* Mark inodes dirty */
+static inline void
+lc_markInodesDirty(struct fs *fs) {
+    if (!fs->fs_inodesDirty) {
+        fs->fs_inodesDirty = true;
+    }
+}
+
+/* Mark extents dirty */
+static inline void
+lc_markExtentsDirty(struct fs *fs) {
+    if (!fs->fs_extentsDirty) {
+        fs->fs_extentsDirty = true;
     }
 }
 

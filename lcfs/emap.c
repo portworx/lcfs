@@ -74,6 +74,7 @@ lc_removeInodeExtents(struct gfs *gfs, struct fs *fs, struct inode *inode,
      */
     while (count) {
         ecount = lc_removeExtent(fs, lc_inodeGetEmapPtr(inode), pg, count);
+        assert(ecount);
         assert(ecount <= count);
 
         /* Add the extent to a list for deferred freeing */

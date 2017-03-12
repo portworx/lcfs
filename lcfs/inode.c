@@ -426,8 +426,7 @@ lc_markAllInodesDirty(struct gfs *gfs, struct fs *fs) {
         }
     }
     fs->fs_super->sb_inodeBlock = LC_INVALID_BLOCK;
-    fs->fs_super->sb_flags |= LC_SUPER_MOUNTED;
-    assert(fs->fs_dirty);
+    assert(fs->fs_inodesDirty);
     lc_layerChanged(gfs, false);
 }
 
@@ -887,6 +886,7 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs) {
     int i;
 
     lc_printf("Syncing inodes for fs %d %ld\n", fs->fs_gindex, fs->fs_root);
+    lc_markSuperDirty(fs);
 
     /* Start with new inode blocks */
     lc_releaseInodeBlock(gfs, fs);

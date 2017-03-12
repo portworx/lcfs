@@ -335,7 +335,6 @@ lc_blockFreeExtents(struct gfs *gfs, struct fs *fs, struct extent *extents,
             block = lc_blockAllocExact(rfs, pcount, true, false);
             super->sb_extentBlock = block;
             super->sb_extentCount = pcount;
-            assert(fs->fs_dirty);
         } else {
 
             /* Use the pre-allocated block */
@@ -481,6 +480,7 @@ lc_blockAlloc(struct fs *fs, uint64_t count, bool meta, bool reserve) {
     pthread_mutex_lock(&fs->fs_alock);
     block = lc_findFreeBlock(gfs, fs, count, true, true);
     pthread_mutex_unlock(&fs->fs_alock);
+    lc_markExtentsDirty(fs);
     assert(((block + count) < gfs->gfs_super->sb_tblocks) ||
            (block == LC_INVALID_BLOCK));
     return block;
@@ -510,6 +510,7 @@ lc_blockFree(struct gfs *gfs, struct fs *fs, uint64_t block,
         pthread_mutex_lock(&fs->fs_alock);
         lc_blockFreeLayer(gfs, fs, block, count, reuse);
         pthread_mutex_unlock(&fs->fs_alock);
+        lc_markExtentsDirty(fs);
     } else {
         rfs = lc_getGlobalFs(gfs);
 
@@ -537,8 +538,9 @@ lc_flushAllocatedExtents(struct gfs *gfs, struct fs *fs,
 
     if (remove) {
         flags |= LC_EXTENT_EFREE;
-    } else if (fs->fs_dirty) {
+    } else if (fs->fs_extentsDirty) {
         flags |= LC_EXTENT_FLUSH | LC_EXTENT_LAYER;
+        lc_markSuperDirty(fs);
     } else if (!unmount) {
         return;
     }
@@ -553,6 +555,7 @@ lc_flushAllocatedExtents(struct gfs *gfs, struct fs *fs,
     if (release) {
         fs->fs_freed += freed;
     }
+    fs->fs_extentsDirty = false;
 }
 
 /* Insert the list of extents to another */
@@ -731,7 +734,7 @@ lc_countExtents(struct gfs *gfs, struct extent *extent, uint64_t *bcount) {
 void
 lc_processFreeExtents(struct gfs *gfs, struct fs *fs, bool umount) {
     uint64_t count, pcount, block = LC_INVALID_BLOCK, bcount = 0;
-    bool release, flush = fs->fs_dirty;
+    bool release, flush = fs->fs_extentsDirty;
     struct extent *extent, **prev;
 
     if (flush) {
@@ -792,5 +795,9 @@ lc_processFreeExtents(struct gfs *gfs, struct fs *fs, bool umount) {
                         (flush ? LC_EXTENT_FLUSH : 0));
     if (umount) {
         gfs->gfs_extents = NULL;
+    }
+    if (flush) {
+        fs->fs_extentsDirty = false;
+        lc_markSuperDirty(fs);
     }
 }
