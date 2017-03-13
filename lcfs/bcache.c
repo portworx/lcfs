@@ -704,6 +704,11 @@ lc_addPageForWriteBack(struct gfs *gfs, struct fs *fs, struct page *head,
     fs->fs_dpagesLast = tail;
     fs->fs_dpcount += pcount;
     pthread_mutex_unlock(&fs->fs_plock);
+
+    /* Signal syncer has work to do */
+    if (!fs->fs_readOnly && (fs->fs_dpcount > LC_SYNCER_DIRTY_COUNT)) {
+        lc_layerChanged(gfs, false, false);
+    }
 }
 
 /* Flush dirty pages of a file system before unmounting it */

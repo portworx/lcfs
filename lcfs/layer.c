@@ -155,7 +155,7 @@ lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
     if (!rw || init) {
         __sync_add_and_fetch(&gfs->gfs_layerInProgress, 1);
     }
-    lc_layerChanged(gfs, false);
+    lc_layerChanged(gfs, true, false);
 
     /* Respond now and complete the work. Operations in the layer will wait for
      * the lock on the layer.
@@ -270,7 +270,7 @@ lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
     }
     lc_inodeUnlock(pdir);
     fuse_reply_ioctl(req, 0, NULL, 0);
-    lc_layerChanged(gfs, false);
+    lc_layerChanged(gfs, true, false);
 
     /* This could happen when a layer is made a zombie layer, which will be
      * removed when all the child layers are removed.
@@ -372,6 +372,7 @@ lc_umountLayer(fuse_req_t req, struct gfs *gfs, ino_t root) {
             lc_markSuperDirty(fs);
         }
         lc_unlock(fs);
+        lc_layerChanged(gfs, false, true);
     }
 }
 
@@ -391,7 +392,7 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
     if (cmd == UMOUNT_ALL) {
         //ProfilerStop();
         fuse_reply_ioctl(req, 0, NULL, 0);
-        lc_layerChanged(gfs, true);
+        lc_layerChanged(gfs, false, true);
         lc_statsAdd(rfs, LC_CLEANUP, 0, &start);
         lc_unlock(rfs);
         return;

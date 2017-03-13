@@ -61,7 +61,7 @@
 /* Superblock Flags */
 #define LC_SUPER_DIRTY     0x00000001  /* Layer is dirty */
 #define LC_SUPER_RDWR      0x00000002  /* Layer is readwrite */
-#define LC_SUPER_MOUNTED   0x00000004  /* Layer is mounted */
+#define LC_SUPER_ICHECK    0x00000004  /* Layer may have duplicate inodes */
 #define LC_SUPER_INIT      0x00000008  /* Init layer */
 #define LC_SUPER_ZOMBIE    0x00000010  /* Removed layer */
 
@@ -73,9 +73,6 @@
 
 /* local-kv.db file in root layer */
 #define LC_LAYER_LOCAL_KV_DB "local-kv.db"
-
-/* Directory in which containers are kept */
-#define LC_CONTAINER_DIR    "containers"
 
 /* extension for json files */
 #define LC_JSON_EXTN ".json"

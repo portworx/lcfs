@@ -363,7 +363,7 @@ out:
 static void
 lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
             int to_set, struct fuse_file_info *fi) {
-    bool ctime = false, mtime = false, flush = false, change;
+    bool ctime = false, mtime = false, change;
     int err = 0, flags = 0, new_set;
     struct inode *inode, *handle;
     struct timeval start;
@@ -450,8 +450,6 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
 
     /* Modify file size */
     if (to_set & FUSE_SET_ATTR_SIZE) {
-        flush = (attr->st_size < inode->i_size) &&
-                inode->i_private && inode->i_dinode.di_blocks;
         lc_truncate(inode, attr->st_size, true);
         flags = LC_INODE_EMAPDIRTY;
         mtime = true;
@@ -488,11 +486,6 @@ reply:
 
 out:
     lc_statsAdd(fs, LC_SETATTR, err, &start);
-
-    /* Queue a checkpoint if blocks are freed */
-    if (flush && fs->fs_dpcount) {
-        lc_layerChanged(fs->fs_gfs, false);
-    }
     lc_unlock(fs);
 }
 
@@ -600,7 +593,6 @@ static void
 lc_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
     struct inode *inode = NULL;
     struct timeval start;
-    bool flush = false;
     struct fs *fs;
     int err;
 
@@ -613,16 +605,10 @@ lc_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
     /* Free pages and blocks after responding */
     if (inode) {
         assert(inode->i_ocount == 0);
-        flush = inode->i_private && inode->i_dinode.di_blocks;
         lc_truncate(inode, 0, false);
         lc_inodeUnlock(inode);
     }
     lc_statsAdd(fs, LC_UNLINK, err, &start);
-
-    /* Queue a checkpoint if blocks are freed */
-    if (flush && fs->fs_dpcount) {
-        lc_layerChanged(fs->fs_gfs, false);
-    }
     lc_unlock(fs);
 }
 
@@ -684,7 +670,7 @@ lc_checkJsonFile(struct fs *fs, const char *name) {
 
     if ((len > LC_JSON_LENGTH) && ((name[0] == 'r') || (name[0] == 'c')) &&
         !strcmp(&name[len - LC_JSON_LENGTH], LC_JSON_EXTN)) {
-        lc_layerChanged(fs->fs_gfs, false);
+        lc_layerChanged(fs->fs_gfs, true, false);
     }
 }
 

@@ -115,7 +115,7 @@ void
 lc_freeLayer(struct fs *fs, bool remove) {
     struct gfs *gfs = fs->fs_gfs;
 
-    assert(fs->fs_mcount == 0);
+    assert((fs->fs_mcount == 0) || gfs->gfs_unmounting);
     assert(fs->fs_dpcount == 0);
     assert(fs->fs_dpages == NULL);
     assert(fs->fs_dpagesLast == NULL);
@@ -752,7 +752,6 @@ lc_unmount(struct gfs *gfs) {
 
     assert(gfs->gfs_unmounting);
     lc_lock(fs, true);
-    fs->fs_mcount = 0;
 
     /* Flush dirty data before destroying file systems since layers may be out
      * of order in the file system table and parent layers should not be
@@ -793,7 +792,7 @@ lc_commitRoot(struct gfs *gfs, int count) {
     if (lc_tryLock(fs, true)) {
         return;
     }
-    if ((gfs->gfs_layerInProgress == 0) && (count == gfs->gfs_changedLayers)) {
+    if ((gfs->gfs_layerInProgress == 0) && (count == gfs->gfs_syncRequired)) {
         lc_sync(gfs, fs);
         lc_allocateSuperBlocks(gfs, fs);
         lc_processLayerBlocks(gfs, fs, false, false, true);
@@ -806,8 +805,8 @@ lc_commitRoot(struct gfs *gfs, int count) {
             err = fsync(gfs->gfs_fd);
             assert(err == 0);
         }
-        gfs->gfs_changedLayers -= count;
-        printf("file system committed to disk\n");
+        gfs->gfs_syncRequired -= count;
+        lc_printf("file system committed to disk\n");
     }
     lc_unlock(fs);
 }
@@ -818,18 +817,15 @@ lc_commit(struct gfs *gfs) {
     int i, count, gindex;
     struct fs *fs;
 
-    if (gfs->gfs_layerInProgress || (gfs->gfs_changedLayers == 0)) {
+    if (gfs->gfs_layerInProgress || (gfs->gfs_syncRequired == 0)) {
         return;
     }
 
     /* Sync all layers */
     rcu_register_thread();
     rcu_read_lock();
-    count = gfs->gfs_changedLayers;
-    for (i = 1;
-         (i <= gfs->gfs_scount) && (gfs->gfs_layerInProgress == 0) &&
-         (count == gfs->gfs_changedLayers);
-         i++) {
+    count = gfs->gfs_syncRequired;
+    for (i = 1; i <= gfs->gfs_scount; i++) {
         fs = rcu_dereference(gfs->gfs_fs[i]);
         if ((fs == NULL) || !fs->fs_frozen ||
             (!fs->fs_inodesDirty && !fs->fs_extentsDirty)) {
@@ -871,12 +867,9 @@ lc_commit(struct gfs *gfs) {
     }
 
     /* Flush all dirty pages */
-    for (i = 1;
-         (i <= gfs->gfs_scount) && (gfs->gfs_layerInProgress == 0) &&
-         (count == gfs->gfs_changedLayers);
-         i++) {
+    for (i = 1; i <= gfs->gfs_scount; i++) {
         fs = rcu_dereference(gfs->gfs_fs[i]);
-        if (fs && fs->fs_dpcount) {
+        if (fs && fs->fs_frozen && fs->fs_dpcount) {
             if (lc_tryLock(fs, false)) {
                 rcu_read_unlock();
                 rcu_unregister_thread();
@@ -890,7 +883,7 @@ lc_commit(struct gfs *gfs) {
     }
     rcu_read_unlock();
     rcu_unregister_thread();
-    if ((gfs->gfs_layerInProgress == 0) && (count == gfs->gfs_changedLayers)) {
+    if ((gfs->gfs_layerInProgress == 0) && (count == gfs->gfs_syncRequired)) {
 
         /* Sync everything from the root layer */
         lc_commitRoot(gfs, count);

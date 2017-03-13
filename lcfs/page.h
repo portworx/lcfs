@@ -47,6 +47,9 @@
  */
 #define LC_MAX_LAYER_DIRTYPAGES 524288
 
+/* Number of dirty pages accumulated for waking up syncer */
+#define LC_SYNCER_DIRTY_COUNT   8192
+
 /* Number of minimum blocks a file need to grow before it is converted to use a
  * hash scheme for dirty pages.
  */

@@ -30,12 +30,16 @@ static uint64_t
 lc_releaseReservedBlocks(struct gfs *gfs, struct fs *fs, bool release) {
     uint64_t freed;
 
-    freed = lc_blockFreeExtents(gfs, fs, fs->fs_extents,
-                                LC_EXTENT_EFREE |
-                                (release ? LC_EXTENT_REUSE : 0));
-    assert(fs->fs_reservedBlocks == freed);
-    fs->fs_reservedBlocks -= freed;
-    fs->fs_extents = NULL;
+    if (fs->fs_extents) {
+        freed = lc_blockFreeExtents(gfs, fs, fs->fs_extents,
+                                    LC_EXTENT_EFREE |
+                                    (release ? LC_EXTENT_REUSE : 0));
+        assert(fs->fs_reservedBlocks == freed);
+        fs->fs_reservedBlocks -= freed;
+        fs->fs_extents = NULL;
+    } else {
+        freed = 0;
+    }
     return freed;
 }
 
@@ -56,16 +60,18 @@ lc_reclaimSpace(struct gfs *gfs) {
             /* Queue a checkpoint */
             if (!queued &&
                 (fs->fs_fextents || fs->fs_mextents || fs->fs_rextents)) {
-                lc_layerChanged(gfs, true);
+                lc_layerChanged(gfs, false, true);
                 queued = true;
             }
 
             /* Release any reserved blocks */
             if (fs->fs_extents && !lc_tryLock(fs, false)) {
                 rcu_read_unlock();
-                pthread_mutex_lock(&fs->fs_alock);
-                count += lc_releaseReservedBlocks(gfs, fs, true);
-                pthread_mutex_unlock(&fs->fs_alock);
+                if (fs->fs_extents) {
+                    pthread_mutex_lock(&fs->fs_alock);
+                    count += lc_releaseReservedBlocks(gfs, fs, true);
+                    pthread_mutex_unlock(&fs->fs_alock);
+                }
                 lc_unlock(fs);
                 rcu_read_lock();
                 if (count >= LC_RECLAIM_BLOCKS) {

@@ -376,7 +376,7 @@ void
 lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
     uint64_t block = LC_INVALID_BLOCK, count = 0, entries = 0;
     bool hashed = (dir->i_flags & LC_INODE_DHASHED);
-    int i, remain = 0, dsize, subdir = 2, max;
+    int i, remain = 0, dsize, subdir, max;
     struct dblock *dblock = NULL;
     struct page *page = NULL;
     struct ddirent *ddirent;
@@ -384,10 +384,7 @@ lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
     char *dbuf = NULL;
 
     assert(S_ISDIR(dir->i_mode));
-    if (dir->i_flags & LC_INODE_REMOVED) {
-        dir->i_flags &= ~LC_INODE_DIRDIRTY;
-        return;
-    }
+    subdir = (dir->i_flags & LC_INODE_REMOVED) ? 0 : 2;
     max = hashed ? LC_DIRCACHE_SIZE : 1;
     for (i = 0; i < max; i++) {
         dirent = hashed ? dir->i_hdirent[i] : dir->i_dirent;

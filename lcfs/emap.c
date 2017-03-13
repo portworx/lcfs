@@ -250,15 +250,6 @@ lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
 
     assert(S_ISREG(inode->i_mode));
 
-    /* If the file removed, nothing to write */
-    if (inode->i_flags & LC_INODE_REMOVED) {
-        assert(lc_inodeGetEmap(inode) == NULL);
-        assert(inode->i_page == NULL);
-        assert(lc_inodeGetDirtyPageCount(inode) == 0);
-        inode->i_flags &= ~LC_INODE_EMAPDIRTY;
-        return;
-    }
-
     /* Flush all the dirty pages */
     lc_flushPages(gfs, fs, inode, true, false);
     extent = lc_inodeGetEmap(inode);

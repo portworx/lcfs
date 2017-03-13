@@ -144,7 +144,7 @@ struct gfs {
     int gfs_layerInProgress;
 
     /* Set if layers are pending flush */
-    int gfs_changedLayers;
+    int gfs_syncRequired;
 
     /* Layer from pages being purged */
     int gfs_cleanerIndex;
@@ -393,8 +393,10 @@ struct fs {
 
 /* Let the syncer know something changed and a checkpoint could be triggered */
 static inline void
-lc_layerChanged(struct gfs *gfs, bool wakeup) {
-    __sync_add_and_fetch(&gfs->gfs_changedLayers, 1);
+lc_layerChanged(struct gfs *gfs, bool new, bool wakeup) {
+    if (new || (gfs->gfs_syncRequired == 0)) {
+        __sync_add_and_fetch(&gfs->gfs_syncRequired, 1);
+    }
     if (wakeup) {
         pthread_cond_signal(&gfs->gfs_syncerCond);
     }

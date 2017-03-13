@@ -454,11 +454,6 @@ lc_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     struct dxattr *dxattr;
     char *xbuf = NULL;
 
-    if (inode->i_flags & LC_INODE_REMOVED) {
-        inode->i_flags &= ~LC_INODE_XATTRDIRTY;
-        return;
-    }
-
     /* Traverse extended attribute list and copy those to pages */
     while (xattr) {
         nsize = strlen(xattr->x_name);
