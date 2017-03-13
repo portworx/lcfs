@@ -22,6 +22,9 @@ and then one for the plugin to operate on.  The data added to /var/lib/docker
 can be completely avoided if plugin is run as a standalone binary.  That also
 would help bringing up docker with lcfs much faster.
 
+Figure out a base image to build the plugin with smaller size.  Current Centos
+image used would create around 300MB of data in LCFS when installed.
+
 Docker commit/build operations can be made more efficient if steps like generating 
 diff, creating tar file and applying tar file to a new layer etc, are avoided by
 simply asking the graphdriver to create a new layer with all the changes made
@@ -33,3 +36,7 @@ around.
 
 Docker is not unmounting /var/lib/docker from graphdriver plugin even after
 docker is stopped.
+
+Docker is not creating/deleting/committing layers atomically.  It updates its
+database and the layers independently.  This could create orphaned layers if a
+failure happens between those steps.

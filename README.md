@@ -74,7 +74,7 @@ Separately, LCFS itself is implemented as a single filesystem. It takes in (hard
 * [*file operations*](https://github.com/portworx/lcfs/blob/master/docs/file_operations.md): how LCFS supports file operations and file locking.
 * [*caching*](https://github.com/portworx/lcfs/blob/master/docs/caching_overview.md): how LCFS caches and accesses metadata (inodes, directories, etc) and future work. 
 * [*space management*](https://github.com/portworx/lcfs/blob/master/docs/spacemanagement_overview.md): how LCFS handles allocation, tracking, placement, and I/O coalescing. 
-* [*crash consistency*](https://github.com/portworx/lcfs/blob/master/docs/crashconsistency_overview.md): work in progress. 
+* [*crash consistency*](https://github.com/portworx/lcfs/blob/master/docs/crashconsistency_overview.md): how LCFS deals with abnormal shutdowns (crashes etc.)
 * [*stats*](https://github.com/portworx/lcfs/blob/master/docs/stats_overview.md): how to access stats and future work. 
 * [*LCFS Design*](http://bit.ly/2lzjUSE): LCFS design highlights. 
 
