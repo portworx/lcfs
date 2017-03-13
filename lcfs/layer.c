@@ -372,7 +372,7 @@ lc_umountLayer(fuse_req_t req, struct gfs *gfs, ino_t root) {
             lc_markSuperDirty(fs);
         }
         lc_unlock(fs);
-        lc_layerChanged(gfs, false, true);
+        lc_layerChanged(gfs, false, false);
     }
 }
 

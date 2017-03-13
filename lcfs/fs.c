@@ -827,22 +827,27 @@ lc_commit(struct gfs *gfs) {
     count = gfs->gfs_syncRequired;
     for (i = 1; i <= gfs->gfs_scount; i++) {
         fs = rcu_dereference(gfs->gfs_fs[i]);
-        if ((fs == NULL) || !fs->fs_frozen ||
+        if ((fs == NULL) || (!fs->fs_frozen && fs->fs_mcount) ||
             (!fs->fs_inodesDirty && !fs->fs_extentsDirty)) {
             continue;
         }
-        assert(fs->fs_pcount == 0);
         gindex = fs->fs_gindex;
 
         /* Flush dirty pages with shared lock first */
-        if (fs->fs_dpcount) {
+        if (fs->fs_dpcount || fs->fs_pcount) {
             if (lc_tryLock(fs, false)) {
                 rcu_read_unlock();
                 rcu_unregister_thread();
                 return;
             }
             rcu_read_unlock();
+            if (fs->fs_mcount) {
+                lc_unlock(fs);
+                rcu_unregister_thread();
+                return;
+            }
             assert(gindex == fs->fs_gindex);
+            lc_flushDirtyInodeList(fs, true);
             lc_flushDirtyPages(gfs, fs);
             lc_unlock(fs);
             rcu_read_lock();
@@ -852,16 +857,24 @@ lc_commit(struct gfs *gfs) {
         /* Lock the layer exclusive and flush all dirty inodes and
          * allocated extent list.
          */
-        if ((fs == NULL) || (gindex != fs->fs_gindex) || !fs->fs_frozen ||
-            lc_tryLock(fs, true)) {
+        if ((fs == NULL) || (gindex != fs->fs_gindex) ||
+            (!fs->fs_frozen && fs->fs_mcount) || lc_tryLock(fs, true)) {
             rcu_read_unlock();
             rcu_unregister_thread();
             return;
         }
         rcu_read_unlock();
         assert(gindex == fs->fs_gindex);
+        if (fs->fs_mcount) {
+            lc_unlock(fs);
+            rcu_unregister_thread();
+            return;
+        }
         lc_sync(gfs, fs);
         lc_processLayerBlocks(gfs, fs, false, false, true);
+        if (!fs->fs_frozen) {
+            lc_flushDirtyPages(gfs, fs);
+        }
         lc_unlock(fs);
         rcu_read_lock();
     }
