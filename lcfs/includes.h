@@ -167,7 +167,7 @@ void lc_rootInit(struct fs *fs, ino_t root);
 void lc_cloneRootDir(struct inode *pdir, struct inode *dir);
 void lc_setLayerRoot(struct gfs *gfs, ino_t ino);
 void lc_updateInodeTimes(struct inode *inode, bool mtime, bool ctime);
-void lc_syncInodes(struct gfs *gfs, struct fs *fs);
+void lc_syncInodes(struct gfs *gfs, struct fs *fs, bool unmount);
 void lc_inodeLock(struct inode *inode, bool exclusive);
 void lc_inodeUnlock(struct inode *inode);
 void lc_invalidateInodePages(struct gfs *gfs, struct fs *fs);

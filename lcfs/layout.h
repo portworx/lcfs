@@ -2,7 +2,7 @@
 #define _LAYOUT_H__
 
 /* Current layout version */
-#define LC_VERSION     1
+#define LC_VERSION     2
 
 /* Magic number stored in superblock */
 #define LC_SUPER_MAGIC 0x5F5F5F5F
@@ -123,6 +123,15 @@ struct super {
     /* Count of inodes in use */
     uint64_t sb_icount;
 
+    /* Last accessed time in seconds since Epoch */
+    time_t sb_atime;
+
+    /* Creation time in seconds since Epoch */
+    time_t sb_ctime;
+
+    /* Commit time in seconds since Epoch */
+    time_t sb_commitTime;
+
     /* CRC of this block */
     uint32_t sb_crc;
 
@@ -146,14 +155,20 @@ struct super {
     /* Next inode available for allocation */
     uint64_t sb_ninode;
 
-    /* Version of the file system layout */
-    uint32_t sb_version;
+    /* Unmount time in seconds since Epoch */
+    time_t sb_unmountTime;
 
     /* Count of file types */
     uint64_t sb_ftypes[LC_FTYPE_MAX];
 
+    /* Number of times committed */
+    uint32_t sb_ncommitted;
+
+    /* Version of the file system layout */
+    uint32_t sb_version;
+
     /* Padding for filling up a block */
-    uint8_t  sb_pad[LC_BLOCK_SIZE - 164];
+    uint8_t  sb_pad[LC_BLOCK_SIZE - 200];
 } __attribute__((packed));
 static_assert(sizeof(struct super) == LC_BLOCK_SIZE, "superblock size != LC_BLOCK_SIZE");
 

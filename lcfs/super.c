@@ -4,6 +4,8 @@
 void
 lc_superInit(struct super *super, uint64_t root, size_t size,
              uint32_t flags, bool global) {
+    time_t t = time(NULL);
+
     memset(super, 0, sizeof(struct super));
     super->sb_magic = LC_SUPER_MAGIC;
     super->sb_version = LC_VERSION;
@@ -12,6 +14,8 @@ lc_superInit(struct super *super, uint64_t root, size_t size,
     super->sb_ftypes[LC_FTYPE_DIRECTORY] = 1;
     super->sb_root = root;
     super->sb_flags = flags;
+    super->sb_ctime = t;
+    super->sb_atime = t;
     if (global) {
 
         /* These fields are updated in the global superblock only */
@@ -74,6 +78,8 @@ lc_superWrite(struct gfs *gfs, struct fs *fs, struct fs *rfs) {
 /* Allocate superblocks for layers as needed */
 void
 lc_allocateSuperBlocks(struct gfs *gfs, struct fs *rfs) {
+    time_t t = time(NULL);
+    struct super *super;
     uint64_t block;
     struct fs *fs;
     int i, count;
@@ -111,16 +117,16 @@ lc_allocateSuperBlocks(struct gfs *gfs, struct fs *rfs) {
     for (i = 0; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
         if (fs) {
-            fs->fs_super->sb_nextLayer = fs->fs_next ?
-                                            fs->fs_next->fs_sblock : 0;
-            fs->fs_super->sb_childLayer = fs->fs_child ?
-                                            fs->fs_child->fs_sblock : 0;
+            super = fs->fs_super;
+            super->sb_nextLayer = fs->fs_next ? fs->fs_next->fs_sblock : 0;
+            super->sb_childLayer = fs->fs_child ? fs->fs_child->fs_sblock : 0;
 
             /* Write the superblock if it is pending write */
             if (i) {
+                super->sb_commitTime = t;
                 lc_lock(fs, true);
                 if (gfs->gfs_unmounting || fs->fs_frozen) {
-                    fs->fs_super->sb_flags &= ~LC_SUPER_DIRTY;
+                    super->sb_flags &= ~LC_SUPER_DIRTY;
                 }
                 lc_superWrite(gfs, fs, rfs);
                 lc_unlock(fs);

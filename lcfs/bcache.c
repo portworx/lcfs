@@ -787,7 +787,7 @@ lc_flusher(void *data) {
              */
             if (!fs->fs_readOnly && fs->fs_dirtyInodes &&
                 ((fs->fs_pcount > LC_MAX_LAYER_DIRTYPAGES) ||
-                 (force && (fs->fs_ctime < recent))) &&
+                 (force && (fs->fs_super->sb_ctime < recent))) &&
                 !(fs->fs_super->sb_flags & LC_SUPER_INIT) &&
                 !lc_tryLock(fs, false)) {
 
@@ -943,7 +943,7 @@ lc_purgePages(struct gfs *gfs, bool force) {
          * those.
          */
         if ((fs->fs_parent == NULL) &&
-            (force || (fs->fs_ctime < recent)) &&
+            (force || (fs->fs_super->sb_ctime < recent)) &&
             !lc_tryLock(fs, false)) {
 
             /* Purge clean pages for the tree */

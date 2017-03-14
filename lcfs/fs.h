@@ -259,12 +259,6 @@ struct fs {
     /* Approximate size of the layer */
     uint64_t fs_size;
 
-    /* Creation time in seconds since Epoch */
-    time_t fs_ctime;
-
-    /* Last accessed time in seconds since Epoch */
-    time_t fs_atime;
-
     /* Dirty pages pending write */
     struct page *fs_dpages;
 

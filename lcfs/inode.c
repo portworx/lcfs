@@ -897,8 +897,8 @@ lc_freezeLayer(struct gfs *gfs, struct fs *fs) {
 
 /* Sync all dirty inodes */
 void
-lc_syncInodes(struct gfs *gfs, struct fs *fs) {
-    uint64_t count = 0, icount = 0, rcount = 0;
+lc_syncInodes(struct gfs *gfs, struct fs *fs, bool unmount) {
+    uint64_t count = 0, icount = 0, rcount = 0, fcount = 0;
     struct inode *inode, **prev;
     int i;
 
@@ -930,7 +930,7 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs) {
         prev = &fs->fs_icache[i].ic_head;
         while (inode && !fs->fs_removed) {
             if ((inode->i_flags & LC_INODE_REMOVED) &&
-                ((inode->i_ocount == 0) || gfs->gfs_unmounting)) {
+                ((inode->i_ocount == 0) || unmount)) {
                 assert(lc_inodeDirty(inode));
 
                 /* Truncate pages of a removed inode on umount */
@@ -953,6 +953,10 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs) {
                 *prev = inode->i_cnext;
                 lc_freeInode(inode);
                 rcount++;
+            } else if (unmount) {
+                *prev = inode->i_cnext;
+                lc_freeInode(inode);
+                fcount++;
             } else {
                 prev = &inode->i_cnext;
             }
@@ -965,6 +969,10 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs) {
         fs->fs_ricount -= rcount;
         assert(fs->fs_icount > rcount);
         fs->fs_icount -= rcount;
+    }
+    if (unmount) {
+        assert(fs->fs_icount == fcount);
+        fs->fs_icount = 0;
     }
     if (fs->fs_inodePagesCount && !fs->fs_removed) {
         lc_flushInodePages(gfs, fs);
@@ -1040,9 +1048,8 @@ lc_destroyInodes(struct fs *fs, bool remove) {
     if (remove && icount) {
         __sync_sub_and_fetch(&gfs->gfs_super->sb_inodes, rcount);
     }
-    if (icount) {
-        fs->fs_icount -= icount;
-    }
+    assert(fs->fs_icount == icount);
+    fs->fs_icount = 0;
 }
 
 /* Clone the root directory from parent */

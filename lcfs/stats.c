@@ -120,7 +120,7 @@ lc_statsAdd(struct fs *fs, enum lc_stats type, bool err,
     }
 
     /* Update layer access time */
-    fs->fs_atime = stop.tv_sec;
+    fs->fs_super->sb_atime = stop.tv_sec;
     pthread_mutex_unlock(&stats->s_lock);
 }
 
@@ -137,8 +137,8 @@ lc_displayStats(struct fs *fs) {
     gettimeofday(&now, NULL);
     printf("\n\nStats for file system %p with root %ld index %d at %s\n",
            fs, fs->fs_root, fs->fs_gindex, ctime(&now.tv_sec));
-    printf("\tLayer  created at %s", ctime(&fs->fs_ctime));
-    printf("\tLast acccessed at %s\n", ctime(&fs->fs_atime));
+    printf("\tLayer  created at %s", ctime(&fs->fs_super->sb_ctime));
+    printf("\tLast acccessed at %s\n", ctime(&fs->fs_super->sb_atime));
     if (stats == NULL) {
         goto out;
     }
