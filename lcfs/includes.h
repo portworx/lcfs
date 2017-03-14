@@ -72,7 +72,9 @@ void lc_memMove(struct fs *fs, struct fs *to, size_t size,
 bool lc_checkMemoryAvailable(bool flush);
 void lc_waitMemory(bool wait);
 void lc_memUpdateTotal(struct fs *fs, size_t size);
-void lc_memTransferCount(struct fs *fs, uint64_t count);
+void lc_memTransferCount(struct fs *fs, struct fs *rfs, uint64_t count,
+                         enum lc_memTypes type);
+void lc_memTransferExtents(struct gfs *gfs, struct fs *fs, struct fs *cfs);
 void lc_checkMemStats(struct fs *fs, bool unmount);
 void lc_displayGlobalMemStats();
 void lc_displayMemStats(struct fs *fs);
@@ -111,6 +113,8 @@ void lc_blockFree(struct gfs *gfs, struct fs *fs, uint64_t block,
 void lc_addFreedExtents(struct fs *fs, struct extent *extent, bool empty);
 void lc_addFreedBlocks(struct fs *fs, uint64_t block, uint64_t count,
                        bool allocated);
+uint64_t lc_countExtents(struct gfs *gfs, struct extent *extent,
+                         uint64_t *bcount);
 void lc_processFreedBlocks(struct fs *fs, bool release);
 uint64_t lc_blockFreeExtents(struct gfs *gfs, struct fs *fs,
                              struct extent *extents, uint8_t flags);

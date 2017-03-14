@@ -728,7 +728,7 @@ lc_replaceFreedExtents(struct fs *fs, struct extent **extents,
 }
 
 /* Count number of extents in the list */
-static uint64_t
+uint64_t
 lc_countExtents(struct gfs *gfs, struct extent *extent, uint64_t *bcount) {
     uint64_t count = 0, total = 0;
 
@@ -736,10 +736,14 @@ lc_countExtents(struct gfs *gfs, struct extent *extent, uint64_t *bcount) {
         assert(extent->ex_type == LC_EXTENT_SPACE);
         lc_validateExtent(gfs, extent);
         count++;
-        total += lc_getExtentCount(extent);
+        if (bcount) {
+            total += lc_getExtentCount(extent);
+        }
         extent = extent->ex_next;
     }
-    *bcount += total;
+    if (bcount) {
+        *bcount += total;
+    }
     return count;
 }
 

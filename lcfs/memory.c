@@ -151,20 +151,51 @@ lc_memUpdateTotal(struct fs *fs, size_t size) {
     __sync_fetch_and_sub(&fs->fs_memory, size);
 }
 
-/* Transfer some memory from a layer to its base layer */
+/* Transfer some memory from a layer to another layer */
 void
-lc_memTransferCount(struct fs *fs, uint64_t count) {
-    struct fs *rfs = fs->fs_rfs;
+lc_memTransferCount(struct fs *fs, struct fs *rfs, uint64_t count,
+                    enum lc_memTypes type) {
     uint64_t size, freed;
 
-    /* This is done when a dirty page is moved to shared block page cache */
+    /* This is done when a dirty page is moved to shared block page cache or
+     * when some extents are moved from one layer to another.
+     */
     if (memStatsEnabled && (fs != rfs)) {
-        size = count * LC_BLOCK_SIZE;
+        assert((type == LC_MEMTYPE_DATA) || (type == LC_MEMTYPE_EXTENT));
+        size = count * ((type == LC_MEMTYPE_DATA) ?
+                        LC_BLOCK_SIZE : sizeof(struct extent));
         __sync_add_and_fetch(&rfs->fs_memory, size);
         freed = __sync_fetch_and_sub(&fs->fs_memory, size);
         assert(freed >= size);
-        __sync_add_and_fetch(&fs->fs_free[LC_MEMTYPE_DATA], count);
-        __sync_add_and_fetch(&rfs->fs_malloc[LC_MEMTYPE_DATA], count);
+        __sync_add_and_fetch(&fs->fs_free[type], count);
+        __sync_add_and_fetch(&rfs->fs_malloc[type], count);
+    }
+}
+
+/* Swap memory allocated for extents */
+void
+lc_memTransferExtents(struct gfs *gfs, struct fs *fs, struct fs *cfs) {
+    uint64_t i, j;
+
+    if (!memStatsEnabled) {
+        return;
+    }
+    i = lc_countExtents(gfs, fs->fs_aextents, NULL);
+    i += lc_countExtents(gfs, fs->fs_fextents, NULL);
+    i += lc_countExtents(gfs, fs->fs_mextents, NULL);
+    i += lc_countExtents(gfs, fs->fs_rextents, NULL);
+
+    j = lc_countExtents(gfs, cfs->fs_aextents, NULL);
+    j += lc_countExtents(gfs, cfs->fs_fextents, NULL);
+    j += lc_countExtents(gfs, cfs->fs_mextents, NULL);
+    j += lc_countExtents(gfs, cfs->fs_rextents, NULL);
+    if (i == j) {
+        return;
+    }
+    if (i > j) {
+        lc_memTransferCount(fs, cfs, i - j, LC_MEMTYPE_EXTENT);
+    } else {
+        lc_memTransferCount(cfs, fs, j - i, LC_MEMTYPE_EXTENT);
     }
 }
 

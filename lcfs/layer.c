@@ -536,7 +536,7 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
     cfs->fs_pinval = 0;
 
     /* Swap extent lists */
-    /* XXX Adjust memstats */
+    lc_memTransferExtents(gfs, fs, cfs);
     extent = cfs->fs_aextents;
     cfs->fs_aextents = fs->fs_aextents;
     fs->fs_aextents = extent;
@@ -555,6 +555,10 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
     blocks = cfs->fs_freed;
     cfs->fs_freed = fs->fs_freed;
     fs->fs_freed = blocks;
+
+    blocks = cfs->fs_mcount;
+    cfs->fs_mcount = fs->fs_mcount;
+    fs->fs_mcount = blocks;
 
     /* Switch layer roots and indices */
     //lc_printf("Swapping layers fs %p cfs %p with index %d and %d\n", fs, cfs, gindex, newgindex);

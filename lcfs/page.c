@@ -1084,7 +1084,7 @@ out:
 
         /* Transfer the ownership of dirty pages from the layer to base layer
          */
-        lc_memTransferCount(fs, tcount - zcount);
+        lc_memTransferCount(fs, fs->fs_rfs, tcount - zcount, LC_MEMTYPE_DATA);
     }
     if (tcount) {
 
