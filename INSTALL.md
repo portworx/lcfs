@@ -9,13 +9,17 @@ Now run the command below, substituting in the lcfs device you have chosen. In t
 # curl -fsSL http://lcfs.portworx.com/lcfs-setup.sh | sudo DEV=/dev/sdb bash
 ```
 
-Note: The convenience script will start dockerd with `-s portworx/lcfs --experimental` but it will not setup the systemd service script.  This means that after a system reboot, `lcfs` **will not persist** and needs to be restarted manually with the following command: 
+The convenience script will start dockerd with `-s portworx/lcfs --experimental` and will also setup/enable a service management script.  The service management script will start up LCFS automatically on system reboot. Service management commands allow lcfs to be `stopped`, `started` and view `status`. 
 
+e.g. Systemd service to view LCFS status
 ```
-# /opt/pwx/bin/lcfs-setup.sh --start
+# sudo systemctl status lcfs
 ```
 
-The above command can be added to a `systemd` unit file.
+LCFS removal can be done quickly using the installed setup script with the `--remove` option.
+```
+# sudo /opt/pwx/bin/lcfs-setup.sh --remove
+```
 
 ## Manual installation
 To install LCFS, there are four actions you must perform:
