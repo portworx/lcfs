@@ -479,7 +479,7 @@ lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
         if (remove) {
 
             /* This inode is not sharing any blocks with its parents */
-            inode->i_private = true;
+            inode->i_private = 1;
         }
     }
     return zero;

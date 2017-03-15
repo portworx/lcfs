@@ -1269,7 +1269,7 @@ lc_truncateFile(struct inode *inode, off_t size, bool remove) {
         assert(!(inode->i_flags & LC_INODE_SHARED));
         if (remove) {
             assert(inode->i_dinode.di_blocks == 0);
-            inode->i_private = true;
+            inode->i_private = 1;
         }
         return;
     }
@@ -1286,7 +1286,7 @@ lc_truncateFile(struct inode *inode, off_t size, bool remove) {
                 inode->i_extentBlock = 0;
                 inode->i_extentLength = 0;
                 inode->i_flags &= ~LC_INODE_SHARED;
-                inode->i_private = true;
+                inode->i_private = 1;
             }
             lc_inodeSetEmap(inode, NULL);
             lc_invalidatePages(gfs, fs, inode, size);

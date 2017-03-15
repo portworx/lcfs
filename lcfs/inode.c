@@ -266,7 +266,9 @@ lc_addInode(struct fs *fs, struct inode *inode, int hash, bool lock,
         }
         inode = new;
     }
+#ifdef DEBUG
     assert(lc_lookupInodeCache(fs, ino, hash) == NULL);
+#endif
 
     /* Add the inode to the hash list */
     inode->i_cnext = fs->fs_icache[hash].ic_head;
@@ -1086,6 +1088,7 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino, int hash,
         lc_inodeLock(inode, exclusive);
         return inode;
     }
+    inode->i_private = 0;
     if (reg) {
         assert(parent->i_page == NULL);
         assert(lc_inodeGetDirtyPageCount(parent) == 0);
@@ -1105,7 +1108,7 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino, int hash,
         } else {
 
             /* A file with no blocks is not sharing anything with parent */
-            inode->i_private = true;
+            inode->i_private = 0;
         }
     } else if (S_ISDIR(inode->i_mode)) {
         if (parent->i_dirent) {
