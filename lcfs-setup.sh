@@ -160,6 +160,18 @@ function system_docker_stop()
     killprocess ${DOCKER_SRV_BIN};                              # last resort
 }
 
+function system_docker_restart()
+{
+    local sysd_pid=$(ps -C systemd -o pid --no-header)
+    local sysV_docker="/etc/init.d/docker"
+
+    if [ -n "${sysd_pid}" ]; then
+        ${SUDO} systemctl restart docker     # Systemd restart
+    elif [ -e "${sysV_docker}" ]; then
+        ${SUDO} /etc/init.d/docker restart;  # SystemV restart
+    fi
+}
+
 function system_manage()
 {
     [ -z "$1" -o -z "$2" ] && echo "Warning: System manage setting failed." && return 1
@@ -286,6 +298,7 @@ function stop_remove_lcfs
 
     # Stop docker && cleanup
     if [ -z "${STOP_DOCKER}" ]; then
+	clean_mount "${DOCKER_MNT}/plugins"
 	clean_mount "${PLUGIN_MNT}"
 	clean_mount "${DOCKER_MNT}"
 	killprocess lcfs
@@ -303,6 +316,7 @@ function stop_remove_lcfs
 	[ -e ${LCFS_ENV_FL} ] && ${SUDO} \mv -f ${LCFS_ENV_FL} ${LCFS_ENV_FL}.save
 	lcfs_startup_remove
 	restore_docker_cfg
+	system_docker_restart
     fi
     [ -z "${rcode}" ] && rcode=0
     [ -n "${STOP}" -o -n "${REMOVE}" -o -n "${STOP_DOCKER}" ] && cleanup_and_exit ${rcode}
