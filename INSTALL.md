@@ -39,7 +39,7 @@ These four steps are detailed below.
 
 ```
 # sudo mkdir -p /lcfs /var/lib/docker
-# sudo lcfs /dev/sdb /var/lib/docker /lcfs
+# sudo lcfs daemon /dev/sdb /var/lib/docker /lcfs
 ```
 
 ### Step 2 - Start Docker using VFS

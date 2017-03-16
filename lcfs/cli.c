@@ -11,6 +11,7 @@ cmd_group {
 	char *desc;
 	char *usage;
 	char *help;
+	int min;
 	int (*func)(int argc, char *argv[]);
 } cmd_group;
 
@@ -32,12 +33,14 @@ cmd_group lcfs_cmd_group[] = {
 	{
 		"daemon",
 		"Start the lcfs daemon",
-		"--device=<device/file> --host-mount=<host-mountpath> --plugin-mount=<plugin-mountpath> [-f] [-d]",
-		"\tdevice     - device or file wher lcfs will store the actuall data\n"
+		// "--device=<device/file> --host-mount=<host-mountpath> --plugin-mount=<plugin-mountpath> [-f] [-d]",
+		"--device=<device/file> <host-mountpath> <plugin-mountpath> [-f] [-d]",
+		"\tdevice     - device or file - image layers will be saved here\n"
 		"\thost-mount - mount point on host\n"
 		"\thost-mount - mount point propogated the plugin\n"
 		"\t-f         - run foreground (optional)\n"
 		"\t-d         - display debugging info (optional)\n",
+		3,
 		cmd_daemon
 	},
 	{
@@ -45,6 +48,7 @@ cmd_group lcfs_cmd_group[] = {
 		"Display lcfs stats", 
 		"", 
 		"", 
+		0,
 		cmd_stats
 	},
 	{NULL},
@@ -73,6 +77,14 @@ print_usage() {
 }
 
 int
+print_cmd_usage(cmd_group *grp) {
+	printf("usage: %s %s %s\n", PROG_NAME, grp->cmd, grp->usage);
+	printf("%s\n", grp->help);
+
+	return 0;
+}
+
+int
 run_cli(int argc, char *argv[]) {
 	if (argc < 2) {
 		print_usage();
@@ -90,9 +102,9 @@ run_cli(int argc, char *argv[]) {
 
 		if (!strcasecmp(argv[1], grp->cmd)) {
 			if ((argc > 2) && (!strcasecmp(argv[2], "--help"))) {
-				printf("usage: %s %s %s\n", PROG_NAME, argv[1], grp->usage);
-				printf("%s\n", grp->help);
-				return 0;
+				return print_cmd_usage(grp);
+			} else if (argc < 2 + grp->min) {
+				return print_cmd_usage(grp);
 			} else {
 				return grp->func(argc-1, &argv[1]);
 			}
