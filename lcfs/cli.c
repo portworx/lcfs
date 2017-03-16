@@ -34,7 +34,7 @@ cmd_group lcfs_cmd_group[] = {
 		"daemon",
 		"Start the lcfs daemon",
 		// "--device=<device/file> --host-mount=<host-mountpath> --plugin-mount=<plugin-mountpath> [-f] [-d]",
-		"--device=<device/file> <host-mountpath> <plugin-mountpath> [-f] [-d]",
+		"<device/file> <host-mountpath> <plugin-mountpath> [-f] [-d]",
 		"\tdevice     - device or file - image layers will be saved here\n"
 		"\thost-mount - mount point on host\n"
 		"\thost-mount - mount point propogated the plugin\n"
