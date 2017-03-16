@@ -104,7 +104,7 @@ lc_allocateSuperBlocks(struct gfs *gfs, struct fs *rfs) {
         fs = gfs->gfs_fs[i];
         if (fs) {
             if (fs->fs_sblock != LC_INVALID_BLOCK) {
-                lc_addFreedBlocks(rfs, fs->fs_sblock, 1, true);
+                lc_addFreedBlocks(rfs, fs->fs_sblock, 1);
             }
             fs->fs_sblock = block++;
             lc_markSuperDirty(fs);

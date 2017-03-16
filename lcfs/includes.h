@@ -105,16 +105,15 @@ void lc_processFreeExtents(struct gfs *gfs, struct fs *fs, bool umount);
 bool lc_hasSpace(struct gfs *gfs, bool layer);
 void lc_addSpaceExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
                        uint64_t start, uint64_t count, bool sort);
-uint64_t lc_processLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount,
-                                bool remove, bool keep);
+void lc_processLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount,
+                           bool remove, bool keep);
 uint64_t lc_blockAlloc(struct fs *fs, uint64_t count, bool meta, bool reserve);
 uint64_t lc_blockAllocExact(struct fs *fs, uint64_t count,
                             bool meta, bool reserve);
 void lc_blockFree(struct gfs *gfs, struct fs *fs, uint64_t block,
                   uint64_t count, bool layer, bool reuse);
 void lc_addFreedExtents(struct fs *fs, struct extent *extent, bool empty);
-void lc_addFreedBlocks(struct fs *fs, uint64_t block, uint64_t count,
-                       bool allocated);
+void lc_addFreedBlocks(struct fs *fs, uint64_t block, uint64_t count);
 uint64_t lc_countExtents(struct gfs *gfs, struct extent *extent,
                          uint64_t *bcount);
 void lc_processFreedBlocks(struct fs *fs, bool release);

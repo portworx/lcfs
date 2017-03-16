@@ -137,7 +137,6 @@ lc_validate(struct gfs *gfs) {
         fs = gfs->gfs_fs[i];
         if (fs) {
             assert(fs->fs_extents == NULL);
-            assert(fs->fs_rextents == NULL);
             lextents = NULL;
             super = fs->fs_super;
 
@@ -156,10 +155,6 @@ lc_validate(struct gfs *gfs) {
             if (fs->fs_fextents) {
                 assert(i == 0);
                 lc_copyExtents(gfs, rfs, fs->fs_fextents, &lextents, NULL);
-            }
-            if (fs->fs_mextents) {
-                assert(i);
-                lc_copyExtents(gfs, rfs, fs->fs_mextents, &lextents, NULL);
             }
             if (fs->fs_iextents) {
                 lc_copyExtents(gfs, rfs, fs->fs_iextents, &lextents, fs);

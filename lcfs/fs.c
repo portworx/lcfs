@@ -127,8 +127,6 @@ lc_freeLayer(struct fs *fs, bool remove) {
     assert(fs->fs_extents == NULL);
     assert(fs->fs_aextents == NULL);
     assert(fs->fs_fextents == NULL);
-    assert(fs->fs_mextents == NULL);
-    assert(fs->fs_rextents == NULL);
     assert(fs->fs_icount == 0);
     assert(fs->fs_pcount == 0);
     assert(!remove || (fs->fs_blocks == fs->fs_freed));

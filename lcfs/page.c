@@ -1025,7 +1025,7 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
         if (inode->i_extentLength) {
             if (inode->i_extentBlock != eblock) {
                 lc_addFreedBlocks(fs, inode->i_extentBlock,
-                                  inode->i_extentLength, inode->i_private);
+                                  inode->i_extentLength);
             }
         } else if (lc_inodeGetEmap(inode)) {
 

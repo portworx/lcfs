@@ -368,7 +368,7 @@ lc_freeInodeDataBlocks(struct fs *fs, struct inode *inode,
 
     while (extent) {
         lc_addFreedBlocks(fs, lc_getExtentStart(extent),
-                          lc_getExtentCount(extent), inode->i_private);
+                          lc_getExtentCount(extent));
         tmp = extent;
         extent = extent->ex_next;
         lc_free(fs, tmp, sizeof(struct extent), LC_MEMTYPE_EXTENT);

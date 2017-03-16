@@ -233,10 +233,10 @@ lc_releaseLayer(struct gfs *gfs, struct fs *fs) {
     lc_invalidateInodeBlocks(gfs, fs);
     if (super->sb_extentCount) {
         lc_blockFree(gfs, rfs, super->sb_extentBlock, super->sb_extentCount,
-                     true, true);
+                     false, false);
     }
     if (fs->fs_sblock != LC_INVALID_BLOCK) {
-        lc_blockFree(gfs, rfs, fs->fs_sblock, 1, true, true);
+        lc_blockFree(gfs, rfs, fs->fs_sblock, 1, false, false);
     }
     lc_processLayerBlocks(gfs, fs, false, true, false);
     lc_unlock(fs);

@@ -182,13 +182,9 @@ lc_memTransferExtents(struct gfs *gfs, struct fs *fs, struct fs *cfs) {
     }
     i = lc_countExtents(gfs, fs->fs_aextents, NULL);
     i += lc_countExtents(gfs, fs->fs_fextents, NULL);
-    i += lc_countExtents(gfs, fs->fs_mextents, NULL);
-    i += lc_countExtents(gfs, fs->fs_rextents, NULL);
 
     j = lc_countExtents(gfs, cfs->fs_aextents, NULL);
     j += lc_countExtents(gfs, cfs->fs_fextents, NULL);
-    j += lc_countExtents(gfs, cfs->fs_mextents, NULL);
-    j += lc_countExtents(gfs, cfs->fs_rextents, NULL);
     if (i == j) {
         return;
     }

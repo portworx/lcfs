@@ -297,12 +297,6 @@ struct fs {
     /* Extents freed in layer, including inherited from parent layer */
     struct extent *fs_fextents;
 
-    /* Extents freed in layer, which were allocated in the layer */
-    struct extent *fs_mextents;
-
-    /* Extents allocated and freed in layer and can be reused */
-    struct extent *fs_rextents;
-
 #ifdef DEBUG
 
     /* Extents used for inodes */
