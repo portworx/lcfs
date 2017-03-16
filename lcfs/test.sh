@@ -16,7 +16,7 @@ DEVICE=/tmp/lcfs-testdevice
 rm $DEVICE 2>/dev/null
 dd if=/dev/zero of=$DEVICE count=130000 bs=4096
 
-$LCFS $DEVICE $MNT $MNT2
+$LCFS daemon $DEVICE $MNT $MNT2
 sleep 10
 cd $MNT
 
@@ -129,7 +129,7 @@ sleep 3
 docker plugin install --grant-all-permissions portworx/lcfs
 docker plugin ls
 pkill dockerd
-sleep 3
+sleep 10
 sudo dockerd --experimental -s portworx/lcfs -g $MNT >/dev/null &
 sleep 10
 docker run hello-world
@@ -173,7 +173,7 @@ umount -f $MNT/plugins/*/rootfs/lcfs
 umount -f $MNT $MNT2 2>/dev/null
 sleep 10
 
-$LCFS $DEVICE $MNT $MNT2
+$LCFS daemon $DEVICE $MNT $MNT2
 sleep 10
 cd $MNT
 ls -ltRi > /dev/null
@@ -193,7 +193,7 @@ cd -
 umount -f $MNT $MNT2 2>/dev/null
 sleep 10
 
-$LCFS $DEVICE $MNT $MNT2
+$LCFS daemon $DEVICE $MNT $MNT2
 sleep 10
 cd $MNT
 
