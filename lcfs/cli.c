@@ -1,5 +1,6 @@
 #include <stdio.h>
-#include "includes.h"
+#include <stdint.h>
+#include <string.h>
 #include "lcfs.h"
 #include "version/version.h"
 
@@ -64,10 +65,12 @@ print_version() {
 
 int
 print_usage() {
+    cmd_group *grp;
+
 	printf("usage: lcfs [--help] [--version] <command> [<args>]\n\n");
 	printf("Commands:\n");
 
-	for (cmd_group *grp = lcfs_cmd_group; grp->cmd; grp++) {
+	for (grp = lcfs_cmd_group; grp->cmd; grp++) {
 		int pad = 20;
 		pad -= strlen(grp->cmd);
 		printf("  %s%*s%s\n", grp->cmd, pad, " ", grp->desc);
@@ -86,12 +89,14 @@ print_cmd_usage(cmd_group *grp) {
 
 int
 run_cli(int argc, char *argv[]) {
+    cmd_group *grp;
+
 	if (argc < 2) {
 		print_usage();
 		return -1;
 	}
 
-	for (cmd_group *grp = lcfs_cmd_group; grp->cmd; grp++) {
+	for (grp = lcfs_cmd_group; grp->cmd; grp++) {
 		if (!strcasecmp(argv[1], "--help")) {
 			return print_usage();
 		}
