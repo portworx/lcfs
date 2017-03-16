@@ -224,12 +224,19 @@ lc_removeRoot(struct fs *rfs, struct inode *dir, ino_t ino, bool rmdir,
 /* Release resources assocaited with a layer being deleted */
 void
 lc_releaseLayer(struct gfs *gfs, struct fs *fs) {
+    struct super *super = fs->fs_super;
+    struct fs *rfs = lc_getGlobalFs(gfs);
+
     assert(fs->fs_removed);
     lc_invalidateDirtyPages(gfs, fs);
     lc_invalidateInodePages(gfs, fs);
     lc_invalidateInodeBlocks(gfs, fs);
+    if (super->sb_extentCount) {
+        lc_blockFree(gfs, rfs, super->sb_extentBlock, super->sb_extentCount,
+                     true, true);
+    }
     if (fs->fs_sblock != LC_INVALID_BLOCK) {
-        lc_blockFree(gfs, lc_getGlobalFs(gfs), fs->fs_sblock, 1, true, true);
+        lc_blockFree(gfs, rfs, fs->fs_sblock, 1, true, true);
     }
     lc_processLayerBlocks(gfs, fs, false, true, false);
     lc_unlock(fs);

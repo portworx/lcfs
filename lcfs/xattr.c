@@ -487,6 +487,9 @@ lc_xattrFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     if (pcount) {
         block = lc_xattrFlushBlocks(gfs, fs, page, pcount);
         lc_replaceFreedExtents(fs, &inode->i_xattrExtents, block, pcount);
+    } else if (inode->i_xattrExtents) {
+        lc_addFreedExtents(fs, inode->i_xattrExtents, false);
+        inode->i_xattrExtents = NULL;
     }
     assert(size == 0);
 

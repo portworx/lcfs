@@ -429,6 +429,9 @@ lc_dirFlush(struct gfs *gfs, struct fs *fs, struct inode *dir) {
     if (count) {
         block = lc_dirFlushBlocks(gfs, fs, page, count);
         lc_replaceFreedExtents(fs, &dir->i_emapDirExtents, block, count);
+    } else if (dir->i_emapDirExtents) {
+        lc_addFreedExtents(fs, dir->i_emapDirExtents, false);
+        dir->i_emapDirExtents = NULL;
     }
 
     /* Update directory inode with the first directory block information */

@@ -1108,7 +1108,7 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino, int hash,
         } else {
 
             /* A file with no blocks is not sharing anything with parent */
-            inode->i_private = 0;
+            inode->i_private = 1;
         }
     } else if (S_ISDIR(inode->i_mode)) {
         if (parent->i_dirent) {

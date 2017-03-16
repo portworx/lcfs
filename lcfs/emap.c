@@ -293,6 +293,9 @@ lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     if (pcount) {
         block = lc_flushEmapBlocks(gfs, fs, page, pcount);
         lc_replaceFreedExtents(fs, &inode->i_emapDirExtents, block, pcount);
+    } else if (inode->i_emapDirExtents) {
+        lc_addFreedExtents(fs, inode->i_emapDirExtents, false);
+        inode->i_emapDirExtents = NULL;
     }
 
     /* Store the first emap block information in inode */
