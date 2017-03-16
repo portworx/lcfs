@@ -111,7 +111,7 @@ run_cli(int argc, char *argv[]) {
 		}
 	}
 
-	printf("Unknown command: %s\n", argv[1]);
+	printf("unknown command: %s\n", argv[1]);
 	print_usage();
 
 	return 0;
