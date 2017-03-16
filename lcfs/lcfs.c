@@ -1,4 +1,5 @@
 #include "includes.h"
+#include "cli.h"
 #include "version/version.h"
 
 static struct gfs *gfs;
@@ -15,12 +16,12 @@ getfs() {
 /* Display usage */
 static void
 usage(char *prog) {
-    fprintf(stderr, "usage: %s <device> <mnt> <mnt2> [-f] [-d]\n", prog);
-    fprintf(stderr, "\tdevice - device/file\n"
-                    "\tmnt    - mount point on host\n"
-                    "\tmnt2   - mount point propagated to plugin\n"
-                    "\t-f     - run foreground (optional)\n"
-                    "\t-d     - display debugging info (optional)\n");
+    fprintf(stderr, "usage: %s <device> <host-mnt> <plugin-mnt> [-f] [-d]\n", prog);
+    fprintf(stderr, "\tdevice        - device or file - image layers will be saved here\n"
+                    "\thost-mnt      - mount point on host\n"
+                    "\tplugin-mnt    - mount point propagated to plugin\n"
+                    "\t-f            - run foreground (optional)\n"
+                    "\t-d            - display debugging info (optional)\n");
 }
 
 /* Notify parent process completion */
@@ -267,7 +268,7 @@ lc_start(struct gfs *gfs, char *device, enum lc_mountId id) {
 
 /* Mount the specified device and start serving requests */
 int
-main(int argc, char *argv[]) {
+lcfs_main(int argc, char *argv[]) {
     int i, err = -1, waiter[2], fd;
     char *arg[argc + 1], completed;
     bool daemon = argc == 4;
@@ -448,4 +449,9 @@ out:
     lc_free(NULL, gfs, sizeof(struct gfs), LC_MEMTYPE_GFS);
     lc_displayGlobalMemStats();
     return err ? 1 : 0;
+}
+
+int
+main(int argc, char *argv[]) {
+	return run_cli(argc, argv);
 }

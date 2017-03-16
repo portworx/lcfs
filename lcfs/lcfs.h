@@ -29,4 +29,7 @@ struct pchange {
     char ch_path[0];
 } __attribute__((packed));
 
+int
+lcfs_main(int argc, char *argv[]);
+
 #endif

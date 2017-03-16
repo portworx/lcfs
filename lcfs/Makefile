@@ -35,7 +35,7 @@ endif  # test CHECK_LZMA_LIBS
 LDFLAGS=-lz -pthread $(LCFS_STATIC_LIBS) -lstdc++ -lm -ldl $(LCFS_LZMA_LIBS)
 endif  # STATIC
 
-COBJ=lcfs.o memory.o fops.o super.o io.o extent.o block.o fs.o inode.o dir.o emap.o bcache.o page.o xattr.o layer.o hlink.o diff.o stats.o debug.o
+COBJ=lcfs.o memory.o fops.o super.o io.o extent.o block.o fs.o inode.o dir.o emap.o bcache.o page.o xattr.o layer.o hlink.o diff.o stats.o debug.o cargo.o cli.o
 ifeq ($(UNAME),Linux)
 OBJ=$(COBJ) linux.o
 else

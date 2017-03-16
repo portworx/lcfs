@@ -465,7 +465,7 @@ fi
 ${SUDO} mkdir -p ${PLUGIN_MNT} ${DOCKER_MNT}
 
 # Mount lcfs
-${SUDO} ${LCFS_BINARY} ${DEV} ${DOCKER_MNT} ${PLUGIN_MNT}
+${SUDO} ${LCFS_BINARY} daemon ${DEV} ${DOCKER_MNT} ${PLUGIN_MNT}
 LSTATUS=$?
 sleep 3
 [ -z "$(ps -C lcfs -o pid,command --no-header)" -o ${LSTATUS} -ne 0 ] && echo "Failed to start LCFS binary [${LSTATUS}]." && cleanup_and_exit ${LSTATUS}
