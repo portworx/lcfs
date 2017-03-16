@@ -160,7 +160,7 @@ lc_destroyPages(struct gfs *gfs, struct fs *fs, bool remove) {
     all = (fs->fs_parent == NULL);
 
     /* No need to process individual layers during an unmount */
-    if (!all && (!remove || (gindex == 0))) {
+    if (!all && (!remove || (gindex <= 0))) {
         fs->fs_bcache = NULL;
         return;
     }
@@ -368,10 +368,6 @@ lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
     assert(page->p_block == LC_INVALID_BLOCK);
     assert(page->p_refCount == 1);
     page->p_block = block;
-    if (!fs->fs_readOnly && !(fs->fs_super->sb_flags & LC_SUPER_INIT)) {
-        page->p_lindex = fs->fs_gindex;
-        fs->fs_pinval = fs->fs_gindex;
-    }
     page->p_nocache = 1;
     lhash = lc_pcLockHash(fs, hash);
     cpage = pcache[hash].pc_head;
@@ -421,6 +417,11 @@ retry:
 
         /* If a page is found, increment reference count */
         page->p_refCount++;
+        if (page->p_lindex != gindex) {
+
+            /* If a page is shared by many layers, untag it */
+            page->p_lindex = 0;
+        }
     } else if (new) {
 
         /* If page is not found, instantiate one */
@@ -437,8 +438,9 @@ retry:
     if (page == NULL) {
         new = lc_newPage(gfs, fs);
         assert(!new->p_dvalid);
-        if (!fs->fs_readOnly && !(fs->fs_super->sb_flags & LC_SUPER_INIT)) {
-            new->p_lindex = gindex;
+        new->p_lindex = gindex;
+        if ((fs->fs_pinval != -1) && !fs->fs_readOnly &&
+            !(fs->fs_super->sb_flags & LC_SUPER_INIT)) {
             fs->fs_pinval = gindex;
         }
         goto retry;
@@ -448,12 +450,6 @@ retry:
     if (new) {
         new->p_refCount = 0;
         lc_freePage(gfs, fs, new);
-    }
-
-    if (page->p_lindex != gindex) {
-
-        /* If a page is shared by many layers, untag it */
-        page->p_lindex = 0;
     }
 
     /* If page is missing data, read from disk */
@@ -513,6 +509,7 @@ lc_getPageNoBlock(struct gfs *gfs, struct fs *fs, char *data,
     struct page *page = lc_newPage(gfs, fs);
 
     page->p_data = data;
+    page->p_lindex = fs->fs_gindex;
     page->p_dvalid = 1;
     page->p_dnext = prev;
     return page;

@@ -1329,16 +1329,16 @@ lc_moveInodes(struct fs *fs, struct fs *cfs) {
         prev = &fs->fs_icache[i].ic_head;
         while (pinode) {
             count++;
-            if (pinode->i_flags & LC_INODE_REMOVED) {
-                prev = &pinode->i_cnext;
-                pinode = pinode->i_cnext;
-                continue;
-            }
             assert(pinode->i_dinode.di_blocks == 0);
             assert(!(pinode->i_flags & LC_INODE_DISK));
             assert(pinode->i_emapDirExtents == NULL);
             assert(pinode->i_xattrData == NULL);
             assert(pinode->i_ocount == 0);
+            if (pinode->i_flags & LC_INODE_REMOVED) {
+                prev = &pinode->i_cnext;
+                pinode = pinode->i_cnext;
+                continue;
+            }
             *prev = pinode->i_cnext;
             inode = pinode;
             pinode = pinode->i_cnext;
@@ -1390,14 +1390,12 @@ lc_moveInodes(struct fs *fs, struct fs *cfs) {
 
 /* Move the root inode from one layer to another */
 void
-lc_moveRootInode(struct fs *cfs, struct fs *fs) {
+lc_moveRootInode(struct gfs *gfs, struct fs *cfs, struct fs *fs) {
     struct inode *dir = cfs->fs_rootInode, *inode;
-    int hash = lc_inodeHash(cfs, dir->i_ino);
+    ino_t root = dir->i_ino;
+    int hash = lc_inodeHash(cfs, root);
 
     assert(dir->i_ocount == 0);
-    assert(dir->i_dinode.di_blocks == 0);
-    assert(!(dir->i_flags & LC_INODE_DISK));
-    assert(dir->i_emapDirExtents == NULL);
     assert(dir->i_xattrData == NULL);
     if (cfs->fs_icache[hash].ic_head == dir) {
         cfs->fs_icache[hash].ic_head = dir->i_cnext;
@@ -1407,6 +1405,17 @@ lc_moveRootInode(struct fs *cfs, struct fs *fs) {
             inode = inode->i_cnext;
         }
         inode->i_cnext = dir->i_cnext;
+    }
+
+    /* Insert a dummy inode if this directory is already on disk */
+    if (dir->i_flags & LC_INODE_DISK) {
+        inode = lc_newInode(cfs, 0, false, false, true, false);
+        lc_dinodeInit(inode, root, S_IFDIR | 0755, 0, 0, 0, 0, root);
+        lc_addInode(cfs, inode, -1, false, NULL, NULL);
+        inode->i_nlink = 0;
+        inode->i_flags |= LC_INODE_REMOVED | LC_INODE_DISK;
+        cfs->fs_ricount++;
+        lc_markInodeDirty(inode, LC_INODE_DIRDIRTY);
     }
     dir->i_fs = fs;
     lc_addInode(fs, dir, -1, false, NULL, NULL);
@@ -1425,7 +1434,7 @@ lc_swapRootInode(struct fs *fs, struct fs *cfs) {
     assert(cdir->i_fs == fs);
     assert(dir->i_fs == cfs);
     assert(dir->i_emapDirExtents == NULL);
-    assert(cdir->i_emapDirExtents == NULL);
+    assert(!(dir->i_flags & LC_INODE_DISK));
     assert(dir->i_xattrData == NULL);
     assert(cdir->i_xattrData == NULL);
     memcpy(&dinode, &dir->i_dinode, sizeof(struct dinode));
@@ -1437,16 +1446,20 @@ lc_swapRootInode(struct fs *fs, struct fs *cfs) {
     cdir->i_parent = cfs->fs_root;
     block = dir->i_flags & LC_INODE_DISK;
     if (cdir->i_flags & LC_INODE_DISK) {
-        if (block) {
+        if (!block) {
             dir->i_flags |= LC_INODE_DISK;
         }
-    } else if (!block) {
+    } else if (block) {
         dir->i_flags &= ~LC_INODE_DISK;
     }
     if (block) {
         cdir->i_flags |= LC_INODE_DISK;
     } else {
         cdir->i_flags &= ~LC_INODE_DISK;
+    }
+    if (cdir->i_emapDirExtents) {
+        dir->i_emapDirExtents = cdir->i_emapDirExtents;
+        cdir->i_emapDirExtents = NULL;
     }
     dir->i_dirent = cdir->i_dirent;
     cdir->i_dirent = dirent;

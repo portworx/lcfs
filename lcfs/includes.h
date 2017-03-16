@@ -76,7 +76,8 @@ void lc_waitMemory(bool wait);
 void lc_memUpdateTotal(struct fs *fs, size_t size);
 void lc_memTransferCount(struct fs *fs, struct fs *rfs, uint64_t count,
                          enum lc_memTypes type);
-void lc_memTransferExtents(struct gfs *gfs, struct fs *fs, struct fs *cfs);
+void lc_memTransferExtents(struct gfs *gfs, struct fs *fs, struct fs *cfs,
+                           struct extent *extent);
 void lc_checkMemStats(struct fs *fs, bool unmount);
 void lc_displayGlobalMemStats();
 void lc_displayMemStats(struct fs *fs);
@@ -178,7 +179,7 @@ void lc_inodeUnlock(struct inode *inode);
 void lc_invalidateInodePages(struct gfs *gfs, struct fs *fs);
 void lc_invalidateLayerPages(struct gfs *gfs, struct fs *fs);
 void lc_moveInodes(struct fs *fs, struct fs *cfs);
-void lc_moveRootInode(struct fs *cfs, struct fs *fs);
+void lc_moveRootInode(struct gfs *gfs, struct fs *cfs, struct fs *fs);
 void lc_cloneInodes(struct gfs *gfs, struct fs *fs, struct fs *pfs);
 void lc_switchInodeParent(struct fs *fs, ino_t root);
 void lc_swapRootInode(struct fs *fs, struct fs *cfs);
@@ -288,7 +289,6 @@ void lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
 void lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name);
 int lc_removeRoot(struct fs *rfs, struct inode *dir, ino_t ino, bool rmdir,
                   void **fsp);
-void lc_releaseLayer(struct gfs *gfs, struct fs *fs);
 void lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
                    enum ioctl_cmd cmd);
 void lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *name,

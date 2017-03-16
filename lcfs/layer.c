@@ -222,21 +222,21 @@ lc_removeRoot(struct fs *rfs, struct inode *dir, ino_t ino, bool rmdir,
 }
 
 /* Release resources assocaited with a layer being deleted */
-void
-lc_releaseLayer(struct gfs *gfs, struct fs *fs) {
+static void
+lc_releaseLayer(struct gfs *gfs, struct fs *fs, struct fs *rfs,
+                struct extent **extents) {
     struct super *super = fs->fs_super;
-    struct fs *rfs = lc_getGlobalFs(gfs);
 
     assert(fs->fs_removed);
     lc_invalidateDirtyPages(gfs, fs);
     lc_invalidateInodePages(gfs, fs);
     lc_invalidateInodeBlocks(gfs, fs);
     if (super->sb_extentCount) {
-        lc_blockFree(gfs, rfs, super->sb_extentBlock, super->sb_extentCount,
-                     false, false);
+        lc_addSpaceExtent(gfs, rfs, extents, super->sb_extentBlock,
+                          super->sb_extentCount, true);
     }
     if (fs->fs_sblock != LC_INVALID_BLOCK) {
-        lc_blockFree(gfs, rfs, fs->fs_sblock, 1, false, false);
+        lc_addSpaceExtent(gfs, rfs, extents, fs->fs_sblock, 1, true);
     }
     lc_processLayerBlocks(gfs, fs, false, true, false);
     lc_unlock(fs);
@@ -247,6 +247,7 @@ lc_releaseLayer(struct gfs *gfs, struct fs *fs) {
 void
 lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
     struct fs *fs = NULL, *rfs, *bfs = NULL, *zfs;
+    struct extent *extents = NULL;
     struct inode *pdir = NULL;
     struct timeval start;
     int err = 0;
@@ -293,7 +294,7 @@ lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
 
 retry:
     zfs = fs->fs_zfs;
-    lc_releaseLayer(gfs, fs);
+    lc_releaseLayer(gfs, fs, rfs, &extents);
     if (zfs) {
 
         /* Remove zombie parent layer */
@@ -313,6 +314,11 @@ retry:
                                 gfs->gfs_ch[LC_LAYER_MOUNT],
 #endif
                                 gfs->gfs_layerRoot, root, name, strlen(name));
+    if (extents) {
+        lc_blockFreeExtents(gfs, rfs, extents,
+                            LC_EXTENT_EFREE | LC_EXTENT_LAYER);
+    }
+
 out:
     lc_statsAdd(rfs, LC_LAYER_REMOVE, err, &start);
     lc_unlock(rfs);
@@ -474,8 +480,9 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
 void
 lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
                struct fuse_file_info *fi) {
+    struct fs *rfs, *cfs, *pfs, *tfs, *bfs = NULL;
     int gindex = fs->fs_gindex, newgindex;
-    struct fs *rfs, *cfs, *pfs, *tfs;
+    struct extent *extents = NULL;
     struct gfs *gfs = fs->fs_gfs;
     struct fuse_entry_param e;
     struct inode *dir;
@@ -499,6 +506,7 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
 
     /* Respond after locking all layers */
     fuse_reply_create(req, &e, fi);
+    assert(fs->fs_aextents == NULL);
 
     /* Clone inodes shared with parent layers */
     tfs = pfs;
@@ -524,7 +532,7 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
      * There could be open handles on inodes.
      */
     lc_moveInodes(fs, cfs);
-    lc_moveRootInode(cfs, fs);
+    lc_moveRootInode(gfs, cfs, fs);
 
     /* Swap information in root inodes */
     lc_swapRootInode(fs, cfs);
@@ -539,8 +547,8 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
     lc_switchInodeParent(cfs, root);
     cfs->fs_readOnly = fs->fs_readOnly;
     fs->fs_readOnly = false;
-    fs->fs_pinval = 0;
-    cfs->fs_pinval = 0;
+    fs->fs_pinval = -1;
+    cfs->fs_pinval = -1;
     blocks = cfs->fs_mcount;
     cfs->fs_mcount = fs->fs_mcount;
     fs->fs_mcount = blocks;
@@ -605,12 +613,21 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
     lc_markSuperDirty(cfs);
     lc_markSuperDirty(pfs);
     lc_markSuperDirty(fs);
+    if (tfs) {
+        bfs = fs->fs_rfs;
+        lc_lock(bfs, false);
+    }
     lc_unlock(fs);
     lc_unlock(pfs);
     lc_unlock(cfs);
     if (tfs) {
         lc_lock(tfs, true);
-        lc_releaseLayer(gfs, tfs);
+        lc_releaseLayer(gfs, tfs, rfs, &extents);
+        lc_unlock(bfs);
+        if (extents) {
+            lc_blockFreeExtents(gfs, rfs, extents,
+                                LC_EXTENT_EFREE | LC_EXTENT_LAYER);
+        }
     }
     lc_unlock(rfs);
 }

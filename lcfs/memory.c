@@ -174,28 +174,18 @@ lc_memTransferCount(struct fs *fs, struct fs *rfs, uint64_t count,
 
 /* Swap memory allocated for extents */
 void
-lc_memTransferExtents(struct gfs *gfs, struct fs *fs, struct fs *cfs) {
-    uint64_t i, j;
+lc_memTransferExtents(struct gfs *gfs, struct fs *fs, struct fs *cfs,
+                      struct extent *extent) {
+    uint64_t count;
 
-    if (!memStatsEnabled) {
+    if (!memStatsEnabled || (extent == NULL)) {
         return;
     }
-    i = lc_countExtents(gfs, fs->fs_aextents, NULL);
-    i += lc_countExtents(gfs, fs->fs_fextents, NULL);
-
-    j = lc_countExtents(gfs, cfs->fs_aextents, NULL);
-    j += lc_countExtents(gfs, cfs->fs_fextents, NULL);
-    if (i == j) {
-        return;
-    }
-    if (i > j) {
-        lc_memTransferCount(fs, cfs, i - j, LC_MEMTYPE_EXTENT);
-    } else {
-        lc_memTransferCount(cfs, fs, j - i, LC_MEMTYPE_EXTENT);
-    }
+    count = lc_countExtents(gfs, extent, NULL);
+    lc_memTransferCount(fs, cfs, count, LC_MEMTYPE_EXTENT);
 }
 
-/* Allocart requested amount of memory for the specified purpose */
+/* Allocate requested amount of memory for the specified purpose */
 void *
 lc_malloc(struct fs *fs, size_t size, enum lc_memTypes type) {
     lc_memStatsUpdate(fs, size, true, type);

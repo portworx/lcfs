@@ -842,7 +842,7 @@ lc_commit(struct gfs *gfs) {
                 return;
             }
             rcu_read_unlock();
-            if (fs->fs_mcount) {
+            if (fs->fs_mcount || gfs->gfs_layerInProgress) {
                 lc_unlock(fs);
                 rcu_unregister_thread();
                 return;
@@ -866,7 +866,7 @@ lc_commit(struct gfs *gfs) {
         }
         rcu_read_unlock();
         assert(gindex == fs->fs_gindex);
-        if (fs->fs_mcount) {
+        if (fs->fs_mcount || gfs->gfs_layerInProgress) {
             lc_unlock(fs);
             rcu_unregister_thread();
             return;
