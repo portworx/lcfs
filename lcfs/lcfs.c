@@ -1,5 +1,4 @@
 #include "includes.h"
-#include "cli.h"
 #include "version/version.h"
 
 static struct gfs *gfs;
@@ -449,9 +448,4 @@ out:
     lc_free(NULL, gfs, sizeof(struct gfs), LC_MEMTYPE_GFS);
     lc_displayGlobalMemStats();
     return err ? 1 : 0;
-}
-
-int
-main(int argc, char *argv[]) {
-	return run_cli(argc, argv);
 }
