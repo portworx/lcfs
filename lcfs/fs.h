@@ -303,6 +303,12 @@ struct fs {
     /* Extents allocated and freed in layer and can be reused */
     struct extent *fs_rextents;
 
+#ifdef DEBUG
+
+    /* Extents used for inodes */
+    struct extent *fs_iextents;
+#endif
+
     /* Blocks reserved */
     uint64_t fs_reservedBlocks;
 

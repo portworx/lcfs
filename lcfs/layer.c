@@ -478,7 +478,6 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
     struct fs *rfs, *cfs, *pfs, *tfs;
     struct gfs *gfs = fs->fs_gfs;
     struct fuse_entry_param e;
-    struct extent *extent;
     struct inode *dir;
     uint64_t blocks;
     ino_t root;
@@ -488,7 +487,8 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
     e.ino = lc_setHandle(fs->fs_gindex, e.attr.st_ino);
     lc_epInit(&e);
     rfs = lc_getLayerLocked(LC_ROOT_INODE, false);
-    root = lc_getRootIno(rfs, layer + strlen(LC_COMMIT_TRIGGER_PREFIX), NULL, true);
+    root = lc_getRootIno(rfs, layer + strlen(LC_COMMIT_TRIGGER_PREFIX),
+                         NULL, true);
     assert(root != LC_INVALID_INODE);
     lc_unlock(fs);
     cfs = lc_getLayerLocked(root, true);
@@ -541,28 +541,6 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
     fs->fs_readOnly = false;
     fs->fs_pinval = 0;
     cfs->fs_pinval = 0;
-
-    /* Swap extent lists */
-    lc_memTransferExtents(gfs, fs, cfs);
-    extent = cfs->fs_aextents;
-    cfs->fs_aextents = fs->fs_aextents;
-    fs->fs_aextents = extent;
-    extent = cfs->fs_fextents;
-    cfs->fs_fextents = fs->fs_fextents;
-    fs->fs_fextents = extent;
-    extent = cfs->fs_mextents;
-    cfs->fs_mextents = fs->fs_mextents;
-    fs->fs_mextents = extent;
-    extent = cfs->fs_rextents;
-    cfs->fs_rextents = fs->fs_rextents;
-    fs->fs_rextents = extent;
-    blocks = cfs->fs_blocks;
-    cfs->fs_blocks = fs->fs_blocks;
-    fs->fs_blocks = blocks;
-    blocks = cfs->fs_freed;
-    cfs->fs_freed = fs->fs_freed;
-    fs->fs_freed = blocks;
-
     blocks = cfs->fs_mcount;
     cfs->fs_mcount = fs->fs_mcount;
     fs->fs_mcount = blocks;

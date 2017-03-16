@@ -665,6 +665,7 @@ lc_mount(struct gfs *gfs, char *device, size_t size) {
         fs = lc_getGlobalFs(gfs);
         lc_setupSpecialInodes(gfs, fs);
         lc_cleanupAfterRestart(gfs, fs);
+        lc_validate(gfs);
     }
     fs->fs_mcount = 1;
     lc_unlock(fs);
@@ -735,7 +736,7 @@ lc_syncAllLayers(struct gfs *gfs) {
         fs = gfs->gfs_fs[i];
         if (fs) {
             lc_lock(fs, true);
-            lc_sync(gfs, fs, true);
+            lc_sync(gfs, fs, fs->fs_child == NULL);
             lc_processLayerBlocks(gfs, fs, true, false, false);
             lc_flushDirtyPages(gfs, fs);
             lc_unlock(fs);

@@ -609,12 +609,18 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
         lc_printf("Rewriting inodes, pcount %ld bcount %ld\n", pcount, bcount);
         lc_markAllInodesDirty(gfs, fs);
         lc_addFreedExtents(fs, extents, true);
+#ifdef DEBUG
+    } else {
+        extent = extents;
+        fs->fs_iextents = extent;
+#else
     } else while (extents) {
 
         /* Release extents used to track inode blocks */
         extent = extents;
         extents = extents->ex_next;
         lc_free(fs, extent, sizeof(struct extent), LC_MEMTYPE_EXTENT);
+#endif
     }
 }
 
@@ -1389,6 +1395,9 @@ lc_moveRootInode(struct fs *cfs, struct fs *fs) {
     int hash = lc_inodeHash(cfs, dir->i_ino);
 
     assert(dir->i_ocount == 0);
+    assert(dir->i_dinode.di_blocks == 0);
+    assert(!(dir->i_flags & LC_INODE_DISK));
+    assert(dir->i_emapDirExtents == NULL);
     assert(dir->i_xattrData == NULL);
     if (cfs->fs_icache[hash].ic_head == dir) {
         cfs->fs_icache[hash].ic_head = dir->i_cnext;
@@ -1408,7 +1417,6 @@ lc_moveRootInode(struct fs *cfs, struct fs *fs) {
 void
 lc_swapRootInode(struct fs *fs, struct fs *cfs) {
     struct inode *dir = fs->fs_rootInode, *cdir = cfs->fs_rootInode;
-    struct extent *extent = dir->i_emapDirExtents;
     struct dirent *dirent = dir->i_dirent;
     uint32_t flags = dir->i_flags;
     struct dinode dinode;
@@ -1416,6 +1424,10 @@ lc_swapRootInode(struct fs *fs, struct fs *cfs) {
 
     assert(cdir->i_fs == fs);
     assert(dir->i_fs == cfs);
+    assert(dir->i_emapDirExtents == NULL);
+    assert(cdir->i_emapDirExtents == NULL);
+    assert(dir->i_xattrData == NULL);
+    assert(cdir->i_xattrData == NULL);
     memcpy(&dinode, &dir->i_dinode, sizeof(struct dinode));
     memcpy(&dir->i_dinode, &cdir->i_dinode, sizeof(struct dinode));
     memcpy(&cdir->i_dinode, &dinode, sizeof(struct dinode));
@@ -1436,8 +1448,6 @@ lc_swapRootInode(struct fs *fs, struct fs *cfs) {
     } else {
         cdir->i_flags &= ~LC_INODE_DISK;
     }
-    dir->i_emapDirExtents = cdir->i_emapDirExtents;
-    cdir->i_emapDirExtents = extent;
     dir->i_dirent = cdir->i_dirent;
     cdir->i_dirent = dirent;
     dir->i_flags = cdir->i_flags;

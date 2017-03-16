@@ -16,6 +16,8 @@
 #define _GNU_SOURCE
 #define URCU_INLINE_SMALL_FUNCTIONS
 
+//#define DEBUG
+
 #include <fuse_lowlevel.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -318,4 +320,9 @@ void lc_displayStatsAll(struct gfs *gfs);
 void lc_displayGlobalStats(struct gfs *gfs);
 void lc_statsDeinit(struct fs *fs);
 
+#ifdef DEBUG
+void lc_validate(struct gfs *gfs);
+#else
+#define lc_validate(gfs)
+#endif
 #endif
