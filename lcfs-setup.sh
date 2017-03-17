@@ -156,7 +156,7 @@ function system_docker_stop()
     local sysd_pid=$(ps -C systemd -o pid --no-header)
     local sysV_docker="/etc/init.d/docker"
 
-    [ -n "${sysd_pid}" ] && sudo systemctl stop docker          # Systemd stop
+    [ -n "${sysd_pid}" ] && ${SUDO} systemctl stop docker          # Systemd stop
     [ -e "${sysV_docker}" ] && ${SUDO} /etc/init.d/docker stop; # SystemV stop
     killprocess ${DOCKER_SRV_BIN};                              # last resort
 }
