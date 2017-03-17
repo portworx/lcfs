@@ -96,7 +96,7 @@ You can start lcfs as follows:
 ```
 # cd lcfs/lcfs
 # mkdir -p /mnt1 /mnt2
-# sudo lcfs /dev/sdb /mnt1 /mnt2
+# sudo lcfs daemon /dev/sdb /mnt1 /mnt2
 # mount
 ```
 
@@ -109,8 +109,13 @@ Now you can use `/mnt1` and `/mnt2` as regular file systems to test that lcfs is
 To unmount lcfs, run:
 ```
 # sudo fusermount -u /mnt2
+# sudo fusermount -u /mnt1
 ```
 
-To display lcfs stats, run "cstat 'id' [-c]" from the 'mnt'/lcfs directory.  Create lcfs directory if that does not exist.  'id' is the name of the layer.  Specifying '.' as id will display stats for all layers.  If -c is specified, existing stats will be cleared.  Normally, stats are displayed whenever a layer is deleted/unmounted.  
+To display lcfs stats, run "lcfsctl /lcfs stats 'id' [-c]".  Create /lcfs/lcfs directory if that does not exist.  'id' is the name of the layer.  Specifying '.' as id will display stats for all layers.  If -c is specified, existing stats will be cleared.  Normally, stats are displayed whenever a layer is deleted/unmounted.  
+
+By default, syncer attempts to create checkpoint of the file system every minute.  This could be changed by running the command "lcfsctl /lcfs syncer time".
+
+By default, lcfs page cache is limited to around 512MB.  This could be changed by running the command "lcfsctl /lcfs pcache memory".
 
 For recreating the file system, unmount it and zero out the first block (4KB) of the device/file and remount the device/file.
