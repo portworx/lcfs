@@ -5,7 +5,6 @@ MNT2=/lcfs
 LCFS=$PWD/lcfs
 XATTR=$PWD/testxattr
 TESTDIFF=$PWD/testdiff
-CSTAT=$PWD/lcfsctl
 
 umount -f $MNT $MNT2 2>/dev/null
 sleep 10
@@ -135,9 +134,9 @@ sleep 10
 docker run hello-world
 
 cd $MNT/lcfs
-$CSTAT $MNT stats .
-$CSTAT $MNT syncer 10
-$CSTAT $MNT pcache 520
+$LCFS stats $MNT .
+$LCFS syncer $MNT 10
+$LCFS pcache $MNT 520
 for layer in *
 do
     $TESTDIFF $layer

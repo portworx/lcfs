@@ -4,11 +4,23 @@
 #define PROG_NAME "lcfs"
 
 typedef struct cmd_group {
+
+    /* Sub-command */
     char *cmd;
+
+    /* Description */
     char *desc;
+
+    /* Usage */
     char *usage;
+
+    /* Help text */
     char *help;
+
+    /* Minimum number of arguments */
     int min;
+
+    /* Function to invoke */
     int (*func)(int argc, char *argv[]);
 } cmd_group;
 
@@ -18,11 +30,10 @@ cmd_daemon(int argc, char *argv[]) {
     return lcfs_main(argc, argv);
 }
 
-/* Collect stats */
+/* Adjust syncer frequency */
 static int
-cmd_stats(int argc, char *argv[]) {
-    fprintf(stderr, "not implemented\n");
-    return 0;
+cmd_ioctl(int argc, char *argv[]) {
+    return ioctl_main(argc, argv);
 }
 
 static struct
@@ -43,10 +54,30 @@ cmd_group lcfs_cmd_group[] = {
     {
         "stats",
         "Display lcfs stats",
-        "",
-        "",
-        0,
-        cmd_stats
+        "<mnt> <id> [-c]",
+        "\tmnt     - mount point\n"
+        "\tid      - layer name or .\n"
+        "\t[-c]    - clear stats (optional)\n",
+        2,
+        cmd_ioctl
+    },
+    {
+        "syncer",
+        "Adjust syncer frequency (default 1 minute)",
+        "<mnt> <seconds>",
+        "\tmnt     - mount point\n"
+        "\tseconds - time in seconds, 0 to disable (default 1 minute)\n",
+        2,
+        cmd_ioctl
+    },
+    {
+        "pcache",
+        "Adjust page cache memory limit (default 512MB)",
+        "<mnt> <limit>",
+        "\tmnt     - mount point\n"
+        "\tlimit   - memory limit in MB (default 512MB)\n",
+        2,
+        cmd_ioctl
     },
     {NULL},
 };
@@ -78,7 +109,7 @@ print_usage() {
 static int
 print_cmd_usage(cmd_group *grp) {
     printf("usage: %s %s %s\n", PROG_NAME, grp->cmd, grp->usage);
-    printf("%s\n", grp->help);
+    printf("%s", grp->help);
     return 0;
 }
 

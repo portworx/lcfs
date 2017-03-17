@@ -35,26 +35,23 @@ endif  # test CHECK_LZMA_LIBS
 LDFLAGS=-lz -pthread $(LCFS_STATIC_LIBS) -lstdc++ -lm -ldl $(LCFS_LZMA_LIBS)
 endif  # STATIC
 
-COBJ=lcfs.o memory.o fops.o super.o io.o extent.o block.o fs.o inode.o dir.o emap.o bcache.o page.o xattr.o layer.o hlink.o diff.o stats.o debug.o cli.o
+COBJ=cli.o daemon.o ioctl.o memory.o fops.o super.o io.o extent.o block.o fs.o inode.o dir.o emap.o bcache.o page.o xattr.o layer.o hlink.o diff.o stats.o debug.o
 ifeq ($(UNAME),Linux)
 OBJ=$(COBJ) linux.o
 else
 OBJ=$(COBJ) apple.o
 endif
 
-all: lcfs lcfsctl
+all: lcfs
 
 lcfs: version $(OBJ)
 	$(CC) $(OBJ) -o $@ $(CFLAGS) $(LDFLAGS)
-
-lcfsctl: version lcfsctl.o
-	$(CC) lcfsctl.o -o $@ $(CFLAGS) $(LDFLAGS)
 
 version:
 	@(mkdir -p version && cd version && ../version_gen.sh)
 
 clean:
-	rm -fr *.o lcfs lcfsctl testxattr testdiff
+	rm -fr *.o lcfs testxattr testdiff
 
 testxattr: testxattr.o
 	$(CC) $^ -o $@ $(CFLAGS) $(LDFLAGS)
@@ -62,7 +59,7 @@ testxattr: testxattr.o
 testdiff: testdiff.o
 	$(CC) $^ -o $@ $(CFLAGS) $(LDFLAGS)
 
-test: lcfs lcfsctl testxattr testdiff
+test: lcfs testxattr testdiff
 	sudo ./test.sh
 
 rpm:

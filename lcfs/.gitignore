@@ -1,9 +1,9 @@
 *.o
 
 version
-lcfsctl
 lcfs
 testxattr
+testdiff
 tags
 TAGS
 cscope.*
