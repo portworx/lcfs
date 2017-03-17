@@ -917,11 +917,16 @@ lc_syncer(void *data) {
 
     interval.tv_nsec = 0;
     while (!gfs->gfs_unmounting) {
-        gettimeofday(&now, NULL);
-        interval.tv_sec = now.tv_sec + gfs->gfs_syncInterval;
-        pthread_mutex_lock(&gfs->gfs_slock);
-        pthread_cond_timedwait(&gfs->gfs_syncerCond, &gfs->gfs_slock,
-                               &interval);
+        if (gfs->gfs_syncInterval == 0) {
+            pthread_mutex_lock(&gfs->gfs_slock);
+            pthread_cond_wait(&gfs->gfs_syncerCond, &gfs->gfs_slock);
+        } else {
+            gettimeofday(&now, NULL);
+            interval.tv_sec = now.tv_sec + gfs->gfs_syncInterval;
+            pthread_mutex_lock(&gfs->gfs_slock);
+            pthread_cond_timedwait(&gfs->gfs_syncerCond, &gfs->gfs_slock,
+                                   &interval);
+        }
         pthread_mutex_unlock(&gfs->gfs_slock);
         if (!gfs->gfs_unmounting) {
             lc_commit(gfs);
