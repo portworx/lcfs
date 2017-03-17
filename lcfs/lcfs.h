@@ -11,6 +11,8 @@ enum ioctl_cmd {
     LAYER_STAT = 106,               /* Display global or layer stats */
     UMOUNT_ALL = 107,               /* Unmount all layers */
     CLEAR_STAT = 108,               /* Clear stats for a layer */
+    SYNCER_TIME = 109,              /* Adjust syncer frequency */
+    DCACHE_MEMORY = 110,            /* Adjust data pcache size */
 };
 
 /* Prefix of fake file name used to trigger layer commit */
@@ -28,8 +30,5 @@ struct pchange {
     /* Path - Variable length */
     char ch_path[0];
 } __attribute__((packed));
-
-int
-lcfs_main(int argc, char *argv[]);
 
 #endif

@@ -458,6 +458,7 @@ lc_gfsInit(struct gfs *gfs) {
     lc_mallocBlockAligned(NULL, (void **)&gfs->gfs_zPage, LC_MEMTYPE_GFS);
     memset(gfs->gfs_zPage, 0, LC_BLOCK_SIZE);
     memset(gfs->gfs_roots, 0, sizeof(ino_t) * LC_LAYER_MAX);
+    gfs->gfs_syncInterval = LC_SYNC_INTERVAL;
     pthread_cond_init(&gfs->gfs_mcond, NULL);
     pthread_cond_init(&gfs->gfs_flusherCond, NULL);
     pthread_cond_init(&gfs->gfs_cleanerCond, NULL);
@@ -749,6 +750,8 @@ lc_unmount(struct gfs *gfs) {
 
     assert(gfs->gfs_unmounting);
     lc_lock(fs, true);
+    assert(fs->fs_mcount == 1);
+    fs->fs_mcount = 0;
 
     /* Flush dirty data before destroying file systems since layers may be out
      * of order in the file system table and parent layers should not be
@@ -807,7 +810,7 @@ lc_commitRoot(struct gfs *gfs, int count) {
             assert(err == 0);
         }
         gfs->gfs_syncRequired -= count;
-        lc_printf("file system committed to disk\n");
+        printf("file system committed to disk\n");
     }
     lc_unlock(fs);
 }
@@ -915,7 +918,7 @@ lc_syncer(void *data) {
     interval.tv_nsec = 0;
     while (!gfs->gfs_unmounting) {
         gettimeofday(&now, NULL);
-        interval.tv_sec = now.tv_sec + LC_SYNC_INTERVAL;
+        interval.tv_sec = now.tv_sec + gfs->gfs_syncInterval;
         pthread_mutex_lock(&gfs->gfs_slock);
         pthread_cond_timedwait(&gfs->gfs_syncerCond, &gfs->gfs_slock,
                                &interval);

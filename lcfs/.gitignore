@@ -1,7 +1,7 @@
 *.o
 
 version
-cstat
+lcfsctl
 lcfs
 testxattr
 tags

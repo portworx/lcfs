@@ -42,19 +42,19 @@ else
 OBJ=$(COBJ) apple.o
 endif
 
-all: lcfs cstat
+all: lcfs lcfsctl
 
 lcfs: version $(OBJ)
 	$(CC) $(OBJ) -o $@ $(CFLAGS) $(LDFLAGS)
 
-cstat: version cstat.o
-	$(CC) cstat.o -o $@ $(CFLAGS) $(LDFLAGS)
+lcfsctl: version lcfsctl.o
+	$(CC) lcfsctl.o -o $@ $(CFLAGS) $(LDFLAGS)
 
 version:
 	@(mkdir -p version && cd version && ../version_gen.sh)
 
 clean:
-	rm -fr *.o lcfs cstat testxattr testdiff
+	rm -fr *.o lcfs lcfsctl testxattr testdiff
 
 testxattr: testxattr.o
 	$(CC) $^ -o $@ $(CFLAGS) $(LDFLAGS)
@@ -62,7 +62,7 @@ testxattr: testxattr.o
 testdiff: testdiff.o
 	$(CC) $^ -o $@ $(CFLAGS) $(LDFLAGS)
 
-test: lcfs cstat testxattr testdiff
+test: lcfs lcfsctl testxattr testdiff
 	sudo ./test.sh
 
 rpm:

@@ -143,6 +143,7 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
     if (rmdir || S_ISDIR(inode->i_mode)) {
         assert(inode->i_parent == dir->i_ino);
         assert(S_ISDIR(inode->i_mode));
+        assert(inode != fs->fs_rootInode);
 
         /* Allow directory removals from the root file system even when
          * directories are not empty.  Skip this for target of a rename
@@ -1444,6 +1445,7 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
          const void *in_buf, size_t in_bufsz, size_t out_bufsz) {
     char name[in_bufsz + 1], *layer, *parent;
     struct gfs *gfs = getfs();
+    uint64_t value;
     int len, op;
 
     lc_displayEntry(__func__, ino, cmd, NULL);
@@ -1451,6 +1453,7 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
 
     /* XXX For allowing graphdriver tests to run */
     if ((op == LAYER_CREATE) && (gfs->gfs_layerRoot != ino)) {
+        assert(gfs->gfs_layerRoot == ino);
         lc_setLayerRoot(gfs, ino);
     }
     if (ino != gfs->gfs_layerRoot) {
@@ -1458,10 +1461,15 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
         fuse_reply_err(req, ENOSYS);
         return;
     }
-    if (in_bufsz > 0) {
-        memcpy(name, in_buf, in_bufsz);
+    if (in_bufsz == 0) {
+        lc_reportError(__func__, __LINE__, ino, ENOSYS);
+        fuse_reply_err(req, EINVAL);
+        return;
     }
-    name[in_bufsz] = 0;
+    if ((op != SYNCER_TIME) && (op != DCACHE_MEMORY)) {
+        memcpy(name, in_buf, in_bufsz);
+        name[in_bufsz] = 0;
+    }
     switch (op) {
     case LAYER_CREATE:
     case LAYER_CREATE_RW:
@@ -1478,11 +1486,11 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
             layer = name;
         }
         lc_createLayer(req, gfs, layer, parent, len, op == LAYER_CREATE_RW);
-        return;
+        break;
 
     case LAYER_REMOVE:
         lc_deleteLayer(req, gfs, name);
-        return;
+        break;
 
     case LAYER_MOUNT:
     case LAYER_STAT:
@@ -1490,7 +1498,29 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
     case UMOUNT_ALL:
     case CLEAR_STAT:
         lc_layerIoctl(req, gfs, name, op);
-        return;
+        break;
+
+    case SYNCER_TIME:
+        value = atoll(in_buf);
+        if (value == 0) {
+            gfs->gfs_syncInterval = INT32_MAX;
+        } else {
+            gfs->gfs_syncInterval = value;
+            pthread_cond_signal(&gfs->gfs_syncerCond);
+        }
+        lc_printf("New sync interval %d seconds\n", gfs->gfs_syncInterval);
+        fuse_reply_ioctl(req, 0, NULL, 0);
+        break;
+
+    case DCACHE_MEMORY:
+        value = atoll(in_buf);
+        value *= (1024ull * 1024ull);
+        if (value < LC_PCACHE_MEMORY) {
+            value = LC_PCACHE_MEMORY;
+        }
+        lc_memoryInit(value);
+        fuse_reply_ioctl(req, 0, NULL, 0);
+        break;
 
     default:
         lc_reportError(__func__, __LINE__, ino, ENOSYS);

@@ -140,6 +140,9 @@ struct gfs {
     /* Pages reused */
     uint64_t gfs_preused;
 
+    /* Sync interval in seconds */
+    int gfs_syncInterval;
+
     /* Count of read only layers being populated */
     int gfs_layerInProgress;
 

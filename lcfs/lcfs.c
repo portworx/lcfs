@@ -360,7 +360,7 @@ lcfs_main(int argc, char *argv[]) {
     }
 
     /* Initialize memory allocator */
-    lc_memoryInit();
+    lc_memoryInit(LC_PCACHE_MEMORY);
 
     /* Allocate gfs structure */
     gfs = lc_malloc(NULL, sizeof(struct gfs), LC_MEMTYPE_GFS);
