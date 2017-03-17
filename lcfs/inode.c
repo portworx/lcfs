@@ -261,6 +261,7 @@ lc_addInode(struct fs *fs, struct inode *inode, int hash, bool lock,
                 lc_inodeUnlock(new);
 #endif
                 lc_freeInode(new);
+                __sync_sub_and_fetch(&fs->fs_icount, 1);
                 return inode;
             }
         }
@@ -1429,7 +1430,6 @@ lc_swapRootInode(struct fs *fs, struct fs *cfs) {
     struct dirent *dirent = dir->i_dirent;
     uint32_t flags = dir->i_flags;
     struct dinode dinode;
-    bool block;
 
     assert(cdir->i_fs == fs);
     assert(dir->i_fs == cfs);
@@ -1444,19 +1444,6 @@ lc_swapRootInode(struct fs *fs, struct fs *cfs) {
     dir->i_parent = fs->fs_root;
     cdir->i_ino = cfs->fs_root;
     cdir->i_parent = cfs->fs_root;
-    block = dir->i_flags & LC_INODE_DISK;
-    if (cdir->i_flags & LC_INODE_DISK) {
-        if (!block) {
-            dir->i_flags |= LC_INODE_DISK;
-        }
-    } else if (block) {
-        dir->i_flags &= ~LC_INODE_DISK;
-    }
-    if (block) {
-        cdir->i_flags |= LC_INODE_DISK;
-    } else {
-        cdir->i_flags &= ~LC_INODE_DISK;
-    }
     if (cdir->i_emapDirExtents) {
         dir->i_emapDirExtents = cdir->i_emapDirExtents;
         cdir->i_emapDirExtents = NULL;
