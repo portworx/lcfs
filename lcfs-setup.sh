@@ -2,7 +2,8 @@
 
 [ "$1" == "--debug" -o -n "${DEBUG}" ] && DEBUG="yes" && set -x && shift
 
-SUDO=sudo
+[ $(id -u) -ne 0 ] && SUDO=sudo
+
 DOCKER_BIN=docker
 DOCKER_SRV_BIN=dockerd
 LCFS_ENV_FL=${LCFS_ENV_FL:-"/etc/pwx/lcfs.env"}
