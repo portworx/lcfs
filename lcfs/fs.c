@@ -158,7 +158,7 @@ lc_freeLayer(struct fs *fs, bool remove) {
     assert(!fs->fs_extentsDirty || fs->fs_removed);
     assert(!fs->fs_dirty || fs->fs_removed);
     assert(!(fs->fs_super->sb_flags & LC_SUPER_DIRTY) || fs->fs_removed ||
-           fs->fs_mcount);
+           fs->fs_mcount || !fs->fs_frozen);
     lc_free(fs, fs->fs_super, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
     lc_displayMemStats(fs);
     lc_checkMemStats(fs, false);

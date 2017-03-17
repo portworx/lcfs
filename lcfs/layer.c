@@ -419,7 +419,9 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
         if (err == 0) {
             fs = lc_getLayerLocked(root, false);
             __sync_add_and_fetch(&fs->fs_mcount, 1);
-            fs->fs_super->sb_flags |= LC_SUPER_DIRTY;
+            if (!fs->fs_frozen) {
+                fs->fs_super->sb_flags |= LC_SUPER_DIRTY;
+            }
             fuse_reply_ioctl(req, 0, NULL, 0);
             lc_unlock(fs);
         }

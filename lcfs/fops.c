@@ -1461,13 +1461,10 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
         fuse_reply_err(req, ENOSYS);
         return;
     }
-    if (in_bufsz == 0) {
-        lc_reportError(__func__, __LINE__, ino, ENOSYS);
-        fuse_reply_err(req, EINVAL);
-        return;
-    }
     if ((op != SYNCER_TIME) && (op != DCACHE_MEMORY)) {
-        memcpy(name, in_buf, in_bufsz);
+        if (in_bufsz) {
+            memcpy(name, in_buf, in_bufsz);
+        }
         name[in_bufsz] = 0;
     }
     switch (op) {
