@@ -13,6 +13,8 @@
 //#define LC_MEMSTATS_ENABLE
 //#define LC_PROFILING
 
+#define LC_DIFF
+
 #define _GNU_SOURCE
 #define URCU_INLINE_SMALL_FUNCTIONS
 

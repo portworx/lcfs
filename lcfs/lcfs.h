@@ -15,8 +15,10 @@ enum ioctl_cmd {
     DCACHE_MEMORY = 110,            /* Adjust data pcache size */
 };
 
+#ifndef LC_DIFF
 /* Prefix of fake file name used to trigger layer commit */
 #define LC_COMMIT_TRIGGER_PREFIX    ".lcfs-diff-"
+#endif
 
 /* Data structure used to respond to layer diff */
 struct pchange {

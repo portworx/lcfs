@@ -143,10 +143,13 @@ do
 done
 cd -
 
-docker ps --all --format {{.ID}} | xargs docker commit
+CID=`docker ps --all --format {{.ID}}`
+docker commit ${CID} hello
+docker save -o $MNT/h.tar hello
 docker ps --all --format {{.ID}} | xargs docker rm
 docker rmi hello-world
 docker images --format {{.ID}} | xargs docker rmi
+docker load -i $MNT/h.tar
 pkill dockerd
 sleep 10
 

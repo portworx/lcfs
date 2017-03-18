@@ -54,6 +54,7 @@ lc_copyStat(struct stat *st, struct inode *inode) {
     lc_copyStatTimes(st, dinode);
 }
 
+#ifndef LC_DIFF
 /* Copy stats for a file which does not exist */
 void
 lc_copyFakeStat(struct stat *st) {
@@ -74,6 +75,7 @@ lc_copyFakeStat(struct stat *st) {
     st->st_mtim = tv;
     st->st_ctim = tv;
 }
+#endif
 
 /* Initialize a disk inode */
 static void
@@ -1316,6 +1318,7 @@ lc_inodeInit(struct fs *fs, mode_t mode, uid_t uid, gid_t gid,
     return inode;
 }
 
+#ifndef LC_DIFF
 /* Move inodes from one layer to another */
 void
 lc_moveInodes(struct fs *fs, struct fs *cfs) {
@@ -1520,3 +1523,4 @@ lc_cloneInodes(struct gfs *gfs, struct fs *fs, struct fs *pfs) {
     }
 }
 
+#endif

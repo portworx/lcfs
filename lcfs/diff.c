@@ -626,6 +626,7 @@ lc_layerDiff(fuse_req_t req, const char *name, size_t size) {
     }
     lc_printf("Starting diff on layer %d\n", fs->fs_gindex);
 
+    lc_lock(fs->fs_parent, false);
     lastIno = fs->fs_parent->fs_super->sb_lastInode;
 
     /* Add the root inode to the change list first */
@@ -659,6 +660,7 @@ lc_layerDiff(fuse_req_t req, const char *name, size_t size) {
             inode = inode->i_cnext;
         }
     }
+    lc_unlock(fs->fs_parent);
     lc_replyDiff(req, fs);
 
     /* Reset LC_INODE_CTRACKED flags on inodes */
