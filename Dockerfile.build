@@ -27,7 +27,7 @@ WORKDIR /go/src/github.com/portworx/lcfs
 RUN wget -q https://github.com/libfuse/libfuse/releases/download/fuse-2.9.7/fuse-2.9.7.tar.gz && \
     tar -xzf fuse-2.9.7.tar.gz
 WORKDIR fuse-2.9.7
-RUN cp ../fuse/fusermount.c util && ./configure && make -j8 && make install
+RUN cp ../fuse/fusermount.c util && ./configure && make -j8 && make install && cp -a /usr/local/bin/fusermount /go/src/github.com/portworx/lcfs/lcfs
 
 WORKDIR /go/src/github.com/portworx/lcfs/lcfs
 RUN make clean && \

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+PATH="/opt/pwx/bin":${PATH}
+
 if [ "$1" == "--debug" -o -n "${DEBUG}" ]; then
     DEBUG="yes" && set -x
     [ "$1" == "--debug" ] && shift
