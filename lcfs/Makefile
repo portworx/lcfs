@@ -13,7 +13,7 @@ ifeq ($(UNAME),Linux)
 	#LDFLAGS=-lz -ltcmalloc -pthread -lprofiler -L/usr/local/lib -lfuse3
 else
 	CFLAGS=$(BUILD_FLAGS) -Wno-format $ -D_FILE_OFFSET_BITS=64 -I/usr/local/include/osxfuse/fuse -I/usr/local/include/osxfuse
-	LDFLAGS=-ltcmalloc -lprofiler -losxfuse -lz
+	LDFLAGS=-ltcmalloc -lprofiler -losxfuse -lz -lurcu
 endif
 
 ifdef STATIC

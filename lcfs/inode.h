@@ -216,7 +216,7 @@ struct inode {
 #define DARWIN_INODE_SIZE 6
     char opaque[DARWIN_INODE_SIZE];
 }  __attribute__((packed));
-static_assert(sizeof(struct inode) == 352, "inode size != 352");
+static_assert(sizeof(struct inode) == 160, "inode size != 160");
 #else
 }  __attribute__((packed));
 static_assert(sizeof(struct inode) == 160, "inode size != 160");
