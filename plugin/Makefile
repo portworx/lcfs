@@ -1,5 +1,5 @@
 # Makefile for lcfs/plugin
-# Maintainer Michael Vilain <michael@portworx.com> [201701.13]
+# Maintainer Jose Rivera <jrivera@portworx.com> [201701.13]
 
 BASE_DIR = $(shell git rev-parse --show-toplevel)
 export GOPATH = $(shell echo ${BASE_DIR}/plugin/vendor | /bin/sed 's@\(.*\)/src/github.com.*@\1@g')

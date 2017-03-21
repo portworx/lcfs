@@ -1,5 +1,5 @@
 # Makefile for lcfs
-# Maintainer Michael Vilain <michael@portworx.com> [201701.16]
+# Maintainer Jose Rivera <jrivera@portworx.com> [201701.16]
 # assumes make is run as root or account running it is part of Docker group
 
 .PHONY : gr-build gr-clean
@@ -42,6 +42,7 @@ gr-plugin:
 	 docker run --name $(GR_CONTAINER) $(GR_CONTAINER) ls -l /tmp
 	 docker cp $(GR_CONTAINER):/tmp/lcfs_plugin.bin .
 	 docker cp $(GR_CONTAINER):/tmp/pkgs .
+	 docker cp $(GR_CONTAINER):/tmp/fusermount .
 	 docker rm $(GR_CONTAINER)
 
 gr-clean:

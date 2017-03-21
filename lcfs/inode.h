@@ -215,12 +215,9 @@ struct inode {
     /* Padding for darwin */
 #define DARWIN_INODE_SIZE 6
     char opaque[DARWIN_INODE_SIZE];
-}  __attribute__((packed));
-static_assert(sizeof(struct inode) == 160, "inode size != 160");
-#else
-}  __attribute__((packed));
-static_assert(sizeof(struct inode) == 160, "inode size != 160");
 #endif
+}  __attribute__((packed));
+static_assert(sizeof(struct inode) == 160, "inode size != 160");
 static_assert((sizeof(struct inode) % sizeof(void *)) == 0,
               "Inode size is not aligned");
 

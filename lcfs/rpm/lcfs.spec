@@ -48,6 +48,7 @@ mkdir -p ${RPM_BUILD_ROOT}/opt/pwx/bin
 mkdir -p ${RPM_BUILD_ROOT}/opt/pwx/services
 cp -f lcfs ${RPM_BUILD_ROOT}/opt/pwx/bin
 cp -f lcfs-setup.sh ${RPM_BUILD_ROOT}/opt/pwx/bin
+cp -f fusermount ${RPM_BUILD_ROOT}/opt/pwx/bin
 cp -f lcfs.systemctl ${RPM_BUILD_ROOT}/opt/pwx/services
 cp -f lcfs.systemv ${RPM_BUILD_ROOT}/opt/pwx/services
 
@@ -60,6 +61,7 @@ cp -f lcfs.systemv ${RPM_BUILD_ROOT}/opt/pwx/services
 #%defattr(-,root,root,0755)
 /opt/pwx/bin/lcfs
 /opt/pwx/bin/lcfs-setup.sh
+/opt/pwx/bin/fusermount
 /opt/pwx/services/lcfs.systemctl
 /opt/pwx/services/lcfs.systemv
 
