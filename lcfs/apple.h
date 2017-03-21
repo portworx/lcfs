@@ -67,4 +67,9 @@ lc_preadv(int fd, struct iovec *iov, int iovcnt, off_t offset) {
     return count;
 }
 
+/* Validate a lock is held */
+static inline void
+lc_lockOwned(pthread_rwlock_t *lock, bool exclusive) {
+}
+
 #endif

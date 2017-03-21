@@ -35,3 +35,11 @@ lc_preadv(int fd, struct iovec *iov, int iovcnt, off_t offset) {
   return preadv(fd, iov, iovcnt, offset);
 }
 #endif
+
+/* Validate a lock is held */
+static inline void
+lc_lockOwned(pthread_rwlock_t *lock, bool exclusive) {
+    assert((lock == NULL) || lock->__data.__writer ||
+           (!exclusive && lock->__data.__nr_readers));
+}
+

@@ -49,11 +49,4 @@ lc_reportError(const char *func, int line, ino_t ino, int err) {
 #define lc_reportError(a...)
 #endif
 
-/* Validate a lock is held */
-static inline void
-lc_lockOwned(pthread_rwlock_t *lock, bool exclusive) {
-    assert((lock == NULL) || lock->__data.__writer ||
-           (!exclusive && lock->__data.__nr_readers));
-}
-
 #endif
