@@ -581,7 +581,7 @@ lc_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
                 flush = true;
             } else if (strcmp(name, LC_LAYER_TMP_DIR) == 0) {
                 gfs->gfs_tmp_root = e.ino;
-                printf("tmp root %ld\n", e.ino);
+                lc_syslog(LOG_INFO, "tmp root %ld\n", e.ino);
             }
         }
         fuse_reply_entry(req, &e);

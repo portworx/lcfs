@@ -15,8 +15,8 @@ getfs() {
 /* Display usage */
 static void
 usage(char *prog) {
-    fprintf(stderr, "usage: %s <device> <host-mnt> <plugin-mnt> [-f] [-d]\n", prog);
-    fprintf(stderr, "\tdevice        - device or file - image layers will be saved here\n"
+    lc_syslog(LOG_ERR, "usage: %s <device> <host-mnt> <plugin-mnt> [-f] [-d]\n", prog);
+    lc_syslog(LOG_ERR, "\tdevice        - device or file - image layers will be saved here\n"
                     "\thost-mnt      - mount point on host\n"
                     "\tplugin-mnt    - mount point propagated to plugin\n"
                     "\t-f            - run foreground (optional)\n"
@@ -98,8 +98,8 @@ lc_serve(void *data) {
         /* Start a background thread to flush and purge pages */
         err = pthread_create(&cleaner, NULL, lc_cleaner, NULL);
         if (err) {
-            fprintf(stderr,
-                    "Cleaner thread could not be created, err %d\n", err);
+            lc_syslog(LOG_ERR,
+                      "Cleaner thread could not be created, err %d\n", err);
             goto out;
         }
         fcancel = true;
@@ -115,7 +115,7 @@ lc_serve(void *data) {
     if ((id == LC_LAYER_MOUNT) && gfs->gfs_waiter) {
         err = lc_daemonize(gfs->gfs_waiter);
         if (err) {
-            fprintf(stderr, "Failed to daemonize\n");
+            lc_syslog(LOG_ERR, "Failed to daemonize\n");
         }
     }
     if (!err) {
@@ -134,7 +134,8 @@ out:
     /* Other mount need to exit as well */
     other = (id == LC_BASE_MOUNT) ? LC_LAYER_MOUNT : LC_BASE_MOUNT;
     if (gfs->gfs_se[other]) {
-        printf("Waiting for %s to be unmounted\n", gfs->gfs_mountpoint[other]);
+        lc_syslog(LOG_INFO, "Waiting for %s to be unmounted\n",
+                  gfs->gfs_mountpoint[other]);
     }
     pthread_mutex_lock(&gfs->gfs_lock);
     se = gfs->gfs_se[other];
@@ -189,7 +190,7 @@ lc_fuseSession(struct gfs *gfs, char **arg, int argc, enum lc_mountId id) {
         goto out;
     }
     if (opts.show_version) {
-        printf("FUSE library version %s\n", fuse_pkgversion());
+        syslog(LOG_INFO, "FUSE library version %s\n", fuse_pkgversion());
         fuse_lowlevel_version();
         err = EINVAL;
         goto out;
@@ -239,7 +240,8 @@ lc_start(struct gfs *gfs, char *device, enum lc_mountId id) {
         if (err) {
             perror("pthread_create");
         } else {
-            printf("%s mounted at %s\n", device, gfs->gfs_mountpoint[id]);
+            lc_syslog(LOG_INFO, "%s mounted at %s\n",
+                      device, gfs->gfs_mountpoint[id]);
         }
     } else {
 
@@ -252,13 +254,14 @@ lc_start(struct gfs *gfs, char *device, enum lc_mountId id) {
             }
             pthread_mutex_unlock(&gfs->gfs_lock);
             if (!gfs->gfs_unmounting) {
-                printf("%s mounted at %s\n", device, gfs->gfs_mountpoint[id]);
+                lc_syslog(LOG_INFO, "%s mounted at %s\n",
+                          device, gfs->gfs_mountpoint[id]);
                 lc_serve((void *)id);
                 err = 0;
             }
         }
         if (err) {
-            fprintf(stderr, "Aborting mount, base layer unmounted\n");
+            lc_syslog(LOG_ERR, "Aborting mount, base layer unmounted\n");
             err = EIO;
         }
     }
@@ -275,6 +278,8 @@ lcfs_main(int argc, char *argv[]) {
     struct stat st;
     size_t size;
 
+    openlog("lcfs", LOG_PID|LOG_CONS|LOG_PERROR, LOG_USER);
+
     /* Validate arguments */
 #ifdef FUSE3
     if (argc < 4) {
@@ -282,21 +287,24 @@ lcfs_main(int argc, char *argv[]) {
     if ((argc < 4) || (argc > 6)) {
 #endif
         usage(argv[0]);
+        closelog();
         exit(EINVAL);
     }
 
     if (!strcmp(argv[2], argv[3])) {
-        fprintf(stderr, "Specify different mount points\n");
+        lc_syslog(LOG_ERR, "Specify different mount points\n");
         usage(argv[0]);
+        closelog();
         exit(EINVAL);
     }
 
     /* Make sure mount points exist */
     if (stat(argv[2], &st) || stat(argv[3], &st)) {
         perror("stat");
-        fprintf(stderr,
+        lc_syslog(LOG_ERR,
                 "Make sure directories %s and %s exist\n", argv[2], argv[3]);
         usage(argv[0]);
+        closelog();
         exit(errno);
     }
 
@@ -304,7 +312,8 @@ lcfs_main(int argc, char *argv[]) {
     fd = lc_deviceOpen(argv[1]);
     if (fd == -1) {
         perror("open");
-        fprintf(stderr, "Failed to open %s\n", argv[1]);
+        lc_syslog(LOG_ERR, "Failed to open %s\n", argv[1]);
+        closelog();
         exit(errno);
     }
 
@@ -312,23 +321,26 @@ lcfs_main(int argc, char *argv[]) {
     size = lseek(fd, 0, SEEK_END);
     if (size == -1) {
         perror("lseek");
-        fprintf(stderr, "lseek failed on %s\n", argv[1]);
+        lc_syslog(LOG_ERR, "lseek failed on %s\n", argv[1]);
         close(fd);
+        closelog();
         exit(errno);
     }
 
     if ((size / LC_BLOCK_SIZE) < LC_MIN_BLOCKS) {
-        fprintf(stderr,
+        lc_syslog(LOG_ERR,
                 "Device is too small. Minimum size required is %ldMB\n",
                 (LC_MIN_BLOCKS * LC_BLOCK_SIZE) / (1024 * 1024) + 1);
         close(fd);
+        closelog();
         exit(EINVAL);
     }
     if ((size / LC_BLOCK_SIZE) >= LC_MAX_BLOCKS) {
-        fprintf(stderr,
+        lc_syslog(LOG_ERR,
                 "Device is too big. Maximum size supported is %ldMB\n",
                 (LC_MAX_BLOCKS * LC_BLOCK_SIZE) / (1024 * 1024));
         close(fd);
+        closelog();
         exit(EINVAL);
     }
 
@@ -338,12 +350,14 @@ lcfs_main(int argc, char *argv[]) {
         if (err) {
             perror("pipe");
             close(fd);
+            closelog();
             exit(errno);
         }
         switch (fork()) {
         case -1:
             perror("fork");
             close(fd);
+            closelog();
             exit(errno);
 
         case 0:
@@ -353,10 +367,11 @@ lcfs_main(int argc, char *argv[]) {
 
             /* Wait for the mount to complete */
             err = read(waiter[0], &completed, sizeof(completed));
+            closelog();
             exit(0);
         }
     } else {
-        printf("%s %s\n", Build, Release);
+        lc_syslog(LOG_INFO, "%s %s\n", Build, Release);
     }
 
     /* Initialize memory allocator */
@@ -386,7 +401,7 @@ lcfs_main(int argc, char *argv[]) {
                     "atomic_o_trunc,big_writes,"
                     "splice_move,splice_read,splice_write,"
 #endif
-                    "subtype=lcfs,fsname=%s", argv[1]);
+                    "suid,dev,subtype=lcfs,fsname=%s", argv[1]);
     for (i = 4; i < argc; i++) {
         arg[i] = argv[i];
     }
@@ -405,7 +420,7 @@ lcfs_main(int argc, char *argv[]) {
     /* Mask signals before mounting the file system */
     se = gfs->gfs_se[LC_LAYER_MOUNT];
     if (fuse_set_signal_handlers(se) == -1) {
-        fprintf(stderr, "Error setting signal handlers\n");
+        lc_syslog(LOG_ERR, "Error setting signal handlers\n");
         err = EPERM;
         goto out;
     }
@@ -432,7 +447,7 @@ out:
             lc_notifyParent(waiter);
         }
     } else {
-        printf("%s unmounted\n", argv[1]);
+        lc_syslog(LOG_INFO, "%s unmounted\n", argv[1]);
     }
     for (i = 0; i < LC_MAX_MOUNTS; i++) {
         if (gfs->gfs_se[i]) {
@@ -447,5 +462,6 @@ out:
     close(fd);
     lc_free(NULL, gfs, sizeof(struct gfs), LC_MEMTYPE_GFS);
     lc_displayGlobalMemStats();
+    closelog();
     return err ? 1 : 0;
 }

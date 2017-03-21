@@ -35,6 +35,7 @@
 #include <zlib.h>
 #include <assert.h>
 #include <sys/ioctl.h>
+#include <syslog.h>
 #include <urcu.h>
 #ifdef __APPLE__
 #include <mach/clock.h>

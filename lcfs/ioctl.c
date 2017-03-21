@@ -55,14 +55,17 @@ ioctl_main(int argc, char *argv[]) {
             close(fd);
             usage(argv[0]);
         }
+        openlog("lcfs", LOG_PID|LOG_CONS|LOG_PERROR, LOG_USER);
         if (strcmp(argv[0], "syncer") == 0) {
             err = ioctl(fd, _IOW(0, SYNCER_TIME, value), argv[2]);
         } else if (value && (strcmp(argv[0], "pcache") == 0)) {
             err = ioctl(fd, _IOW(0, DCACHE_MEMORY, value), argv[2]);
         } else {
             close(fd);
+            closelog();
             usage(argv[0]);
         }
+        closelog();
     }
     if (err) {
         perror("ioctl");

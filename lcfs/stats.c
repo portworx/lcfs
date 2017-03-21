@@ -135,34 +135,40 @@ lc_displayStats(struct fs *fs) {
         return;
     }
     gettimeofday(&now, NULL);
-    printf("\n\nStats for file system %p with root %ld index %d at %s\n",
-           fs, fs->fs_root, fs->fs_gindex, ctime(&now.tv_sec));
-    printf("\tLayer  created at %s", ctime(&fs->fs_super->sb_ctime));
-    printf("\tLast acccessed at %s\n", ctime(&fs->fs_super->sb_atime));
+    lc_syslog(LOG_INFO,
+              "\n\nStats for file system %p with root %ld index %d at %s\n",
+              fs, fs->fs_root, fs->fs_gindex, ctime(&now.tv_sec));
+    lc_syslog(LOG_INFO,
+              "\tLayer  created at %s", ctime(&fs->fs_super->sb_ctime));
+    lc_syslog(LOG_INFO,
+              "\tLast acccessed at %s\n", ctime(&fs->fs_super->sb_atime));
     if (stats == NULL) {
         goto out;
     }
-    printf("\tRequest:\tTotal\t\tFailed\tAverage\t\tMax\t\tMin\n\n");
+    lc_syslog(LOG_INFO,
+              "\tRequest:\tTotal\t\tFailed\tAverage\t\tMax\t\tMin\n\n");
     for (i = 0; i < LC_REQUEST_MAX; i++) {
         if (stats->s_count[i]) {
-            printf("%15s: %10ld\t%10ld\t%2lds.%06ldu\t%2lds.%06ldu\t"
-                   "%2lds.%06ldu\n",
-                   requests[i], stats->s_count[i], stats->s_err[i],
-                   stats->s_total[i].tv_sec / stats->s_count[i],
-                   stats->s_total[i].tv_usec / stats->s_count[i],
-                   stats->s_max[i].tv_sec, stats->s_max[i].tv_usec,
-                   stats->s_min[i].tv_sec, stats->s_min[i].tv_usec);
+            lc_syslog(LOG_INFO,
+                      "%15s: %10ld\t%10ld\t%2lds.%06ldu\t%2lds.%06ldu\t"
+                      "%2lds.%06ldu\n",
+                      requests[i], stats->s_count[i], stats->s_err[i],
+                      stats->s_total[i].tv_sec / stats->s_count[i],
+                      stats->s_total[i].tv_usec / stats->s_count[i],
+                      stats->s_max[i].tv_sec, stats->s_max[i].tv_usec,
+                      stats->s_min[i].tv_sec, stats->s_min[i].tv_usec);
         }
     }
-    printf("\n\n");
+    lc_syslog(LOG_INFO, "\n\n");
 
 out:
     lc_displayFtypeStats(fs);
     lc_displayAllocStats(fs);
-    printf("\t%ld inodes %ld pages\n", fs->fs_icount, fs->fs_pcount);
-    printf("\t%ld reads %ld writes (%ld inodes written)\n",
+    lc_syslog(LOG_INFO, "\t%ld inodes %ld pages\n",
+              fs->fs_icount, fs->fs_pcount);
+    lc_syslog(LOG_INFO, "\t%ld reads %ld writes (%ld inodes written)\n",
            fs->fs_reads, fs->fs_writes, fs->fs_iwrite);
-    printf("\n\n");
+    lc_syslog(LOG_INFO, "\n\n");
 }
 
 /* Display stats of a layer */
@@ -198,23 +204,25 @@ void
 lc_displayGlobalStats(struct gfs *gfs) {
     uint64_t avail = gfs->gfs_super->sb_tblocks - gfs->gfs_super->sb_blocks;
 
-    printf("Blocks free %ld (%ld%%) used %ld (%ld%%) total %ld\n", avail,
-           (avail * 100ul) / gfs->gfs_super->sb_tblocks,
-           gfs->gfs_super->sb_blocks,
-           (gfs->gfs_super->sb_blocks * 100ul) / gfs->gfs_super->sb_tblocks,
-           gfs->gfs_super->sb_tblocks);
+    lc_syslog(LOG_INFO,
+              "Blocks free %ld (%ld%%) used %ld (%ld%%) total %ld\n", avail,
+              (avail * 100ul) / gfs->gfs_super->sb_tblocks,
+              gfs->gfs_super->sb_blocks,
+              (gfs->gfs_super->sb_blocks * 100ul) / gfs->gfs_super->sb_tblocks,
+              gfs->gfs_super->sb_tblocks);
     if (gfs->gfs_reads || gfs->gfs_writes) {
-        printf("Total %ld reads %ld writes\n",
+        lc_syslog(LOG_INFO, "Total %ld reads %ld writes\n",
                gfs->gfs_reads, gfs->gfs_writes);
     }
     if (gfs->gfs_clones) {
-        printf("%ld inodes cloned\n", gfs->gfs_clones);
+        lc_syslog(LOG_INFO, "%ld inodes cloned\n", gfs->gfs_clones);
     }
     if (gfs->gfs_phit || gfs->gfs_pmissed || gfs->gfs_precycle ||
         gfs->gfs_preused || gfs->gfs_purged) {
-        printf("pages %ld hit %ld missed %ld recycled %ld reused %ld purged\n",
-               gfs->gfs_phit, gfs->gfs_pmissed, gfs->gfs_precycle,
-               gfs->gfs_preused, gfs->gfs_purged);
+        lc_syslog(LOG_INFO,
+                  "pages hit %ld missed %ld recycled %ld "
+                  "reused %ld purged %ld\n", gfs->gfs_phit, gfs->gfs_pmissed,
+                  gfs->gfs_precycle, gfs->gfs_preused, gfs->gfs_purged);
     }
 }
 

@@ -456,11 +456,11 @@ lc_blockFreeLayer(struct gfs *gfs, struct fs *fs, struct fs *rfs,
 void
 lc_displayAllocStats(struct fs *fs) {
     if (fs->fs_blocks) {
-        printf("\tblocks allocated %ld freed %ld in use %ld\n",
-               fs->fs_blocks, fs->fs_freed, fs->fs_blocks - fs->fs_freed);
+        lc_syslog(LOG_INFO, "\tblocks allocated %ld freed %ld in use %ld\n",
+                  fs->fs_blocks, fs->fs_freed, fs->fs_blocks - fs->fs_freed);
     }
     if (fs->fs_reservedBlocks) {
-        printf("\tReserved blocks %ld\n", fs->fs_reservedBlocks);
+        lc_syslog(LOG_INFO, "\tReserved blocks %ld\n", fs->fs_reservedBlocks);
     }
 }
 

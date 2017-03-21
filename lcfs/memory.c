@@ -69,7 +69,7 @@ lc_memoryInit(uint64_t limit) {
     }
     lc_mem.m_dataMemory = (lc_mem.m_purgeMemory * (100 + LC_PURGE_TARGET))
                           / 100;
-    lc_printf("Maximum memory allowed for data pages %ld MB\n",
+    lc_syslog(LOG_INFO, "Maximum memory allowed for data pages %ld MB\n",
               lc_mem.m_purgeMemory / (1024 * 1024));
 }
 
@@ -238,12 +238,14 @@ lc_checkMemStats(struct fs *fs, bool unmount) {
 void
 lc_displayGlobalMemStats() {
     if (lc_mem.m_globalMemory) {
-        printf("\tGlobal Allocated %ld Freed %ld Total in use %ld bytes\n",
-               lc_mem.m_globalMalloc, lc_mem.m_globalFree,
-               lc_mem.m_globalMemory);
+        lc_syslog(LOG_INFO,
+                  "\tGlobal Allocated %ld Freed %ld Total in use %ld bytes\n",
+                  lc_mem.m_globalMalloc, lc_mem.m_globalFree,
+                  lc_mem.m_globalMemory);
     }
     if (lc_mem.m_totalMemory) {
-        printf("Total memory used for pages %ld\n", lc_mem.m_totalMemory);
+        lc_syslog(LOG_INFO, "Total memory used for pages %ld\n",
+                  lc_mem.m_totalMemory);
     }
 }
 
@@ -260,14 +262,16 @@ lc_displayMemStats(struct fs *fs) {
         return;
     }
     gettimeofday(&now, NULL);
-    printf("\n\nMemory Stats for file system %p with root %ld index %d at "
-           "%s\n", fs, fs->fs_root, fs->fs_gindex, ctime(&now.tv_sec));
+    lc_syslog(LOG_INFO,
+              "\n\nMemory Stats for file system %p with root %ld index %d at "
+              "%s\n", fs, fs->fs_root, fs->fs_gindex, ctime(&now.tv_sec));
     for (i = LC_MEMTYPE_GFS + 1; i < LC_MEMTYPE_MAX; i++) {
         if (fs->fs_malloc[i]) {
-            printf("\t%s Allocated %ld Freed %ld in use %ld\n",
-                   mrequests[i], fs->fs_malloc[i], fs->fs_free[i],
-                   fs->fs_malloc[i] - fs->fs_free[i]);
+            lc_syslog(LOG_INFO, "\t%s Allocated %ld Freed %ld in use %ld\n",
+                      mrequests[i], fs->fs_malloc[i], fs->fs_free[i],
+                      fs->fs_malloc[i] - fs->fs_free[i]);
         }
     }
-    printf("\n\tTotal memory in use %ld bytes\n\n", fs->fs_memory);
+    lc_syslog(LOG_INFO, "\n\tTotal memory in use %ld bytes\n\n",
+              fs->fs_memory);
 }

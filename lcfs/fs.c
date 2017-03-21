@@ -422,7 +422,8 @@ lc_addLayer(struct gfs *gfs, struct fs *fs, struct fs *pfs, int *inval) {
     }
     if (i >= LC_LAYER_MAX) {
         pthread_mutex_unlock(&gfs->gfs_lock);
-        printf("Too many layers.  Retry after remount or deleting some.\n");
+        lc_syslog(LOG_ERR,
+                  "Too many layers.  Retry after remount or deleting some.\n");
         return EOVERFLOW;
     }
     *inval = (pfs && pfs->fs_child && pfs->fs_child->fs_single) ?
@@ -605,7 +606,7 @@ lc_setupSpecialInodes(struct gfs *gfs, struct fs *fs) {
     ino = lc_dirLookup(fs, dir, LC_LAYER_TMP_DIR);
     if (ino != LC_INVALID_INODE) {
         gfs->gfs_tmp_root = ino;
-        printf("tmp root %ld\n", ino);
+        lc_syslog(LOG_INFO, "tmp root %ld\n", ino);
     }
     ino = lc_dirLookup(fs, dir, LC_LAYER_ROOT_DIR);
     if (ino != LC_INVALID_INODE) {
@@ -618,7 +619,7 @@ lc_setupSpecialInodes(struct gfs *gfs, struct fs *fs) {
             gfs->gfs_layerRootInode = dir;
             lc_inodeUnlock(dir);
         }
-        printf("layer root %ld\n", ino);
+        lc_syslog(LOG_INFO, "layer root %ld\n", ino);
     }
 }
 
@@ -646,12 +647,12 @@ lc_mount(struct gfs *gfs, char *device, size_t size) {
     lc_superRead(gfs, fs, fs->fs_sblock);
     gfs->gfs_super = fs->fs_super;
     if (!lc_superValid(gfs->gfs_super)) {
-        printf("Formatting %s, size %ld\n", device, size);
+        lc_syslog(LOG_INFO, "Formatting %s, size %ld\n", device, size);
         lc_format(gfs, fs, size);
     } else {
         assert(size == (gfs->gfs_super->sb_tblocks * LC_BLOCK_SIZE));
         gfs->gfs_super->sb_mounts++;
-        printf("Mounting %s, size %ld nmounts %ld\n",
+        lc_syslog(LOG_INFO, "Mounting %s, size %ld nmounts %ld\n",
                device, size, gfs->gfs_super->sb_mounts);
         lc_initLayers(gfs, fs);
         for (i = 0; i <= gfs->gfs_scount; i++) {
@@ -810,7 +811,7 @@ lc_commitRoot(struct gfs *gfs, int count) {
             assert(err == 0);
         }
         gfs->gfs_syncRequired -= count;
-        printf("file system committed to disk\n");
+        lc_syslog(LOG_INFO, "file system committed to disk\n");
     }
     lc_unlock(fs);
 }

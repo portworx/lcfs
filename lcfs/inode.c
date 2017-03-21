@@ -366,10 +366,11 @@ lc_setLayerRoot(struct gfs *gfs, ino_t ino) {
     /* Switching layer root is supported just to make tests to run */
     if (gfs->gfs_layerRoot) {
         if (gfs->gfs_scount) {
-            printf("Warning: Layer root changed when layers are present\n");
+            lc_syslog(LOG_ERR,
+                   "Warning: Layer root changed when layers are present\n");
         }
-        printf("Switching layer root from %ld to %ld\n",
-               gfs->gfs_layerRoot, ino);
+        lc_syslog(LOG_ERR, "Switching layer root from %ld to %ld\n",
+                  gfs->gfs_layerRoot, ino);
         gfs->gfs_layerRoot = 0;
     }
     dir = lc_getInode(fs, ino, NULL, false, true);
@@ -381,7 +382,7 @@ lc_setLayerRoot(struct gfs *gfs, ino_t ino) {
         gfs->gfs_layerRootInode = dir;
         lc_inodeUnlock(dir);
     }
-    printf("layer root inode %ld\n", ino);
+    lc_syslog(LOG_INFO, "layer root inode %ld\n", ino);
 }
 
 /* Purge removed inodes from cache */
@@ -1289,11 +1290,12 @@ lc_displayFtypeStats(struct fs *fs) {
         return;
     }
     super = fs->fs_super;
-    printf("\tRegular files %ld Directories %ld Symbolic links %ld Other %ld\n",
-           super->sb_ftypes[LC_FTYPE_REGULAR],
-           super->sb_ftypes[LC_FTYPE_DIRECTORY],
-           super->sb_ftypes[LC_FTYPE_SYMBOLIC_LINK],
-           super->sb_ftypes[LC_FTYPE_OTHER]);
+    lc_syslog(LOG_INFO, "\tRegular files %ld Directories %ld "
+              "Symbolic links %ld Other %ld\n",
+              super->sb_ftypes[LC_FTYPE_REGULAR],
+              super->sb_ftypes[LC_FTYPE_DIRECTORY],
+              super->sb_ftypes[LC_FTYPE_SYMBOLIC_LINK],
+              super->sb_ftypes[LC_FTYPE_OTHER]);
 }
 
 /* Initialize a newly allocated inode */

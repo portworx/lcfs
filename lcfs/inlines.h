@@ -1,8 +1,10 @@
 #ifndef _INLINES_H
 #define _INLINES_H
 
+#define lc_syslog(level, ...)  syslog(level, __VA_ARGS__)
+
 #if 0
-#define lc_printf  printf
+#define lc_printf(...)  lc_syslog(LOG_INFO,  __VA_ARGS__)
 #else
 #define lc_printf(a...)
 #endif
