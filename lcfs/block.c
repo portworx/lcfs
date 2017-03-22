@@ -50,6 +50,10 @@ lc_reclaimSpace(struct gfs *gfs) {
     struct fs *fs;
     int i;
 
+    if (gfs->gfs_fextents) {
+        lc_layerChanged(gfs, false, true);
+        queued = true;
+    }
     rcu_register_thread();
     rcu_read_lock();
     for (i = 0; i <= gfs->gfs_scount; i++) {
@@ -449,7 +453,7 @@ lc_blockFreeLayer(struct gfs *gfs, struct fs *fs, struct fs *rfs,
         /* Release the blocks to the global pool */
         lc_freeExtentBlocks(gfs, rfs, block, count, true);
     }
-    __sync_add_and_fetch(&fs->fs_freed, count);
+    lc_atomicUpdate(fs, &fs->fs_freed, count, true);
 }
 
 /* Display allocation stats of the layer */

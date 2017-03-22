@@ -541,7 +541,9 @@ lc_replyDiff(fuse_req_t req, struct fs *fs) {
             cdir->cd_file = cfile->cf_next;
             lc_free(fs, cfile, sizeof(struct cfile), LC_MEMTYPE_CFILE);
         }
-        lc_free(fs, cdir->cd_path, cdir->cd_len, LC_MEMTYPE_PATH);
+        if (cdir->cd_path) {
+            lc_free(fs, cdir->cd_path, cdir->cd_len, LC_MEMTYPE_PATH);
+        }
 
         /* Remove the last record after all records are returned */
         if ((cdir->cd_next != NULL) || (size == 0)) {

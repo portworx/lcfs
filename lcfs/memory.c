@@ -119,14 +119,9 @@ lc_memStatsUpdate(struct fs *fs, size_t size, bool alloc,
     if (fs) {
 
         /* Per layer stats */
-        if (alloc) {
-            __sync_add_and_fetch(&fs->fs_memory, size);
-            __sync_add_and_fetch(&fs->fs_malloc[type], 1);
-        } else {
-            freed = __sync_fetch_and_sub(&fs->fs_memory, size);
-            assert(freed >= size);
-            __sync_add_and_fetch(&fs->fs_free[type], 1);
-        }
+        lc_atomicUpdate(fs, &fs->fs_memory, size, alloc);
+        lc_atomicUpdate(fs, alloc ? &fs->fs_malloc[type] : &fs->fs_free[type],
+                        1, true);
     } else {
 
         /* Global stats */

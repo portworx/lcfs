@@ -275,6 +275,8 @@ lc_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
             lc_copyFakeStat(&ep.attr);
             ep.ino = lc_setHandle(fs->fs_gindex, ep.attr.st_ino);
             lc_epInit(&ep);
+            ep.attr_timeout = 0;
+            ep.entry_timeout = 0;
             fuse_reply_entry(req, &ep);
             goto out;
         }

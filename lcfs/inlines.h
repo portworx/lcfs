@@ -49,4 +49,26 @@ lc_reportError(const char *func, int line, ino_t ino, int err) {
 #define lc_reportError(a...)
 #endif
 
+/* Update a value atomically */
+static inline void
+lc_atomicUpdate(struct fs *fs, uint64_t *value, uint64_t change, bool incr) {
+    uint64_t decr;
+
+    if (incr) {
+        if (fs->fs_locked) {
+            *value = *value + change;
+        } else {
+            __sync_add_and_fetch(value, change);
+        }
+    } else {
+        if (fs->fs_locked) {
+            assert(change <= *value);
+            *value = *value - change;
+        } else {
+            decr = __sync_fetch_and_sub(value, change);
+            assert(change <= decr);
+        }
+    }
+}
+
 #endif

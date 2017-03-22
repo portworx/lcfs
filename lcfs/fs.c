@@ -9,6 +9,7 @@ lc_newLayer(struct gfs *gfs, bool rw) {
     fs->fs_gfs = gfs;
     fs->fs_readOnly = !rw;
     fs->fs_sblock = LC_INVALID_BLOCK;
+    fs->fs_locked = true;
 #ifndef LC_IC_LOCK
     pthread_mutex_init(&fs->fs_ilock, NULL);
 #endif
@@ -193,10 +194,25 @@ lc_tryLock(struct fs *fs, bool exclusive) {
                        pthread_rwlock_tryrdlock(&fs->fs_rwlock);
 }
 
+/* Lock a layer exclusive */
+void
+lc_lockExclusive(struct fs *fs) {
+    lc_lock(fs, true);
+    fs->fs_locked = true;
+}
+
 /* Unlock the file system */
 void
 lc_unlock(struct fs *fs) {
     pthread_rwlock_unlock(&fs->fs_rwlock);
+}
+
+/* Unlock an exclusively locked layer */
+void
+lc_unlockExclusive(struct fs *fs) {
+    assert(fs->fs_locked);
+    fs->fs_locked = false;
+    lc_unlock(fs);
 }
 
 /* Check if the specified inode is a root of a file system and if so, return
@@ -360,7 +376,7 @@ lc_getLayerForRemoval(struct gfs *gfs, ino_t root, struct fs **fsp) {
     }
     lc_removeLayers(gfs, fs, gindex);
     pthread_mutex_unlock(&gfs->gfs_lock);
-    lc_lock(fs, true);
+    lc_lockExclusive(fs);
     assert(fs->fs_root == ino);
     *fsp = fs;
     return 0;
@@ -660,6 +676,9 @@ lc_mount(struct gfs *gfs, char *device, size_t size) {
             if (fs) {
                 lc_readExtents(gfs, fs);
                 lc_readInodes(gfs, fs);
+                if (i) {
+                    fs->fs_locked = false;
+                }
             }
         }
         fs = lc_getGlobalFs(gfs);
@@ -668,7 +687,7 @@ lc_mount(struct gfs *gfs, char *device, size_t size) {
         lc_validate(gfs);
     }
     fs->fs_mcount = 1;
-    lc_unlock(fs);
+    lc_unlockExclusive(fs);
 }
 
 /* Sync a dirty inodes in a layer */
@@ -750,7 +769,7 @@ lc_unmount(struct gfs *gfs) {
     struct fs *fs = lc_getGlobalFs(gfs);
 
     assert(gfs->gfs_unmounting);
-    lc_lock(fs, true);
+    lc_lockExclusive(fs);
     assert(fs->fs_mcount == 1);
     fs->fs_mcount = 0;
 

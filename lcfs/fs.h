@@ -386,6 +386,9 @@ struct fs {
 
     /* Set while a layer commit is in progress */
     bool fs_commitInProgress;
+
+    /* Set when locked exclusive */
+    bool fs_locked;
 } __attribute__((packed));
 
 /* Let the syncer know something changed and a checkpoint could be triggered */

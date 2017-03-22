@@ -198,7 +198,7 @@ out:
              */
             lc_destroyLayer(fs, true);
         } else {
-            lc_unlock(fs);
+            lc_unlockExclusive(fs);
         }
     }
     if (pfs) {
@@ -288,9 +288,22 @@ lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
         goto out;
     }
     root = fs->fs_root;
-
     lc_printf("Removing fs with parent %ld root %ld name %s\n",
                fs->fs_parent ? fs->fs_parent->fs_root : - 1, root, name);
+
+    /* Destroy pages and unlock base layer */
+    zfs = fs;
+    while (true) {
+        lc_destroyPages(gfs, zfs, true);
+        zfs = zfs->fs_zfs;
+        if (zfs == NULL) {
+            break;
+        }
+        lc_lockExclusive(zfs);
+    }
+    if (bfs) {
+        lc_unlock(bfs);
+    }
 
 retry:
     zfs = fs->fs_zfs;
@@ -299,11 +312,7 @@ retry:
 
         /* Remove zombie parent layer */
         fs = zfs;
-        lc_lock(fs, true);
         goto retry;
-    }
-    if (bfs) {
-        lc_unlock(bfs);
     }
 
     /* Notify VFS about removal of a directory */
@@ -496,6 +505,8 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
     lc_copyFakeStat(&e.attr);
     e.ino = lc_setHandle(fs->fs_gindex, e.attr.st_ino);
     lc_epInit(&e);
+    e.attr_timeout = 0;
+    e.entry_timeout = 0;
     rfs = lc_getLayerLocked(LC_ROOT_INODE, false);
     root = lc_getRootIno(rfs, layer + strlen(LC_COMMIT_TRIGGER_PREFIX),
                          NULL, true);
@@ -624,9 +635,10 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
     lc_unlock(pfs);
     lc_unlock(cfs);
     if (tfs) {
-        lc_lock(tfs, true);
-        lc_releaseLayer(gfs, tfs, rfs, &extents);
+        lc_lockExclusive(tfs);
+        lc_destroyPages(gfs, tfs, true);
         lc_unlock(bfs);
+        lc_releaseLayer(gfs, tfs, rfs, &extents);
         if (extents) {
             lc_blockFreeExtents(gfs, rfs, extents,
                                 LC_EXTENT_EFREE | LC_EXTENT_LAYER);
