@@ -32,9 +32,7 @@
 
 #define FUSE_COMMFD_ENV		"_FUSE_COMMFD"
 
-#define FUSE_DEV_OLD "/proc/fs/fuse/dev"
-#define FUSE_DEV_NEW "/dev/fuse"
-#define FUSE_VERSION_FILE_OLD "/proc/fs/fuse/version"
+#define FUSE_DEV "/dev/fuse"
 #define FUSE_CONF "/etc/fuse.conf"
 
 #ifndef MS_DIRSYNC
@@ -211,10 +209,10 @@ static int may_unmount(const char *mnt, int quiet)
 }
 
 /*
- * Check whether the file specified in "fusermount -u" is really a
+ * Check whether the file specified in "fusermount3 -u" is really a
  * mountpoint and not a symlink.  This is necessary otherwise the user
  * could move the mountpoint away and replace it with a symlink
- * pointing to an arbitrary mount, thereby tricking fusermount into
+ * pointing to an arbitrary mount, thereby tricking fusermount3 into
  * unmounting that (umount(2) will follow symlinks).
  *
  * This is the child process running in a separate mount namespace, so
@@ -714,10 +712,10 @@ static int get_string_opt(const char *s, unsigned len, const char *opt,
 
 static int do_mount(const char *mnt, char **typep, mode_t rootmode,
 		    int fd, const char *opts, const char *dev, char **sourcep,
-		    char **mnt_optsp, off_t rootsize)
+		    char **mnt_optsp)
 {
 	int res;
-	int flags = getuid() ? (MS_NOSUID | MS_NODEV) : 0;
+    int flags = getuid() ? (MS_NOSUID | MS_NODEV) : 0;
 	char *optbuf;
 	char *mnt_opts = NULL;
 	const char *s;
@@ -726,7 +724,6 @@ static int do_mount(const char *mnt, char **typep, mode_t rootmode,
 	char *subtype = NULL;
 	char *source = NULL;
 	char *type = NULL;
-	int check_empty = 1;
 	int blkdev = 0;
 
 	optbuf = (char *) malloc(strlen(opts) + 128);
@@ -759,8 +756,6 @@ static int do_mount(const char *mnt, char **typep, mode_t rootmode,
 				goto err;
 			}
 			blkdev = 1;
-		} else if (opt_eq(s, len, "nonempty")) {
-			check_empty = 0;
 		} else if (opt_eq(s, len, "auto_unmount")) {
 			auto_unmount = 1;
 		} else if (!begins_with(s, "fd=") &&
@@ -785,7 +780,7 @@ static int do_mount(const char *mnt, char **typep, mode_t rootmode,
 			if (getuid() != 0 && !user_allow_other &&
 			    (opt_eq(s, len, "allow_other") ||
 			     opt_eq(s, len, "allow_root"))) {
-				fprintf(stderr, "%s: option %.*s only allowed if 'user_allow_other' is set in /etc/fuse.conf\n", progname, len, s);
+				fprintf(stderr, "%s: option %.*s only allowed if 'user_allow_other' is set in %s\n", progname, len, s, FUSE_CONF);
 				goto err;
 			}
 			if (!skip_option) {
@@ -812,10 +807,6 @@ static int do_mount(const char *mnt, char **typep, mode_t rootmode,
 
 	sprintf(d, "fd=%i,rootmode=%o,user_id=%u,group_id=%u",
 		fd, rootmode, getuid(), getgid());
-
-	if (check_empty &&
-	    fuse_mnt_check_empty(progname, mnt, rootmode, rootsize) == -1)
-		goto err;
 
 	source = malloc((fsname ? strlen(fsname) : 0) +
 			(subtype ? strlen(subtype) : 0) + strlen(dev) + 32);
@@ -881,37 +872,6 @@ err:
 	free(mnt_opts);
 	free(optbuf);
 	return -1;
-}
-
-static int check_version(const char *dev)
-{
-	int res;
-	int majorver;
-	int minorver;
-	const char *version_file;
-	FILE *vf;
-
-	if (strcmp(dev, FUSE_DEV_OLD) != 0)
-		return 0;
-
-	version_file = FUSE_VERSION_FILE_OLD;
-	vf = fopen(version_file, "r");
-	if (vf == NULL) {
-		fprintf(stderr, "%s: kernel interface too old\n", progname);
-		return -1;
-	}
-	res = fscanf(vf, "%i.%i", &majorver, &minorver);
-	fclose(vf);
-	if (res != 2) {
-		fprintf(stderr, "%s: error reading %s\n", progname,
-			version_file);
-		return -1;
-	}
-	if (majorver < 3) {
-		fprintf(stderr, "%s: kernel interface too old\n", progname);
-		return -1;
-	}
-	return 0;
 }
 
 static int check_perm(const char **mntp, struct stat *stbuf, int *mountpoint_fd)
@@ -1019,20 +979,11 @@ static int try_open(const char *dev, char **devp, int silent)
 static int try_open_fuse_device(char **devp)
 {
 	int fd;
-	int err;
 
 	drop_privs();
-	fd = try_open(FUSE_DEV_NEW, devp, 0);
+	fd = try_open(FUSE_DEV, devp, 0);
 	restore_privs();
-	if (fd >= 0)
-		return fd;
-
-	err = fd;
-	fd = try_open(FUSE_DEV_OLD, devp, 1);
-	if (fd >= 0)
-		return fd;
-
-	return err;
+	return fd;
 }
 
 static int open_fuse_device(char **devp)
@@ -1071,21 +1022,16 @@ static int mount_fuse(const char *mnt, const char *opts)
 	if (getuid() != 0 && mount_max != -1) {
 		int mount_count = count_fuse_fs();
 		if (mount_count >= mount_max) {
-			fprintf(stderr, "%s: too many FUSE filesystems mounted; mount_max=N can be set in /etc/fuse.conf\n", progname);
+			fprintf(stderr, "%s: too many FUSE filesystems mounted; mount_max=N can be set in %s\n", progname, FUSE_CONF);
 			goto fail_close_fd;
 		}
 	}
 
-	res = check_version(dev);
-	if (res != -1) {
-		res = check_perm(&real_mnt, &stbuf, &mountpoint_fd);
-		restore_privs();
-		if (res != -1)
-			res = do_mount(real_mnt, &type, stbuf.st_mode & S_IFMT,
-				       fd, opts, dev, &source, &mnt_opts,
-				       stbuf.st_size);
-	} else
-		restore_privs();
+	res = check_perm(&real_mnt, &stbuf, &mountpoint_fd);
+	restore_privs();
+	if (res != -1)
+		res = do_mount(real_mnt, &type, stbuf.st_mode & S_IFMT,
+			       fd, opts, dev, &source, &mnt_opts);
 
 	if (mountpoint_fd != -1)
 		close(mountpoint_fd);
@@ -1159,22 +1105,21 @@ static int send_fd(int sock_fd, int fd)
 
 static void usage(void)
 {
-	fprintf(stderr,
-		"%s: [options] mountpoint\n"
-		"Options:\n"
-		" -h		    print help\n"
-		" -V		    print version\n"
-		" -o opt[,opt...]   mount options\n"
-		" -u		    unmount\n"
-		" -q		    quiet\n"
-		" -z		    lazy unmount\n",
-		progname);
+	printf("%s: [options] mountpoint\n"
+	       "Options:\n"
+	       " -h		    print help\n"
+	       " -V		    print version\n"
+	       " -o opt[,opt...]   mount options\n"
+	       " -u		    unmount\n"
+	       " -q		    quiet\n"
+	       " -z		    lazy unmount\n",
+	       progname);
 	exit(1);
 }
 
 static void show_version(void)
 {
-	printf("fusermount version: %s\n", PACKAGE_VERSION);
+	printf("fusermount3 version: %s\n", PACKAGE_VERSION);
 	exit(0);
 }
 
@@ -1261,7 +1206,7 @@ int main(int argc, char *argv[])
 		res = chdir("/");
 		if (res == -1) {
 			fprintf(stderr, "%s: failed to chdir to '/'\n", progname);
-			exit(1);
+			goto err_out;
 		}
 	}
 	restore_privs();
@@ -1276,31 +1221,33 @@ int main(int argc, char *argv[])
 	if (commfd == NULL) {
 		fprintf(stderr, "%s: old style mounting not supported\n",
 			progname);
-		exit(1);
+		goto err_out;
 	}
 
 	fd = mount_fuse(mnt, opts);
 	if (fd == -1)
-		exit(1);
+		goto err_out;
 
 	cfd = atoi(commfd);
 	res = send_fd(cfd, fd);
 	if (res == -1)
-		exit(1);
+		goto err_out;
 	close(fd);
 
-	if (!auto_unmount)
+	if (!auto_unmount) {
+		free(mnt);
 		return 0;
+	}
 
 	/* Become a daemon and wait for the parent to exit or die.
-	   ie For the control socket to get closed. 
+	   ie For the control socket to get closed.
 	   btw We don't want to use daemon() function here because
 	   it forks and messes with the file descriptors. */
 	setsid();
 	res = chdir("/");
 	if (res == -1) {
 		fprintf(stderr, "%s: failed to chdir to '/'\n", progname);
-		exit(1);
+		goto err_out;
 	}
 
 	sigfillset(&sigset);
@@ -1333,6 +1280,10 @@ do_unmount:
 				progname, mnt, strerror(errno));
 	}
 	if (res == -1)
-		exit(1);
+		goto err_out;
 	return 0;
+
+err_out:
+	free(mnt);
+	exit(1);
 }

@@ -1,7 +1,7 @@
 #ifndef _INCLUDE_H_
 #define _INCLUDE_H_
 
-//#define FUSE3
+#define FUSE3
 #ifdef FUSE3
 #define FUSE_USE_VERSION 30
 #else

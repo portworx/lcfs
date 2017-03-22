@@ -7,17 +7,17 @@ endif
 
 UNAME=$(shell uname)
 ifeq ($(UNAME),Linux)
-	CFLAGS=$(BUILD_FLAGS) -Wall -D_FILE_OFFSET_BITS=64 -I/usr/include/fuse -I/usr/local/include/fuse
-	LDFLAGS=-lz -ltcmalloc -pthread -lprofiler -lurcu -lfuse
-	#CFLAGS=$(BUILD_FLAGS) -Wall -D_FILE_OFFSET_BITS=64 -I/usr/include/fuse3 -I/usr/local/include/fuse3
-	#LDFLAGS=-lz -ltcmalloc -pthread -lprofiler -L/usr/local/lib -lfuse3
+	#CFLAGS=$(BUILD_FLAGS) -Wall -D_FILE_OFFSET_BITS=64 -I/usr/include/fuse -I/usr/local/include/fuse
+	#LDFLAGS=-lz -ltcmalloc -pthread -lprofiler -lurcu -lfuse
+	CFLAGS=$(BUILD_FLAGS) -Wall -D_FILE_OFFSET_BITS=64 -I/usr/include/fuse3 -I/usr/local/include/fuse3
+	LDFLAGS=-lz -ltcmalloc -pthread -lprofiler -lurcu -L/usr/local/lib -lfuse3
 else
 	CFLAGS=$(BUILD_FLAGS) -Wno-format $ -D_FILE_OFFSET_BITS=64 -I/usr/local/include/osxfuse/fuse -I/usr/local/include/osxfuse
 	LDFLAGS=-ltcmalloc -lprofiler -losxfuse -lz -lurcu
 endif
 
 ifdef STATIC
-LCFSSTATICLIBS="libtcmalloc_and_profiler.a libfuse.a libunwind.a liburcu.a"
+LCFSSTATICLIBS="libtcmalloc_and_profiler.a libfuse3.a libunwind.a liburcu.a"
 # use for loop to preserve library order
 LCFS_STATIC_LIBS=$(shell for fl in "$(LCFSSTATICLIBS)"; do find /usr -name $$fl 2>/dev/null; done)
 ifeq ($(shell test -z "$(LCFS_STATIC_LIBS)"; echo $$?),0)

@@ -1524,7 +1524,8 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
         value = atoll(in_buf);
         gfs->gfs_syncInterval = value;
         pthread_cond_signal(&gfs->gfs_syncerCond);
-        lc_printf("New sync interval %d seconds\n", gfs->gfs_syncInterval);
+        lc_syslog(LOG_INFO, "New sync interval %d seconds\n",
+                  gfs->gfs_syncInterval);
         fuse_reply_ioctl(req, 0, NULL, 0);
         break;
 

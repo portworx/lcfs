@@ -1,5 +1,5 @@
-# Instructions on building the LCFS file syste with fuse v2.9.7
-The LCFS file system depends on fuse v2.9.7.  These instructions walk you through installing fuse and building and testing lcfs as regular filesystem, independent of Docker.
+# Instructions on building the LCFS file syste with fuse v3.0.0
+The LCFS file system depends on fuse v3.0.0.  These instructions walk you through installing fuse and building and testing lcfs as regular filesystem, independent of Docker.
 
 ### Install pre-requisite packages
 Building this file system requires `tcmalloc`, `zlib` and `fuse`.
@@ -47,9 +47,7 @@ On CentOS, run
 # sudo yum install gcc libstdc++-devel gcc-c++ curl-devel libxml2-devel openssl-devel mailcap
 ```
      
-Now dowload and install the fuse library from https://github.com/libfuse/libfuse/releases/download/fuse-2.9.7/fuse-2.9.7.tar.gz
-
-> Note: If testing with fuse 3.0 library, download fuse library from https://github.com/libfuse/libfuse/releases/download/fuse-3.0.0/fuse-3.0.0.tar.gz
+Now dowload and install the fuse library from https://github.com/libfuse/libfuse/releases/download/fuse-3.0.0/fuse-3.0.0.tar.gz
 
 Extract the fuse tarball and build and install fuse using the following commands:
 

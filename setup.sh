@@ -48,14 +48,14 @@ mkdir -p $WDIR
 chmod 777 $WDIR
 cd $WDIR
 
-#Install FUSE 2.9.7
-wget https://github.com/libfuse/libfuse/releases/download/fuse-2.9.7/fuse-2.9.7.tar.gz
-tar -xzvf fuse-2.9.7.tar.gz
-cd fuse-2.9.7
+#Install FUSE 3.0.0
+wget https://github.com/libfuse/libfuse/releases/download/fuse-3.0.0/fuse-3.0.0.tar.gz
+tar -xzvf fuse-3.0.0.tar.gz
+cd fuse-3.0.0
 ./configure
 make -j8
 sudo make install
-rm -fr fuse-2.9.7*
+rm -fr fuse-3.0.0*
 
 cd $WDIR
 

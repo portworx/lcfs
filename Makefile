@@ -42,7 +42,7 @@ gr-plugin:
 	 docker run --name $(GR_CONTAINER) $(GR_CONTAINER) ls -l /tmp
 	 docker cp $(GR_CONTAINER):/tmp/lcfs_plugin.bin .
 	 docker cp $(GR_CONTAINER):/tmp/pkgs .
-	 docker cp $(GR_CONTAINER):/tmp/fusermount .
+	 docker cp $(GR_CONTAINER):/tmp/fusermount3 .
 	 docker rm $(GR_CONTAINER)
 
 gr-clean:

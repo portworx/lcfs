@@ -19,15 +19,13 @@ ENV BUILD_FLAGS ${BUILD_FLAGS}
 RUN apt-get update && \
     apt-get install -y build-essential util-linux libcurl4-openssl-dev \
                        libxml2-dev mime-support libgoogle-perftools-dev liblzma-dev rpm file alien sudo libz-dev liburcu-dev
-#ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
-
 ADD . /go/src/github.com/portworx/lcfs
 
 WORKDIR /go/src/github.com/portworx/lcfs
-RUN wget -q https://github.com/libfuse/libfuse/releases/download/fuse-2.9.7/fuse-2.9.7.tar.gz && \
-    tar -xzf fuse-2.9.7.tar.gz
-WORKDIR fuse-2.9.7
-RUN cp ../fuse/fusermount.c util && ./configure --bindir=/opt/pwx/bin && make -j8 && make install && cp -a /opt/pwx/bin/fusermount /go/src/github.com/portworx/lcfs/lcfs
+RUN wget -q https://github.com/libfuse/libfuse/releases/download/fuse-3.0.0/fuse-3.0.0.tar.gz && \
+    tar -xzf fuse-3.0.0.tar.gz
+WORKDIR fuse-3.0.0
+RUN cp ../fuse/fusermount.c util && ./configure --bindir=/opt/pwx/bin && make -j8 && make install && cp -a /opt/pwx/bin/fusermount3 /go/src/github.com/portworx/lcfs/lcfs
 
 WORKDIR /go/src/github.com/portworx/lcfs/lcfs
 RUN make clean && \
@@ -36,8 +34,8 @@ RUN mkdir /tmp/pkgs && \
     \cp -a rpm/lcfs/RPMS/x86_64/*.deb /tmp/pkgs && \
     \cp -a rpm/lcfs/RPMS/x86_64/*.rpm /tmp/pkgs && \
     \cp -a rpm/lcfs/RPMS/x86_64/*.tgz /tmp/pkgs && \
-    \cp ../fuse-2.9.7/util/fusermount /tmp
+    \cp ../fuse-3.0.0/util/fusermount3 /tmp
 
 WORKDIR /go/src/github.com/portworx/lcfs/plugin
-RUN make && \
+RUN make clean && make && \
     mv lcfs_plugin /tmp/lcfs_plugin.bin
