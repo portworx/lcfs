@@ -1,5 +1,7 @@
 #!/bin/bash
 
+PATH="/opt/pwx/bin":${PATH}
+
 if [ "$1" == "--debug" -o -n "${DEBUG}" ]; then
     DEBUG="yes" && set -x
     [ "$1" == "--debug" ] && shift
@@ -348,6 +350,7 @@ function stop_remove_lcfs
 	clean_mount "${PLUGIN_MNT}"
 	clean_mount "${DOCKER_MNT}"
 	killprocess lcfs
+	sleep 3
     fi
 
     if [ -n "${REMOVE}" ]; then
