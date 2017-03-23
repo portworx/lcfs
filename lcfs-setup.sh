@@ -144,8 +144,9 @@ function dockerd_manual_start()
     local dcmd=($1)
     local out_fl=/tmp/ldocker.out.$$
 
+    [ -d "/var/run/docker.sock" ] && rmdir "/var/run/docker.sock"
     ${dcmd[@]} >> ${out_fl} 2>&1 &
-    ${SUDO} timeout 15 bash -c "while [ ! -e ${out_fl} ] || ! (tail -n 5 ${out_fl} | egrep -q 'listen on .*docker.sock\".*$') ; do echo 'checking docker start...' ; sleep 1; done"
+    ${SUDO} bash -c "while [ ! -e ${out_fl} ] || ! (tail -n 5 ${out_fl} | egrep -q 'listen on .*docker.sock\".*$') && [ -n \"$(ps -C ${DOCKER_SRV_BIN} -o pid --no-header)\" ]; do echo 'checking docker start...' ; sleep 1; done"
     local status=$?
 
     [ ${status} -ne 0 ] && echo "Error: failed to start docker." && cat ${out_fl}
