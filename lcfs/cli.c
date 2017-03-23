@@ -30,7 +30,7 @@ cmd_daemon(int argc, char *argv[]) {
     return lcfs_main(argc, argv);
 }
 
-/* Adjust syncer frequency */
+/* Perform requested action */
 static int
 cmd_ioctl(int argc, char *argv[]) {
     return ioctl_main(argc, argv);
@@ -72,11 +72,19 @@ cmd_group lcfs_cmd_group[] = {
     },
     {
         "pcache",
-        "Adjust page cache memory limit (default 512MB)",
+        "Adjust page cache memory limit (default 25%, minimum 512MB)",
         "<mnt> <limit>",
         "\tmnt     - mount point\n"
         "\tlimit   - memory limit in MB (default 512MB)\n",
         2,
+        cmd_ioctl
+    },
+    {
+        "flush",
+        "Release pages not in use",
+        "<mnt>",
+        "\tmnt     - mount point\n",
+        1,
         cmd_ioctl
     },
     {NULL},

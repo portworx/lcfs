@@ -845,7 +845,7 @@ lc_wakeupCleaner(struct gfs *gfs, bool wait) {
 
 /* Purge some pages of a tree of layers */
 static uint64_t
-lc_purgeTreePages(struct gfs *gfs, struct fs *fs) {
+lc_purgeTreePages(struct gfs *gfs, struct fs *fs, bool force) {
     struct lbcache *lbcache = fs->fs_bcache;
     struct pcache *pcache = lbcache->lb_pcache;
     struct page *page, **prev;
@@ -899,7 +899,7 @@ lc_purgeTreePages(struct gfs *gfs, struct fs *fs) {
         if (lc_checkMemoryAvailable(false)) {
             pthread_cond_broadcast(&gfs->gfs_mcond);
         }
-        if (lc_checkMemoryAvailable(true)) {
+        if (!force && lc_checkMemoryAvailable(true)) {
             break;
         }
     }
@@ -946,9 +946,9 @@ lc_purgePages(struct gfs *gfs, bool force) {
             /* Purge clean pages for the tree */
             if (fs->fs_bcache->lb_pcount) {
                 rcu_read_unlock();
-                count += lc_purgeTreePages(gfs, fs);
+                count += lc_purgeTreePages(gfs, fs, force);
                 rcu_read_lock();
-                if (lc_checkMemoryAvailable(true)) {
+                if (!force && lc_checkMemoryAvailable(true)) {
                     lc_unlock(fs);
                     break;
                 }

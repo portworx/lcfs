@@ -13,6 +13,7 @@ enum ioctl_cmd {
     CLEAR_STAT = 108,               /* Clear stats for a layer */
     SYNCER_TIME = 109,              /* Adjust syncer frequency */
     DCACHE_MEMORY = 110,            /* Adjust data pcache size */
+    DCACHE_FLUSH = 111,             /* Flush pages not in use */
 };
 
 #ifndef LC_DIFF

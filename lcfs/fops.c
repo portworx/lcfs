@@ -1486,7 +1486,7 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
         fuse_reply_err(req, ENOSYS);
         return;
     }
-    if ((op != SYNCER_TIME) && (op != DCACHE_MEMORY)) {
+    if ((op != SYNCER_TIME) && (op != DCACHE_MEMORY) && (op != DCACHE_FLUSH)) {
         if (in_bufsz) {
             memcpy(name, in_buf, in_bufsz);
         }
@@ -1538,6 +1538,12 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
             value = LC_PCACHE_MEMORY;
         }
         lc_memoryInit(value);
+        fuse_reply_ioctl(req, 0, NULL, 0);
+        break;
+
+    case DCACHE_FLUSH:
+        pthread_cond_signal(&gfs->gfs_flusherCond);
+        pthread_cond_signal(&gfs->gfs_cleanerCond);
         fuse_reply_ioctl(req, 0, NULL, 0);
         break;
 

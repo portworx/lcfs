@@ -22,7 +22,7 @@ ioctl_main(int argc, char *argv[]) {
     char name[256], *dir;
     struct stat st;
 
-    if ((argc != 3) && (argc != 4)) {
+    if ((argc != 2) && (argc != 3) && (argc != 4)) {
         usage(argv[0]);
     }
     if (stat(argv[1], &st)) {
@@ -40,16 +40,27 @@ ioctl_main(int argc, char *argv[]) {
     fd = open(dir, O_DIRECTORY);
     if (fd < 0) {
         perror("open");
-        fprintf(stderr, "Make sure %s exists\n", dir);
+        fprintf(stderr, "Make sure %s exists and has permissions\n", dir);
         exit(errno);
     }
     if (strcmp(argv[0], "stats") == 0) {
+        if (argc < 3) {
+            usage(argv[0]);
+        }
         if ((argc == 4) && strcmp(argv[3], "-c")) {
             usage(argv[0]);
         }
         err = ioctl(fd, _IOW(0, argc == 3 ? LAYER_STAT : CLEAR_STAT, name),
                     argv[2]);
+    } else if (strcmp(argv[0], "flush") == 0) {
+        if (argc != 2) {
+            usage(argv[0]);
+        }
+        err = ioctl(fd, _IO(0, DCACHE_FLUSH), 0);
     } else {
+        if (argc < 3) {
+            usage(argv[0]);
+        }
         value = atoll(argv[2]);
         if ((value < 0) || (argc != 3)) {
             close(fd);
