@@ -63,10 +63,15 @@ void
 lc_memoryInit(uint64_t limit) {
     uint64_t totalram = lc_getTotalMemory();
 
-    lc_mem.m_purgeMemory = limit;
-    if (totalram < lc_mem.m_purgeMemory) {
-        lc_mem.m_purgeMemory = (totalram * LC_PCACHE_MEMORY_MIN) / 100;
+    if (limit == 0) {
+        limit = (totalram * LC_PCACHE_MEMORY_MIN) / 100;
+    } else if (limit < LC_PCACHE_MEMORY) {
+        limit = LC_PCACHE_MEMORY;
     }
+    if (limit > totalram) {
+        limit = (totalram * LC_PCACHE_MEMORY_MIN) / 100;
+    }
+    lc_mem.m_purgeMemory = limit;
     lc_mem.m_dataMemory = (lc_mem.m_purgeMemory * (100 + LC_PURGE_TARGET))
                           / 100;
     lc_syslog(LOG_INFO, "Maximum memory allowed for data pages %ld MB\n",
