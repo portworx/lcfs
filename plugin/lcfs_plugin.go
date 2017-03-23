@@ -139,7 +139,7 @@ func (d *Driver) Init(home string, options []string, uidMaps, gidMaps []idtools.
 	}
 
 	// Open layer root directory
-	fd, err = syscall.Open(home, syscall.O_DIRECTORY, 0)
+	fd, err = syscall.Open(d.home, syscall.O_DIRECTORY, 0)
 	if err != nil {
 		logrus.Errorf("err %v\n", err)
 		return err
