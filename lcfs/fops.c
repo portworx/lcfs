@@ -1542,6 +1542,7 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
         break;
 
     case DCACHE_FLUSH:
+        gfs->gfs_pcleaningForced = true;
         pthread_cond_signal(&gfs->gfs_flusherCond);
         pthread_cond_signal(&gfs->gfs_cleanerCond);
         fuse_reply_ioctl(req, 0, NULL, 0);

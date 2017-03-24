@@ -899,7 +899,7 @@ lc_purgeTreePages(struct gfs *gfs, struct fs *fs, bool force) {
         if (lc_checkMemoryAvailable(false)) {
             pthread_cond_broadcast(&gfs->gfs_mcond);
         }
-        if (!force && lc_checkMemoryAvailable(true)) {
+        if (!gfs->gfs_pcleaningForced && lc_checkMemoryAvailable(true)) {
             break;
         }
     }
@@ -948,7 +948,8 @@ lc_purgePages(struct gfs *gfs, bool force) {
                 rcu_read_unlock();
                 count += lc_purgeTreePages(gfs, fs, force);
                 rcu_read_lock();
-                if (!force && lc_checkMemoryAvailable(true)) {
+                if (!gfs->gfs_pcleaningForced &&
+                    lc_checkMemoryAvailable(true)) {
                     lc_unlock(fs);
                     break;
                 }
@@ -964,6 +965,7 @@ lc_purgePages(struct gfs *gfs, bool force) {
     if (!lc_checkMemoryAvailable(false)) {
         pthread_cond_signal(&gfs->gfs_flusherCond);
     }
+    gfs->gfs_pcleaningForced = false;
 
     /* Wakeup threads waiting for memory to become available */
     pthread_mutex_lock(&gfs->gfs_clock);

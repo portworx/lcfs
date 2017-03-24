@@ -161,6 +161,9 @@ struct gfs {
     /* Pages being purged */
     bool gfs_pcleaning;
 
+    /* Set when purging of pages forced */
+    bool gfs_pcleaningForced;
+
     /* Set if extended attributes are enabled */
     bool gfs_xattr_enabled;
 } __attribute__((packed));

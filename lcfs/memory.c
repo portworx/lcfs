@@ -243,10 +243,8 @@ lc_displayGlobalMemStats() {
                   lc_mem.m_globalMalloc, lc_mem.m_globalFree,
                   lc_mem.m_globalMemory);
     }
-    if (lc_mem.m_totalMemory) {
-        lc_syslog(LOG_INFO, "Total memory used for pages %ld\n",
-                  lc_mem.m_totalMemory);
-    }
+    lc_syslog(LOG_INFO, "Total memory used for pages %ld limit %ldMB\n",
+              lc_mem.m_totalMemory, lc_mem.m_purgeMemory / (1024 * 1024));
 }
 
 /* Display memory stats */
