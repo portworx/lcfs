@@ -146,9 +146,13 @@ function dockerd_manual_start()
 
     [ -d "/var/run/docker.sock" ] && rmdir "/var/run/docker.sock"
     ${dcmd[@]} >> ${out_fl} 2>&1 &
-    ${SUDO} bash -c "while [ ! -e ${out_fl} ] || ! (tail -n 5 ${out_fl} | egrep -q 'listen on .*docker.sock\".*$') && [ -n \"$(ps -C ${DOCKER_SRV_BIN} -o pid --no-header)\" ]; do echo 'checking docker start...' ; sleep 1; done"
-    local status=$?
-
+    sleep 2   # Allow time for docker to start
+    local status=1
+    if [ -n "$(ps -C ${DOCKER_SRV_BIN} -o pid --no-header)" ]; then
+	# allow 5 mins for docker to come up even with plugins.
+	${SUDO} timeout 300 bash -c "while [ ! -e ${out_fl} ] || ! (tail -n 5 ${out_fl} | egrep -q 'listen on .*docker.sock\".*$'); do echo 'checking docker start...' ; sleep 1; done"
+	status=$?
+    fi
     [ ${status} -ne 0 ] && echo "Error: failed to start docker." && cat ${out_fl}
     ${SUDO} \rm ${out_fl}
     if [ ${status} -ne 0 ]; then
@@ -535,10 +539,13 @@ backup_docker_cfg
 # Restart docker
 if [ -z "${START}" ]; then
     dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN} -s vfs"
-    remove_lcfs_plugin
-    ${SUDO} ${DOCKER_BIN} plugin install --grant-all-permissions ${LCFS_IMG}
+    if [ $? -eq 0 ]; then
+	remove_lcfs_plugin
+	${SUDO} ${DOCKER_BIN} plugin install --grant-all-permissions ${LCFS_IMG}
+    fi
     killprocess ${DOCKER_SRV_BIN}
 fi
+
 dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN} --experimental -s ${LCFS_IMG}"
 ${SUDO} ${DOCKER_BIN} info
 if [ -z "${START}" ]; then
