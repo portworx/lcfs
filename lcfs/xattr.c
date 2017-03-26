@@ -50,21 +50,21 @@ lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
     int err = 0;
 
     /* Do not allow creating extended attributes on the layer root directory */
-    if (ino == gfs->gfs_layerRoot) {
+    if (unlikely(ino == gfs->gfs_layerRoot)) {
         lc_reportError(__func__, __LINE__, ino, EPERM);
         fuse_reply_err(req, EPERM);
         return;
     }
     lc_statsBegin(&start);
     fs = lc_getLayerLocked(ino, false);
-    if (fs->fs_frozen) {
+    if (unlikely(fs->fs_frozen)) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
         err = EROFS;
         goto out;
     }
     inode = lc_getInode(fs, ino, NULL, true, true);
-    if (inode == NULL) {
+    if (unlikely(inode == NULL)) {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
@@ -93,7 +93,7 @@ lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
             /* If XATTR_CREATE is specified, operation fails if an attribute
              * exists already.
              */
-            if (flags == XATTR_CREATE) {
+            if (unlikely(flags == XATTR_CREATE)) {
                 lc_inodeUnlock(inode);
                 lc_reportError(__func__, __LINE__, ino, EEXIST);
                 fuse_reply_err(req, EEXIST);
@@ -128,7 +128,7 @@ lc_xattrAdd(fuse_req_t req, ino_t ino, const char *name,
     /* Operation fails if XATTR_REPLACE is specified and attribute does not
      * exist.
      */
-    if (flags == XATTR_REPLACE) {
+    if (unlikely(flags == XATTR_REPLACE)) {
         lc_inodeUnlock(inode);
         lc_reportError(__func__, __LINE__, ino, ENODATA);
         fuse_reply_err(req, ENODATA);
@@ -169,7 +169,7 @@ lc_xattrGet(fuse_req_t req, ino_t ino, const char *name,
         goto out;
     }
     inode = lc_getInode(fs, ino, NULL, false, false);
-    if (inode == NULL) {
+    if (unlikely(inode == NULL)) {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
@@ -234,7 +234,7 @@ lc_xattrList(fuse_req_t req, ino_t ino, size_t size) {
         goto out;
     }
     inode = lc_getInode(fs, ino, NULL, false, false);
-    if (inode == NULL) {
+    if (unlikely(inode == NULL)) {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
@@ -319,12 +319,6 @@ lc_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
 
     lc_statsBegin(&start);
     fs = lc_getLayerLocked(ino, false);
-    if (fs->fs_frozen) {
-        lc_reportError(__func__, __LINE__, ino, EROFS);
-        fuse_reply_err(req, EROFS);
-        err = EROFS;
-        goto out;
-    }
 
     /* If the file system does not have any extended attributes, return without
      * looking up the inode.
@@ -334,8 +328,14 @@ lc_xattrRemove(fuse_req_t req, ino_t ino, const char *name) {
         err = ENODATA;
         goto out;
     }
+    if (unlikely(fs->fs_frozen)) {
+        lc_reportError(__func__, __LINE__, ino, EROFS);
+        fuse_reply_err(req, EROFS);
+        err = EROFS;
+        goto out;
+    }
     inode = lc_getInode(fs, ino, NULL, true, true);
-    if (inode == NULL) {
+    if (unlikely(inode == NULL)) {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;

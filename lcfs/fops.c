@@ -22,13 +22,13 @@ lc_createInode(struct fs *fs, ino_t parent, const char *name, mode_t mode,
     struct inode *dir, *inode;
     ino_t ino;
 
-    if (fs->fs_frozen) {
+    if (unlikely(fs->fs_frozen)) {
         lc_reportError(__func__, __LINE__, parent, EROFS);
         return EROFS;
     }
 
     /* Do not allow file creations in layer root directory */
-    if (parent == gfs->gfs_layerRoot) {
+    if (unlikely(parent == gfs->gfs_layerRoot)) {
         lc_reportError(__func__, __LINE__, parent, EPERM);
         return EPERM;
     }
@@ -39,7 +39,7 @@ lc_createInode(struct fs *fs, ino_t parent, const char *name, mode_t mode,
         return ENOSPC;
     }
     dir = lc_getInode(fs, parent, NULL, true, true);
-    if (dir == NULL) {
+    if (unlikely(dir == NULL)) {
         lc_reportError(__func__, __LINE__, parent, ENOENT);
         return ENOENT;
     }
@@ -124,7 +124,7 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
 
     /* Need to remove the inode only if it is already copied to this layer */
     inode = lc_getInode(fs, ino, NULL, false, true);
-    if (inode == NULL) {
+    if (unlikely(inode == NULL)) {
         lc_reportError(__func__, __LINE__, ino, ESTALE);
         return ESTALE;
     }
@@ -220,12 +220,12 @@ lc_remove(struct fs *fs, ino_t parent, const char *name, void **inodep,
     struct inode *dir;
     int err;
 
-    if (fs->fs_frozen) {
+    if (unlikely(fs->fs_frozen)) {
         lc_reportError(__func__, __LINE__, parent, EROFS);
         return EROFS;
     }
     dir = lc_getInode(fs, parent, NULL, true, true);
-    if (dir == NULL) {
+    if (unlikely(dir == NULL)) {
         lc_reportError(__func__, __LINE__, parent, ENOENT);
         return ENOENT;
     }
@@ -237,7 +237,7 @@ lc_remove(struct fs *fs, ino_t parent, const char *name, void **inodep,
     /* Lookup and remove the specified entry from the directory */
     err = lc_dirRemoveName(fs, dir, name, rmdir, inodep, false);
     lc_inodeUnlock(dir);
-    if (err && (err != EEXIST)) {
+    if (unlikely(err && (err != EEXIST))) {
         lc_reportError(__func__, __LINE__, parent, err);
     }
     return err;
@@ -257,7 +257,7 @@ lc_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
     lc_displayEntry(__func__, parent, 0, name);
     fs = lc_getLayerLocked(parent, false);
     dir = lc_getInode(fs, parent, NULL, false, false);
-    if (dir == NULL) {
+    if (unlikely(dir == NULL)) {
         lc_reportError(__func__, __LINE__, parent, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
@@ -303,7 +303,7 @@ lc_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
     }
     inode = lc_getInode(nfs ? nfs : fs, ino, NULL, false, false);
     lc_inodeUnlock(dir);
-    if (inode == NULL) {
+    if (unlikely(inode == NULL)) {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
@@ -348,7 +348,7 @@ lc_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     lc_statsBegin(&start);
     fs = lc_getLayerLocked(ino, false);
     inode = lc_getInode(fs, ino, NULL, false, false);
-    if (inode == NULL) {
+    if (unlikely(inode == NULL)) {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
@@ -399,7 +399,7 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
 #endif
                ));
     fs = lc_getLayerLocked(ino, false);
-    if (fs->fs_frozen) {
+    if (unlikely(fs->fs_frozen)) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
         err = EROFS;
@@ -411,7 +411,7 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
     if (change && !(to_set & ~(FUSE_SET_ATTR_UID | FUSE_SET_ATTR_GID))) {
         new_set = to_set;
         inode = lc_getInode(fs, ino, handle, false, false);
-        if (inode == NULL) {
+        if (unlikely(inode == NULL)) {
             lc_reportError(__func__, __LINE__, ino, ENOENT);
             fuse_reply_err(req, ENOENT);
             err = ENOENT;
@@ -431,7 +431,7 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
         lc_inodeUnlock(inode);
     }
     inode = lc_getInode(fs, ino, handle, change, change);
-    if (inode == NULL) {
+    if (unlikely(inode == NULL)) {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
@@ -511,7 +511,7 @@ lc_readlink(fuse_req_t req, fuse_ino_t ino) {
     lc_displayEntry(__func__, 0, ino, NULL);
     fs = lc_getLayerLocked(ino, false);
     inode = lc_getInode(fs, ino, NULL, false, false);
-    if (inode == NULL) {
+    if (unlikely(inode == NULL)) {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
@@ -545,7 +545,7 @@ lc_mknod(fuse_req_t req, fuse_ino_t parent, const char *name,
     fs = lc_getLayerLocked(parent, false);
     err = lc_createInode(fs, parent, name, mode & ~ctx->umask,
                          ctx->uid, ctx->gid, rdev, NULL, NULL, &e);
-    if (err) {
+    if (unlikely(err)) {
         fuse_reply_err(req, err);
     } else {
         fuse_reply_entry(req, &e);
@@ -570,7 +570,7 @@ lc_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
     fs = lc_getLayerLocked(parent, false);
     err = lc_createInode(fs, parent, name, S_IFDIR | (mode & ~ctx->umask),
                          ctx->uid, ctx->gid, 0, NULL, NULL, &e);
-    if (err) {
+    if (unlikely(err)) {
         fuse_reply_err(req, err);
     } else {
 
@@ -590,7 +590,7 @@ lc_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
     }
     lc_statsAdd(fs, LC_MKDIR, err, &start);
     lc_unlock(fs);
-    if (flush) {
+    if (unlikely(flush)) {
 
         /* Flush dirty pages created before starting layer management */
         lc_commitRoot(gfs, 0);
@@ -661,7 +661,7 @@ lc_symlink(fuse_req_t req, const char *link, fuse_ino_t parent,
     fs = lc_getLayerLocked(parent, false);
     err = lc_createInode(fs, parent, name, S_IFLNK | (0777 & ~ctx->umask),
                          ctx->uid, ctx->gid, 0, link, NULL, &e);
-    if (err) {
+    if (unlikely(err)) {
         fuse_reply_err(req, err);
     } else {
         fuse_reply_entry(req, &e);
@@ -701,7 +701,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
     lc_statsBegin(&start);
     lc_displayEntry(__func__, parent, newparent, name);
     fs = lc_getLayerLocked(parent, false);
-    if (fs->fs_frozen) {
+    if (unlikely(fs->fs_frozen)) {
         lc_reportError(__func__, __LINE__, parent, EROFS);
         fuse_reply_err(req, EROFS);
         err = EROFS;
@@ -711,7 +711,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
     /* Follow some locking order while locking the directories */
     if (tdirFirst) {
         tdir = lc_getInode(fs, newparent, NULL, true, true);
-        if (tdir == NULL) {
+        if (unlikely(tdir == NULL)) {
             lc_reportError(__func__, __LINE__, newparent, ENOENT);
             fuse_reply_err(req, ENOENT);
             err = ENOENT;
@@ -720,7 +720,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
         assert(S_ISDIR(tdir->i_mode));
     }
     sdir = lc_getInode(fs, parent, NULL, true, true);
-    if (sdir == NULL) {
+    if (unlikely(sdir == NULL)) {
         if (tdir) {
             lc_inodeUnlock(tdir);
         }
@@ -731,7 +731,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
     }
     assert(S_ISDIR(sdir->i_mode));
     ino = lc_dirLookup(fs, sdir, name);
-    if (ino == LC_INVALID_INODE) {
+    if (unlikely(ino == LC_INVALID_INODE)) {
         lc_inodeUnlock(sdir);
         if (tdir) {
             lc_inodeUnlock(tdir);
@@ -747,7 +747,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
     }
     if (!tdirFirst) {
         tdir = lc_getInode(fs, newparent, NULL, true, true);
-        if (tdir == NULL) {
+        if (unlikely(tdir == NULL)) {
             lc_inodeUnlock(sdir);
             lc_reportError(__func__, __LINE__, newparent, ENOENT);
             fuse_reply_err(req, ENOENT);
@@ -763,7 +763,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
     /* Need the inode if it is moved to a different directory */
     if (parent != newparent) {
         inode = lc_getInode(fs, ino, NULL, true, true);
-        if (inode == NULL) {
+        if (unlikely(inode == NULL)) {
             lc_inodeUnlock(sdir);
             lc_inodeUnlock(tdir);
             lc_reportError(__func__, __LINE__, ino, ENOENT);
@@ -778,7 +778,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
     /* Remove if target exists */
     err = lc_dirRemoveName(fs, tdir ? tdir : sdir, newname, false,
                            NULL, false);
-    if (err && (err != ENOENT)) {
+    if (unlikely(err && (err != ENOENT))) {
 
         /* Target is a non-empty directory */
         lc_inodeUnlock(sdir);
@@ -855,14 +855,14 @@ lc_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
     lc_statsBegin(&start);
     lc_displayEntry(__func__, newparent, ino, newname);
     fs = lc_getLayerLocked(ino, false);
-    if (fs->fs_frozen) {
+    if (unlikely(fs->fs_frozen)) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
         err = EROFS;
         goto out;
     }
     dir = lc_getInode(fs, newparent, NULL, true, true);
-    if (dir == NULL) {
+    if (unlikely(dir == NULL)) {
         lc_reportError(__func__, __LINE__, newparent, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
@@ -874,7 +874,7 @@ lc_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
         lc_dirCopy(dir);
     }
     inode = lc_getInode(fs, ino, NULL, true, true);
-    if (inode == NULL) {
+    if (unlikely(inode == NULL)) {
         lc_inodeUnlock(dir);
         lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
@@ -918,7 +918,7 @@ lc_openInode(struct fs *fs, fuse_ino_t ino, struct fuse_file_info *fi) {
     modify = (fi->flags & (O_WRONLY | O_RDWR));
 
     /* Do not allow modify operations in immutable layers */
-    if (modify && fs->fs_frozen) {
+    if (unlikely(modify && fs->fs_frozen)) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
         return EROFS;
     }
@@ -930,13 +930,13 @@ lc_openInode(struct fs *fs, fuse_ino_t ino, struct fuse_file_info *fi) {
 
     /* Clone the inode if opened for modification */
     inode = lc_getInode(fs, ino, NULL, trunc, trunc);
-    if (inode == NULL) {
+    if (unlikely(inode == NULL)) {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
         return ENOENT;
     }
 
     /* Do not allow opening a removed inode */
-    if (inode->i_flags & LC_INODE_REMOVED) {
+    if (unlikely(inode->i_flags & LC_INODE_REMOVED)) {
         lc_inodeUnlock(inode);
         lc_reportError(__func__, __LINE__, ino, ESTALE);
         return ESTALE;
@@ -1049,11 +1049,11 @@ lc_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     lc_displayEntry(__func__, 0, ino, NULL);
     fs = lc_getLayerLocked(ino, false);
     err = lc_openInode(fs, ino, fi);
-    if (err) {
+    if (unlikely(err)) {
         fuse_reply_err(req, err);
     } else {
         err = fuse_reply_open(req, fi);
-        if (err) {
+        if (unlikely(err)) {
             lc_closeInode(fs, (struct inode *)fi->fh, fi, &inval);
             if (inval) {
                 lc_invalInodePages(fs->fs_gfs, ino);
@@ -1094,7 +1094,7 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     memset(bufv, 0, fsize);
     fs = lc_getLayerLocked(ino, false);
     inode = lc_getInode(fs, ino, (struct inode *)fi->fh, false, false);
-    if (inode == NULL) {
+    if (unlikely(inode == NULL)) {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
@@ -1223,7 +1223,7 @@ lc_opendir(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     lc_displayEntry(__func__, ino, 0, NULL);
     fs = lc_getLayerLocked(ino, false);
     err = lc_openInode(fs, ino, fi);
-    if (err) {
+    if (unlikely(err)) {
         fuse_reply_err(req, err);
     } else {
         err = fuse_reply_open(req, fi);
@@ -1250,7 +1250,7 @@ lc_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     memset(&st, 0, sizeof(struct stat));
     fs = lc_getLayerLocked(ino, false);
     dir = lc_getInode(fs, ino, (struct inode *)fi->fh, false, false);
-    if (dir) {
+    if (likely(dir)) {
         err = lc_dirReaddir(req, fs, dir, ino, size, off, &st);
         lc_inodeUnlock(dir);
     } else {
@@ -1353,7 +1353,7 @@ lc_getxattr(fuse_req_t req, fuse_ino_t ino, const char *name, size_t size
     }
 
     /* If the file system does not have any extended attributes, return */
-    if (!gfs->gfs_xattr_enabled) {
+    if (likely(!gfs->gfs_xattr_enabled)) {
         //lc_reportError(__func__, __LINE__, ino, ENODATA);
         fuse_reply_err(req, ENODATA);
         return;
@@ -1443,7 +1443,7 @@ lc_create(fuse_req_t req, fuse_ino_t parent, const char *name,
 #endif
     err = lc_createInode(fs, parent, name, S_IFREG | (mode & ~ctx->umask),
                          ctx->uid, ctx->gid, 0, NULL, fi, &e);
-    if (err) {
+    if (unlikely(err)) {
         fuse_reply_err(req, err);
     } else {
 
@@ -1454,7 +1454,7 @@ lc_create(fuse_req_t req, fuse_ino_t parent, const char *name,
             fs->fs_gfs->gfs_dbIno = e.ino;
         }
         err = fuse_reply_create(req, &e, fi);
-        if (err) {
+        if (unlikely(err)) {
             lc_closeInode(fs, (struct inode *)fi->fh, fi, NULL);
         }
     }
@@ -1477,11 +1477,11 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
     op = _IOC_NR(cmd);
 
     /* XXX For allowing graphdriver tests to run */
-    if ((op == LAYER_CREATE) && (gfs->gfs_layerRoot != ino)) {
+    if (unlikely((op == LAYER_CREATE) && (gfs->gfs_layerRoot != ino))) {
         assert(gfs->gfs_layerRoot == ino);
         lc_setLayerRoot(gfs, ino);
     }
-    if (ino != gfs->gfs_layerRoot) {
+    if (unlikely(ino != gfs->gfs_layerRoot)) {
         //lc_reportError(__func__, __LINE__, ino, ENOSYS);
         fuse_reply_err(req, ENOSYS);
         return;
@@ -1538,8 +1538,10 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
             value = LC_PCACHE_MEMORY;
         }
         lc_memoryInit(value);
-        fuse_reply_ioctl(req, 0, NULL, 0);
-        break;
+        if (lc_checkMemoryAvailable(true)) {
+            fuse_reply_ioctl(req, 0, NULL, 0);
+            break;
+        }
 
     case DCACHE_FLUSH:
         gfs->gfs_pcleaningForced = true;
@@ -1578,7 +1580,7 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
     dpages = alloca(pcount * sizeof(struct dpage));
     fs = lc_getLayerLocked(ino, false);
     gfs = fs->fs_gfs;
-    if (fs->fs_frozen) {
+    if (unlikely(fs->fs_frozen)) {
         lc_reportError(__func__, __LINE__, ino, EROFS);
         fuse_reply_err(req, EROFS);
         err = EROFS;
@@ -1602,7 +1604,7 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
         goto out;
     }
     inode = lc_getInode(fs, ino, (struct inode *)fi->fh, true, true);
-    if (inode == NULL) {
+    if (unlikely(inode == NULL)) {
         lc_reportError(__func__, __LINE__, ino, ENOENT);
         fuse_reply_err(req, ENOENT);
         err = ENOENT;
@@ -1656,7 +1658,7 @@ lc_readdirplus(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
     lc_displayEntry(__func__, ino, 0, NULL);
     fs = lc_getLayerLocked(ino, false);
     dir = lc_getInode(fs, ino, (struct inode *)fi->fh, false, false);
-    if (dir) {
+    if (likely(dir)) {
         err = lc_dirReaddir(req, fs, dir, ino, size, off, NULL);
         lc_inodeUnlock(dir);
     } else {

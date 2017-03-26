@@ -104,11 +104,11 @@ print_usage() {
     cmd_group *grp;
     int pad;
 
-    printf("usage: lcfs [--help] [--version] <command> [<args>]\n\n");
-    printf("Commands:\n");
+    fprintf(stderr, "usage: lcfs [--help] [--version] <command> [<args>]\n\n");
+    fprintf(stderr, "Commands:\n");
     for (grp = lcfs_cmd_group; grp->cmd; grp++) {
         pad = 20 - strlen(grp->cmd);
-        printf("  %s%*s%s\n", grp->cmd, pad, " ", grp->desc);
+        fprintf(stderr, "  %s%*s%s\n", grp->cmd, pad, " ", grp->desc);
     }
     return 0;
 }
@@ -116,8 +116,8 @@ print_usage() {
 /* Display command usage */
 static int
 print_cmd_usage(cmd_group *grp) {
-    printf("usage: %s %s %s\n", PROG_NAME, grp->cmd, grp->usage);
-    printf("%s", grp->help);
+    fprintf(stderr, "usage: %s %s %s\n", PROG_NAME, grp->cmd, grp->usage);
+    fprintf(stderr, "%s", grp->help);
     return 0;
 }
 
@@ -150,12 +150,16 @@ run_cli(int argc, char *argv[]) {
             return grp->func(argc - 1, &argv[1]);
         }
     }
-    printf("unknown command: %s\n", argv[1]);
+    fprintf(stderr, "unknown command: %s\n", argv[1]);
     print_usage();
     return 0;
 }
 
 int
 main(int argc, char *argv[]) {
+    if (getuid()) {
+        fprintf(stderr, "Run as root\n");
+        return EPERM;
+    }
     return run_cli(argc, argv);
 }

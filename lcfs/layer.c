@@ -15,7 +15,7 @@ lc_getRootIno(struct fs *fs, const char *name, struct inode *pdir, bool err) {
     if (pdir == NULL) {
         lc_inodeUnlock(dir);
     }
-    if (root == LC_INVALID_INODE) {
+    if (unlikely(root == LC_INVALID_INODE)) {
         if (err) {
             lc_reportError(__func__, __LINE__, parent, ENOENT);
         }
@@ -145,7 +145,7 @@ lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
     err = lc_addLayer(gfs, fs, pfs, &inval);
 
     /* If new layer could not be added, undo everything done so far */
-    if (err) {
+    if (unlikely(err)) {
         lc_inodeLock(pdir, true);
         lc_dirRemove(pdir, name);
         pdir->i_nlink--;
@@ -184,12 +184,12 @@ lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
               pfs ? pfs->fs_root : -1, root, fs->fs_gindex, name);
 
 out:
-    if (err) {
+    if (unlikely(err)) {
         fuse_reply_err(req, err);
     }
     lc_statsAdd(rfs, LC_LAYER_CREATE, err, &start);
     if (fs) {
-        if (err) {
+        if (unlikely(err)) {
             fs->fs_removed = true;
             lc_unlock(fs);
 
@@ -261,7 +261,7 @@ lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
 
     /* Get the layer locked for removal */
     err = lc_dirRemoveName(rfs, pdir, name, true, (void **)&fs, true);
-    if (err) {
+    if (unlikely(err)) {
         lc_inodeUnlock(pdir);
         fuse_reply_err(req, err);
         lc_reportError(__func__, __LINE__, pdir->i_ino, err);
@@ -425,7 +425,7 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
     case LAYER_MOUNT:
 
         /* Mark a layer as mounted */
-        if (err == 0) {
+        if (likely(err == 0)) {
             fs = lc_getLayerLocked(root, false);
             __sync_add_and_fetch(&fs->fs_mcount, 1);
             if (!fs->fs_frozen) {
@@ -458,7 +458,7 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
     case LAYER_UMOUNT:
 
         /* Unmount a layer */
-        if (err == 0) {
+        if (likely(err == 0)) {
             lc_umountLayer(req, gfs, root);
         }
         lc_statsAdd(rfs, LC_UMOUNT, err, &start);
@@ -468,7 +468,7 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
 
         /* Clear stats after displaying it */
         /* XXX Do this without locking the layer exclusive */
-        if (err == 0) {
+        if (likely(err == 0)) {
             fuse_reply_ioctl(req, 0, NULL, 0);
             fs = lc_getLayerLocked(root, true);
             lc_statsDeinit(fs);
@@ -480,7 +480,7 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
     default:
         err = EINVAL;
     }
-    if (err) {
+    if (unlikely(err)) {
         lc_reportError(__func__, __LINE__, 0, err);
         fuse_reply_err(req, err);
     }

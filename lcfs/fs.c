@@ -112,7 +112,6 @@ void
 lc_freeLayer(struct fs *fs, bool remove) {
     struct gfs *gfs = fs->fs_gfs;
 
-    assert((fs->fs_mcount == 0) || gfs->gfs_unmounting);
     assert(fs->fs_dpcount == 0);
     assert(fs->fs_dpages == NULL);
     assert(fs->fs_dpagesLast == NULL);

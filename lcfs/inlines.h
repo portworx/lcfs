@@ -71,4 +71,7 @@ lc_atomicUpdate(struct fs *fs, uint64_t *value, uint64_t change, bool incr) {
     }
 }
 
+#define likely(_cond) __builtin_expect(!!(_cond), 1)
+#define unlikely(_cond) __builtin_expect(!!(_cond), 0)
+
 #endif
