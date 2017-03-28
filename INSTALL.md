@@ -21,8 +21,8 @@ LCFS removal can be done quickly using the installed setup script with the `--re
 # sudo /opt/pwx/bin/lcfs-setup.sh --remove
 ```
 
-## Manual installation
-To install LCFS, there are four actions you must perform:
+##  Manual installation
+Instead of the curl script above, LCFS can also be manually installed. To install LCFS manually, there are four actions you must perform:
 
 1. Install LCFS onto your system at `/var/lib/docker` and `/lcfs`.
 2. Start Docker using VFS as a graph driver.  This is needed to install the LCFS plugin as a graph driver in Docker's configuration files at `/var/lib/docker`.
