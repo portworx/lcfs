@@ -63,7 +63,7 @@ To start to explain the layers-first design, let us compare launching three cont
 
 However, OS filesystems have been historically built to expect content to be read-writeable, often using [snapshots](https://github.com/portworx/lcfs/blob/master/docs/layers_overview.md#snapshots-in-other-drivers-and-clones-in-lcfs) of the first container’s init layer to create the second and third. One side effect becomes that almost all operations from the third container then must traverse the lower init layers of the first two containers’ layers. This leads to a slow down for nearly all file operations as more containers are launched, including reading from a file. 
 
-![alt text] (http://i.imgur.com/vxv3FUW.png "LCFS vs Snapshot driver diagram")
+![LCFS vs Snapshot driver diagram](http://i.imgur.com/vxv3FUW.png)
 
 In the above  diagram, the right side shows that LCFS also presents a unified view (mount) for three containers running the Fedora image. The design goal is to unchain how containers access their own content. First, launching the second container results in a new init [clone (not a snapshot)](https://github.com/portworx/lcfs/blob/master/docs/layers_overview.md#snapshots-in-other-drivers-and-clones-in-lcfs). Internally, the access of the second container’s (init) filesystem does not require tracking backward to an original (snapshot’s) parent. The net effect is that read and modify operations from successive containers do not depend on prior containers. 
 
