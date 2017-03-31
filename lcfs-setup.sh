@@ -11,7 +11,8 @@ fi
 
 DOCKER_BIN=docker
 DOCKER_SRV_BIN=dockerd
-LCFS_ENV_FL=${LCFS_ENV_FL:-"/etc/pwx/lcfs.env"}
+LCFS_ENV_DIR=/etc/lcfs
+LCFS_ENV_FL=${LCFS_ENV_FL:-"${LCFS_ENV_DIR}/lcfs.env"}
 
 [ -e "${LCFS_ENV_FL}" ] && source ${LCFS_ENV_FL}
 
@@ -227,7 +228,7 @@ function lcfs_docker_startup_setup()
 	${SUDO} systemctl daemon-reexec  # Re-exec systemd bug (http://superuser.com/questions/1125250/systemctl-access-denied-when-root).
 	${SUDO} systemctl reenable docker
     elif [ -d /etc/init.d ]; then   # SystemV setup
-	[ -e /etc/init.d/docker ] && ${SUDO} cp -a /etc/init.d/docker /etc/init.d/docker.orig
+	[ -e /etc/init.d/docker -a ! -e /etc/init.d/docker.orig ] && ${SUDO} cp -a /etc/init.d/docker /etc/init.d/docker.orig
 	${SUDO} cp -a /opt/pwx/services/lcfs.systemv /etc/init.d/docker && ${SUDO} chkconfig docker on
     fi
 
@@ -286,6 +287,41 @@ function lcfs_startup_remove()
     fi
 }
 
+function startup_setup()
+{
+    if [ -n "${DOCKER_SERVICE}" ]; then
+	lcfs_docker_startup_setup
+	system_manage "start" "docker"   # Restart LCFS Docker using system management (systemclt/SystemV)
+    else
+	lcfs_startup_setup
+	system_manage "start" "lcfs"   # Restart LCFS using system management (systemclt/SystemV)
+    fi
+}
+
+function startup_remove()
+{
+    local sysd_pid=$(ps -C systemd -o pid --no-header)
+    local docker_service=""
+
+    if [ -n "${sysd_pid}" ]; then   # Systemd setup
+	if [ -e /etc/systemd/system/docker.service ]; then
+	    cat /etc/systemd/system/docker.service | egrep -q '^ExecStart=.*lcfs-setup.sh'
+	    [ $? -eq 0 ] && docker_service="yes"
+	fi
+    elif [ -d /etc/init.d ]; then   # SystemV setup
+	if [ -e /etc/init.d/docker ]; then
+	    cat /etc/init.d/docker | egrep -q '^SERVICE_SCRIPT=.*lcfs-setup.sh'
+	    [ $? -eq 0 ] && docker_service="yes"
+	fi
+    fi
+
+    if [ -n "${docker_service}" ]; then
+	lcfs_docker_startup_remove
+    else
+	lcfs_startup_remove
+    fi
+}
+
 function lcfs_configure_save()
 {
     local tmp_cfg=/tmp/.lcfs.env
@@ -297,10 +333,10 @@ function lcfs_configure_save()
     echo 'DEVFL=${DEVFL:-"'${DEVFL}'"}' >> ${tmp_cfg}
     echo 'DEV=${DEV:-"'${DEV}'"}' >> ${tmp_cfg}
     echo 'DSZ=${DSZ:-"'${DSZ}'"}' >> ${tmp_cfg}
-    echo 'DOCKER_SERVICE="yes"' >> ${tmp_cfg}
 
-    ${SUDO} mkdir -p /etc/pwx
+    ${SUDO} mkdir -p ${LCFS_ENV_DIR}
     ${SUDO} \mv ${tmp_cfg} ${LCFS_ENV_FL}
+    ${SUDO} \rm -f /etc/pwx/lcfs.env        # Remove old configuration if it exists.
 }
 
 function lcfs_configure()
@@ -367,12 +403,11 @@ function stop_remove_lcfs
 	    [ "${DEV}" != "/dev/sdNN" ] && ${SUDO} dd if=/dev/zero of=${DEV} count=1 bs=4096 &> /dev/null
 	    ${SUDO} \rm -f ${DEVFL}
 	fi
+
 	[ -e ${LCFS_ENV_FL} ] && ${SUDO} \mv -f ${LCFS_ENV_FL} ${LCFS_ENV_FL}.save
-	if [ -n "${DOCKER_SERVICE}" ]; then
-	    lcfs_docker_startup_remove
-	else
-	    lcfs_startup_remove
-	fi
+	${SUDO} \rm -f /etc/pwx/lcfs.env    # Remove old configuration if it exists.
+
+	startup_remove
 	restore_docker_cfg
 	system_docker_restart
 	system_manage "enable" "docker"   # Reenable docker startup.
@@ -438,6 +473,8 @@ function help()
 
 function docker_version_check()
 {
+    [ "${_LCFS_SKIP_VERSION_CHECK_}" == "yes" ] && return 0
+
     ${SUDO} docker version --format '{{.Server.Version}}' &> /dev/null
     [ $? -ne 0 ] && echo "Error: failed to check docker version. ${errmsg} Verify docker is running." && cleanup_and_exit 1
 
@@ -451,16 +488,13 @@ function docker_version_check()
     return 0
 }
 
-if [ "${_LCFS_SKIP_VERSION_CHECK_}" != "yes" ]; then
-    if [ -z "$1" -o ! -e "${LCFS_ENV_FL}" ]; then
-	docker_version_check
-    fi
+args=("$@")
+for ((i=0; i<${#args[@]}; i++)); do
+    [ "${args[i]}" == "--configure" ] && docker_version_check
+    [ "${args[i]}" == "--remove" ] && _LCFS_SKIP_VERSION_CHECK_="yes"
+done
 
-    args=("$@")
-    for ((i=0; i<${#args[@]}; i++)); do
-	[ "${args[i]}" == "--configure" ] && docker_version_check
-    done
-fi
+[ -z "$1" -o ! -e "${LCFS_ENV_FL}" ] && docker_version_check
 
 while [ "$1" != "" ]; do
     case $1 in
@@ -557,13 +591,7 @@ if [ -z "${START}" ]; then
     system_manage "disable" "docker"   # Disable docker startup for now if LCFS is setup.
     if [ $? -eq 0 ]; then
 	stop_remove_lcfs
-	if [ -n "${DOCKER_SERVICE}" ]; then
-	    lcfs_docker_startup_setup
-	    system_manage "start" "docker"   # Restart LCFS Docker using system management (systemclt/SystemV)
-	else
-	    lcfs_startup_setup
-	    system_manage "start" "lcfs"   # Restart LCFS using system management (systemclt/SystemV)
-	fi
+	startup_setup
     fi
 fi
 cleanup_and_exit $?
