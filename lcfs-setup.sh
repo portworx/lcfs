@@ -488,6 +488,8 @@ function docker_version_check()
     return 0
 }
 
+DOCKER_SERVICE=""      # Unset docker service marker variable.
+
 args=("$@")
 for ((i=0; i<${#args[@]}; i++)); do
     [ "${args[i]}" == "--configure" ] && docker_version_check
