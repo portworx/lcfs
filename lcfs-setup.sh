@@ -193,7 +193,7 @@ function system_manage()
     local sysd_pid=$(ps -C systemd -o pid --no-header)
     local sysV="/etc/init.d/$2"
 
-    echo "$1 $2 ..."
+    echo "$1 $2..."
     [ -n "${sysd_pid}" ] && ${SUDO} systemctl $1 $2       # Systemd Manage
 
     if [ -e "${sysV}" ]; then                             # SystemV Manage
@@ -248,6 +248,7 @@ function lcfs_docker_startup_remove()
 	else
 	    ${SUDO} rm -f /etc/systemd/system/docker.service
 	fi
+	${SUDO} systemctl daemon-reexec  # Re-exec systemd bug (http://superuser.com/questions/1125250/systemctl-access-denied-when-root).
     elif [ -d /etc/init.d ]; then   # SystemV setup
 	${SUDO} chkconfig docker off &> /dev/null
 	if [ -e /etc/init.d/docker.orig ]; then
@@ -287,18 +288,7 @@ function lcfs_startup_remove()
     fi
 }
 
-function startup_setup()
-{
-    if [ -n "${DOCKER_SERVICE}" ]; then
-	lcfs_docker_startup_setup
-	system_manage "start" "docker"   # Restart LCFS Docker using system management (systemclt/SystemV)
-    else
-	lcfs_startup_setup
-	system_manage "start" "lcfs"   # Restart LCFS using system management (systemclt/SystemV)
-    fi
-}
-
-function startup_remove()
+function isDockerService()
 {
     local sysd_pid=$(ps -C systemd -o pid --no-header)
     local docker_service=""
@@ -315,7 +305,24 @@ function startup_remove()
 	fi
     fi
 
-    if [ -n "${docker_service}" ]; then
+    [ -n "${docker_service}" ]
+}
+
+function startup_setup()
+{
+    if [ -n "${DOCKER_SERVICE}" ]; then
+	lcfs_docker_startup_setup
+	system_manage "start" "docker"   # Restart LCFS Docker using system management (systemclt/SystemV)
+    else
+	lcfs_startup_setup
+	system_manage "start" "lcfs"   # Restart LCFS using system management (systemclt/SystemV)
+    fi
+}
+
+function startup_remove()
+{
+    isDockerService
+    if [ $? -eq 0 ]; then
 	lcfs_docker_startup_remove
     else
 	lcfs_startup_remove
@@ -514,7 +521,8 @@ while [ "$1" != "" ]; do
 	    status_lcfs
 	    ;;
         --remove)
-	    system_manage "stop" "lcfs"
+	    isDockerService
+	    [ $? -ne 0 ] && system_manage "stop" "lcfs" || system_manage "stop" "docker"
 	    REMOVE="$1"
 	    stop_remove_lcfs
             ;;
