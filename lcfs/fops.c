@@ -745,7 +745,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
     if (sdir->i_flags & LC_INODE_SHARED) {
         lc_dirCopy(sdir);
     }
-    if (!tdirFirst) {
+    if ((parent != newparent) && !tdirFirst) {
         tdir = lc_getInode(fs, newparent, NULL, true, true);
         if (unlikely(tdir == NULL)) {
             lc_inodeUnlock(sdir);
