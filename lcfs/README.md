@@ -18,6 +18,14 @@ On CentOS, run
 # sudo yum install gperftools
 ```
 
+#### Install urcu
+
+On CentOS, run
+
+```
+sudo yum install userspace-rcu-devel
+```
+
 #### Install zlib
 
 On Ubuntu, run
@@ -78,6 +86,12 @@ Install lcfs at /usr/sbin
 
 ```
 # sudo install ./lcfs /usr/sbin
+```
+
+### setup LD_LIBRARY_PATH if needed
+
+```
+export LD_LIBRARY_PATH=/usr/local/lib
 ```
 
 At this point, LCFS is available for use by the LCFS graph driver plugin.  You can return to the [plugin install instructions](https://github.com/portworx/lcfs/blob/master/INSTALL.md#step-1---install-lcfs), or test LCFS locally on your system by following the instructions below.

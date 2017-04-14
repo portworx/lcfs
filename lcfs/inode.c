@@ -1116,6 +1116,7 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino, int hash,
             }
             flags |= LC_INODE_NOTRUNC;
         } else {
+            assert(inode->i_emapDirBlock == LC_INVALID_BLOCK);
 
             /* A file with no blocks is not sharing anything with parent */
             inode->i_private = 1;
@@ -1133,6 +1134,9 @@ lc_cloneInode(struct fs *fs, struct inode *parent, ino_t ino, int hash,
         } else {
             assert(parent->i_size == 0);
         }
+
+        /* Directory blocks are private to a layer */
+        inode->i_emapDirBlock = LC_INVALID_BLOCK;
     } else if (S_ISLNK(inode->i_mode)) {
 
         /* Target of symbolic link is shared with parent */

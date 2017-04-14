@@ -249,7 +249,7 @@ lc_getLayerLocked(ino_t ino, bool exclusive) {
 retry:
     fs = gfs->gfs_fs[gindex];
     lc_lock(fs, exclusive);
-    if (fs->fs_gindex != gindex) {
+    if (unlikely(fs->fs_gindex != gindex)) {
 
         /* This could happen if a layer is committed */
         lc_unlock(fs);
