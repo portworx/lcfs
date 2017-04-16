@@ -33,7 +33,8 @@ lc_addFile(struct fs *fs, struct cdir *cdir, ino_t ino, char *name,
         if ((cfile->cf_type == LC_REMOVED) && (ctype == LC_ADDED)) {
             cfile->cf_type = LC_MODIFIED;
         } else {
-            assert(cfile->cf_type == LC_ADDED);
+            assert((cfile->cf_type == LC_ADDED) ||
+                   (cfile->cf_type == LC_MODIFIED));
             assert(ctype != LC_REMOVED);
         }
         return;
