@@ -43,7 +43,10 @@ lc_displayEntry(const char *func, ino_t dir, ino_t ino, const char *name) {
 /* Report errors reported from file system operations */
 static inline void
 lc_reportError(const char *func, int line, ino_t ino, int err) {
-    printf("%s:%d: reporting error %d for inode %ld (%ld at gindex %ld)\n", func, line, err, ino, lc_getInodeHandle(ino), lc_getFsHandle(ino));
+    lc_syslog(LOG_ERR,
+              "%s:%d: reporting error %d for inode %ld (%ld at gindex %ld)\n",
+              func, line, err, ino, lc_getInodeHandle(ino),
+              lc_getFsHandle(ino));
 }
 #else
 #define lc_reportError(a...)
