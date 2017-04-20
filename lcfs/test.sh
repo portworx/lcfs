@@ -13,7 +13,7 @@ mkdir $MNT $MNT2
 
 DEVICE=/tmp/lcfs-testdevice
 rm $DEVICE 2>/dev/null
-dd if=/dev/zero of=$DEVICE count=130000 bs=4096
+dd if=/dev/zero of=$DEVICE count=200000 bs=4096
 
 $LCFS daemon $DEVICE $MNT $MNT2
 sleep 10
@@ -137,19 +137,33 @@ cd $MNT/lcfs
 $LCFS stats $MNT .
 $LCFS syncer $MNT 10
 $LCFS pcache $MNT 520
+
+mkdir /tmp/lcfs-build
+cd /tmp/lcfs-build
+cat << EOF > Dockerfile
+FROM docker/whalesay:latest
+RUN apt-get -y update && apt-get install -y fortunes
+CMD /usr/games/fortune -a | cowsay
+EOF
+docker build .
+cd -
+rm -fr /tmp/lcfs-build
+
+CID=`docker ps --all --format {{.ID}}`
+docker commit ${CID} hello
+
 for layer in *
 do
     $TESTDIFF $layer
 done
 cd -
 
-CID=`docker ps --all --format {{.ID}}`
-docker commit ${CID} hello
 docker save -o $MNT/h.tar hello
 docker ps --all --format {{.ID}} | xargs docker rm
 docker rmi hello-world
 docker images --format {{.ID}} | xargs docker rmi
 docker load -i $MNT/h.tar
+
 pkill dockerd
 sleep 10
 

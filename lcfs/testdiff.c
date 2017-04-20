@@ -4,7 +4,12 @@
 #include <assert.h>
 
 #define LC_BLOCK_SIZE 4096
+#define LC_DIFF
+#ifdef LC_DIFF
+#define GETXATTR_SIZE LC_BLOCK_SIZE
+#else
 #define GETXATTR_SIZE sizeof(uint64_t)
+#endif
 
 struct pchange {
     uint16_t ch_len;
