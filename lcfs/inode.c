@@ -1,12 +1,5 @@
 #include "includes.h"
 
-/* Enable tracking counting of files of different types */
-#ifdef LC_FTYPE_ENABLE
-static bool lc_ftypeStatsEnabled = true;
-#else
-static bool lc_ftypeStatsEnabled = false;
-#endif
-
 /* Given an inode number, return the hash index */
 /* XXX Figure out a better hashing scheme */
 static inline int
@@ -1265,7 +1258,7 @@ void
 lc_updateFtypeStats(struct fs *fs, mode_t mode, bool incr) {
     enum lc_ftypes ftype, count;
 
-    if (!lc_ftypeStatsEnabled) {
+    if (!fs->fs_gfs->gfs_ftypes) {
         return;
     }
     if (S_ISREG(mode)) {
@@ -1290,7 +1283,7 @@ void
 lc_displayFtypeStats(struct fs *fs) {
     struct super *super;
 
-    if (!lc_ftypeStatsEnabled) {
+    if (!fs->fs_gfs->gfs_ftypes) {
         return;
     }
     super = fs->fs_super;

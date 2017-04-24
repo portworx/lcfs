@@ -20,7 +20,11 @@ usage(char *prog) {
                     "\thost-mnt      - mount point on host\n"
                     "\tplugin-mnt    - mount point propagated to plugin\n"
                     "\t-f            - run foreground (optional)\n"
-                    "\t-d            - display debugging info (optional)\n");
+                    "\t-d            - display debugging info (optional)\n"
+                    "\t-m            - enable memory stats (optional)\n"
+                    "\t-r            - enable request stats (optional)\n"
+                    "\t-t            - enable tracking count of file types (optional)\n"
+                    "\t-p            - enable profiling (optional)\n");
 }
 
 /* Notify parent process completion */
@@ -271,9 +275,9 @@ lc_start(struct gfs *gfs, char *device, enum lc_mountId id) {
 /* Mount the specified device and start serving requests */
 int
 lcfs_main(int argc, char *argv[]) {
-    int i, err = -1, waiter[2], fd;
+    bool daemon = argc == 4, profiling = false, ftypes = false;
+    int i, err = -1, waiter[2], fd, count;
     char *arg[argc + 1], completed;
-    bool daemon = argc == 4;
     struct fuse_session *se;
     struct stat st;
     size_t size;
@@ -374,6 +378,24 @@ lcfs_main(int argc, char *argv[]) {
         lc_syslog(LOG_INFO, "%s %s\n", Build, Release);
     }
 
+    count = 4;
+    for (i = 4; i < argc; i++) {
+        if (!strcmp(argv[i], "-m")) {
+            lc_memStatsEnable();
+        } else if (!strcmp(argv[i], "-r")) {
+            lc_statsEnable();
+        } else if (!strcmp(argv[i], "-t")) {
+            ftypes = true;
+        } else if (!strcmp(argv[i], "-p")) {
+            profiling = true;
+        } else {
+            arg[count++] = argv[i];
+        }
+    }
+    for (i = count; i < argc; i++) {
+        arg[i] = NULL;
+    }
+
     /* Initialize memory allocator */
     lc_memoryInit(0);
 
@@ -384,6 +406,7 @@ lcfs_main(int argc, char *argv[]) {
         gfs->gfs_waiter = waiter;
     }
     gfs->gfs_fd = fd;
+    gfs->gfs_profiling = profiling;
 
     /* Setup arguments for fuse mount */
     arg[0] = argv[0];
@@ -402,17 +425,14 @@ lcfs_main(int argc, char *argv[]) {
                     "splice_move,splice_read,splice_write,"
 #endif
                     "suid,dev,subtype=lcfs,fsname=%s", argv[1]);
-    for (i = 4; i < argc; i++) {
-        arg[i] = argv[i];
-    }
 
     /* Start fuse sessions for the given mount points */
-    err = lc_fuseSession(gfs, arg, argc, LC_BASE_MOUNT);
+    err = lc_fuseSession(gfs, arg, count, LC_BASE_MOUNT);
     if (err) {
         goto out;
     }
     arg[1] = argv[3];
-    err = lc_fuseSession(gfs, arg, argc, LC_LAYER_MOUNT);
+    err = lc_fuseSession(gfs, arg, count, LC_LAYER_MOUNT);
     if (err) {
         goto out;
     }
@@ -426,7 +446,7 @@ lcfs_main(int argc, char *argv[]) {
     }
 
     /* Set up the file system before starting services */
-    lc_mount(gfs, argv[1], size);
+    lc_mount(gfs, argv[1], ftypes, size);
 
     /* Start file system services on the mount points */
     for (i = 0; i < LC_MAX_MOUNTS; i++) {

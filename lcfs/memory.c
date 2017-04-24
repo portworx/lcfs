@@ -1,11 +1,13 @@
 #include "includes.h"
 
 /* Set for tracking memory allocation and free operations */
-#ifdef LC_MEMSTATS_ENABLE
-static bool memStatsEnabled = true;
-#else
 static bool memStatsEnabled = false;
-#endif
+
+/* Enable memory stats */
+void
+lc_memStatsEnable() {
+    memStatsEnabled = true;
+}
 
 static struct lc_memory {
 

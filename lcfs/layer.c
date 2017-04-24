@@ -95,6 +95,7 @@ lc_createLayer(fuse_req_t req, struct gfs *gfs, const char *name,
     /* Do not allow new layers when low on space */
     if (!lc_hasSpace(gfs, true)) {
         err = ENOSPC;
+        lc_reportError(__func__, __LINE__, gfs->gfs_layerRoot, err);
         goto out;
     }
 

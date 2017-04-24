@@ -9,9 +9,6 @@
 #endif
 
 //#define LC_FTYPE_ENABLE
-//#define LC_STATS_ENABLE
-//#define LC_MEMSTATS_ENABLE
-//#define LC_PROFILING
 
 #define LC_DIFF
 
@@ -45,9 +42,7 @@
 #include <sys/sysinfo.h>
 #endif
 
-#ifdef LC_PROFILING
 #include <gperftools/profiler.h>
-#endif
 
 #include "lcfs.h"
 #include "layout.h"
@@ -70,6 +65,7 @@ int lcfs_main(int argc, char *argv[]);
 
 int ioctl_main(int argc, char *argv[]);
 
+void lc_memStatsEnable();
 void lc_memoryInit(uint64_t limit);
 void *lc_malloc(struct fs *fs, size_t size, enum lc_memTypes type);
 void lc_mallocBlockAligned(struct fs *fs, void **memptr,
@@ -150,7 +146,7 @@ int lc_tryLock(struct fs *fs, bool exclusive);
 void lc_lockExclusive(struct fs *fs);
 void lc_unlock(struct fs *fs);
 void lc_unlockExclusive(struct fs *fs);
-void lc_mount(struct gfs *gfs, char *device, size_t size);
+void lc_mount(struct gfs *gfs, char *device, bool ftypes, size_t size);
 void lc_cleanupAfterRestart(struct gfs *gfs, struct fs *fs);
 void lc_newInodeBlock(struct gfs *gfs, struct fs *fs);
 void lc_releaseInodeBlock(struct gfs *gfs, struct fs *fs);
@@ -317,6 +313,7 @@ void lc_freeChangeList(struct fs *fs);
 #endif
 int lc_layerDiff(fuse_req_t req, const char *name, size_t size);
 
+void lc_statsEnable();
 void lc_statsNew(struct fs *fs);
 void lc_statsBegin(struct timeval *start);
 void lc_statsAdd(struct fs *fs, enum lc_stats type, bool err,

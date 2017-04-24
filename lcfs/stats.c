@@ -3,11 +3,13 @@
 /* Set this for tracking total count of various requests and the time taken for
  * processing those requests.
  */
-#ifdef LC_STATS_ENABLE
-static bool stats_enabled = true;
-#else
 static bool stats_enabled = false;
-#endif
+
+void
+lc_statsEnable() {
+    stats_enabled = true;
+}
+
 
 /* Type of requests tracked in stats */
 static const char *requests[] = {

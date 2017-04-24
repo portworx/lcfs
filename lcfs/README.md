@@ -1,8 +1,8 @@
-# Instructions on building the LCFS file syste with fuse v3.0.0
+# Instructions on building the LCFS file system with fuse v3.0.0
 The LCFS file system depends on fuse v3.0.0.  These instructions walk you through installing fuse and building and testing lcfs as regular filesystem, independent of Docker.
 
 ### Install pre-requisite packages
-Building this file system requires `tcmalloc`, `zlib` and `fuse`.
+Building this file system requires `tcmalloc`, `zlib`, `urcu` and `fuse`.
 
 #### Install tcmalloc
 
@@ -128,6 +128,6 @@ To display lcfs stats, run "lcfs stats /lcfs 'id' [-c]".  Create /lcfs/lcfs dire
 
 By default, syncer attempts to create checkpoint of the file system every minute.  This could be changed by running the command "lcfs syncer /lcfs time".
 
-By default, lcfs page cache is limited to around 512MB.  This could be changed by running the command "lcfs pcache /lcfs memory".
+By default, lcfs page cache is limited to around around 25% of available memory.  This could be changed by running the command "lcfs pcache /lcfs memory".
 
 For recreating the file system, unmount it and zero out the first block (4KB) of the device/file and remount the device/file.

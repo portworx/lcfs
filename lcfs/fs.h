@@ -166,6 +166,12 @@ struct gfs {
 
     /* Set if extended attributes are enabled */
     bool gfs_xattr_enabled;
+
+    /* Set if profiling is enabled */
+    bool gfs_profiling;
+
+    /* Set if count of file types maintained */
+    bool gfs_ftypes;
 } __attribute__((packed));
 
 /* A file system structure created for each layer */

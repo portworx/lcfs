@@ -159,10 +159,10 @@ lc_freeLayer(struct fs *fs, bool remove) {
     assert(!fs->fs_dirty || fs->fs_removed);
     assert(!(fs->fs_super->sb_flags & LC_SUPER_DIRTY) || fs->fs_removed ||
            fs->fs_mcount || !fs->fs_frozen);
+    lc_displayFtypeStats(fs);
     lc_free(fs, fs->fs_super, LC_BLOCK_SIZE, LC_MEMTYPE_BLOCK);
     lc_displayMemStats(fs);
     lc_checkMemStats(fs, false);
-    lc_displayFtypeStats(fs);
     lc_free(NULL, fs, sizeof(struct fs), LC_MEMTYPE_GFS);
 }
 
@@ -453,8 +453,9 @@ lc_addLayer(struct gfs *gfs, struct fs *fs, struct fs *pfs, int *inval) {
 
 /* Format a file system by initializing its super block */
 static void
-lc_format(struct gfs *gfs, struct fs *fs, size_t size) {
-    lc_superInit(gfs->gfs_super, LC_ROOT_INODE, size, LC_SUPER_RDWR, true);
+lc_format(struct gfs *gfs, struct fs *fs, bool ftypes, size_t size) {
+    lc_superInit(gfs->gfs_super, LC_ROOT_INODE, size,
+                 LC_SUPER_RDWR | (ftypes ? LC_SUPER_FSTATS : 0), true);
     lc_blockAllocatorInit(gfs, fs);
     lc_rootInit(fs, fs->fs_root);
 }
@@ -640,7 +641,7 @@ lc_setupSpecialInodes(struct gfs *gfs, struct fs *fs) {
 
 /* Mount the device */
 void
-lc_mount(struct gfs *gfs, char *device, size_t size) {
+lc_mount(struct gfs *gfs, char *device, bool ftypes, size_t size) {
     struct fs *fs;
     int i;
 
@@ -663,7 +664,7 @@ lc_mount(struct gfs *gfs, char *device, size_t size) {
     gfs->gfs_super = fs->fs_super;
     if (!lc_superValid(gfs->gfs_super)) {
         lc_syslog(LOG_INFO, "Formatting %s, size %ld\n", device, size);
-        lc_format(gfs, fs, size);
+        lc_format(gfs, fs, ftypes, size);
     } else {
         assert(size == (gfs->gfs_super->sb_tblocks * LC_BLOCK_SIZE));
         gfs->gfs_super->sb_mounts++;
@@ -686,6 +687,9 @@ lc_mount(struct gfs *gfs, char *device, size_t size) {
         lc_validate(gfs);
     }
     fs->fs_mcount = 1;
+    if (fs->fs_super->sb_flags & LC_SUPER_FSTATS) {
+        gfs->gfs_ftypes = true;
+    }
     lc_unlockExclusive(fs);
 }
 
