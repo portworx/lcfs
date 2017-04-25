@@ -38,8 +38,10 @@ lc_preadv(int fd, struct iovec *iov, int iovcnt, off_t offset) {
 /* Validate a lock is held */
 static inline void
 lc_lockOwned(pthread_rwlock_t *lock, bool exclusive) {
+#ifndef __MUSL__
     assert((lock == NULL) || lock->__data.__writer ||
            (!exclusive && lock->__data.__nr_readers));
+#endif
 }
 
 #endif

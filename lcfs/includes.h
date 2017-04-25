@@ -40,6 +40,7 @@
 #include <sys/sysctl.h>
 #else
 #include <sys/sysinfo.h>
+#include <asm/ioctls.h>
 #endif
 
 #include <gperftools/profiler.h>
