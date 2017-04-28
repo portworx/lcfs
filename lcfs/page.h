@@ -35,10 +35,10 @@
  */
 #define LC_PURGE_TARGET         20
 
-/* Minimum amount of total system memory which can be used for data pages if
- * system does not have LC_PCACHE_MEMORY bytes of memory.
+/* Amount of memory used for caching data pages as a percentage of total system
+ * memory.
  */
-#define LC_PCACHE_MEMORY_MIN    25
+#define LC_PCACHE_MEMORY_MIN    5
 
 /* Maximum number of dirty pages a file could have before flushing triggered */
 #define LC_MAX_FILE_DIRTYPAGES  131072

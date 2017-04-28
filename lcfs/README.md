@@ -128,6 +128,6 @@ To display lcfs stats, run "lcfs stats /lcfs 'id' [-c]".  Create /lcfs/lcfs dire
 
 By default, syncer attempts to create checkpoint of the file system every minute.  This could be changed by running the command "lcfs syncer /lcfs time".
 
-By default, lcfs page cache is limited to around around 25% of available memory.  This could be changed by running the command "lcfs pcache /lcfs memory".
+By default, lcfs page cache is limited to around around 5% of available memory.  This could be changed by running the command "lcfs pcache /lcfs memory".
 
 For recreating the file system, unmount it and zero out the first block (4KB) of the device/file and remount the device/file.
