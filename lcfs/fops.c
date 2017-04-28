@@ -1691,9 +1691,11 @@ lc_init(void *userdata, struct fuse_conn_info *conn) {
 #endif
     count = __sync_add_and_fetch(&gfs->gfs_mcount, 1);
     if (count == LC_MAX_MOUNTS) {
+#ifndef __MUSL__
         if (gfs->gfs_profiling) {
             ProfilerStart("/tmp/lcfs");
         }
+#endif
     } else {
         pthread_mutex_lock(&gfs->gfs_lock);
         pthread_cond_signal(&gfs->gfs_mountCond);
@@ -1709,9 +1711,11 @@ lc_destroy(void *fsp) {
 
     count = __sync_sub_and_fetch(&gfs->gfs_mcount, 1);
     if (count == 0) {
+#ifndef __MUSL__
         if (gfs->gfs_profiling) {
             ProfilerStop();
         }
+#endif
         lc_unmount(gfs);
     }
 }

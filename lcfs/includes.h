@@ -43,7 +43,9 @@
 #include <asm/ioctls.h>
 #endif
 
+#ifndef __MUSL__
 #include <gperftools/profiler.h>
+#endif
 
 #include "lcfs.h"
 #include "layout.h"
