@@ -401,9 +401,6 @@ lc_getPage(struct fs *fs, uint64_t block, char *data, bool read) {
     struct gfs *gfs = fs->fs_gfs;
     uint32_t lhash;
 
-    assert(block);
-    assert(block != LC_PAGE_HOLE);
-
     /* Lock the hash list and look for a page */
 
 retry:

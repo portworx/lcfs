@@ -756,6 +756,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
         }
         assert(S_ISDIR(tdir->i_mode));
     }
+    assert(sdir != tdir);
     if (tdir && (tdir->i_flags & LC_INODE_SHARED)) {
         lc_dirCopy(tdir);
     }
@@ -814,6 +815,7 @@ lc_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
         lc_markInodeDirty(tdir, LC_INODE_DIRDIRTY);
         lc_inodeUnlock(tdir);
     } else {
+        assert(tdir == NULL);
 
         /* Rename within the directory */
         lc_dirRename(sdir, ino, name, newname);

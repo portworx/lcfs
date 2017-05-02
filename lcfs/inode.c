@@ -443,6 +443,7 @@ lc_readInodesBlock(struct gfs *gfs, struct fs *fs, uint64_t block,
     ino_t ino;
 
     //lc_printf("Reading inodes from block %ld\n", block);
+    lc_verifyBlock(buf, (uint32_t *)&buf[LC_BLOCK_SIZE - sizeof(uint32_t)]);
     for (i = 0; i < LC_INODE_BLOCK_MAX; i++) {
         offset = i * LC_DINODE_SIZE;
         inode = (struct inode *)&buf[offset];
@@ -654,6 +655,7 @@ static void
 lc_flushInodePages(struct gfs *gfs, struct fs *fs) {
     uint64_t block, count = fs->fs_inodePagesCount;
     struct page *page = fs->fs_inodePages;
+    char *buf;
 
     /* Zero last partial inode page */
     lc_fillupLastInodePage(fs);
@@ -670,6 +672,8 @@ lc_flushInodePages(struct gfs *gfs, struct fs *fs) {
     /* Insert newly allocated blocks to the list of inode blocks */
     while (count) {
         lc_addPageBlockHash(gfs, fs, page, block);
+        buf = page->p_data;
+        lc_updateCRC(buf, (uint32_t *)&buf[LC_BLOCK_SIZE - sizeof(uint32_t)]);
         page = page->p_dnext;
         block++;
         count--;

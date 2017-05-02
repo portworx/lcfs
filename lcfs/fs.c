@@ -757,11 +757,11 @@ lc_syncAllLayers(struct gfs *gfs) {
     for (i = 1; i <= gfs->gfs_scount; i++) {
         fs = gfs->gfs_fs[i];
         if (fs) {
-            lc_lock(fs, true);
+            lc_lockExclusive(fs);
             lc_sync(gfs, fs, fs->fs_child == NULL);
             lc_processLayerBlocks(gfs, fs, true, false, false);
             lc_flushDirtyPages(gfs, fs);
-            lc_unlock(fs);
+            lc_unlockExclusive(fs);
         }
     }
 }
