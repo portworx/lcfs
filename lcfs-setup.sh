@@ -9,6 +9,7 @@ fi
 
 [ $(id -u) -ne 0 ] && SUDO=sudo
 
+isAlpine=0
 SYS_TYPE=$([ -e /etc/os-release ] && cat /etc/os-release | egrep '^ID=' | sed -e s'/^ID=//')
 [ -n "${SYS_TYPE}" -a "${SYS_TYPE}" == "alpine" ] && isAlpine=1
 
@@ -68,8 +69,8 @@ function clean_mount()
 
 function getPid()
 {
-    [ -z "$1" ] && echo "" 
-    
+    [ -z "$1" ] && echo ""
+
     local cmd="$1"
     local pid=""
 
@@ -114,9 +115,9 @@ function install_lcfs_binary()
 	[ $? -eq 0 ] && touch ${flg_fl}
     else
 	[ -z "$(getPid ${DOCKER_SRV_BIN})" ] && dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN}"
-	
+
 	local centos_exists=$(${SUDO} ${DOCKER_BIN} images -q centos:latest)
-	
+
 	${SUDO} \rm -f ${flg_fl}
 	${SUDO} ${DOCKER_BIN} run --rm --name centos -v /opt:/opt centos bash -c "rpm -qlp ${LOCAL_PKG} &> ${LOCAL_MANIFEST} && rpm -Uvh --nodeps ${LOCAL_PKG} && touch ${flg_fl}"
 	[ -z "${centos_exists}" ] && ${SUDO} ${DOCKER_BIN} rmi centos:latest &> /dev/null
@@ -248,14 +249,14 @@ function system_manage()
 		if [ -n "$(${SUDO} which chkconfig)" ]; then
 		    ${SUDO} chkconfig $2 on
 		elif [ -n "$(${SUDO} which rc-update)" ]; then
-		    ${SUDO} rc-update add $2 
+		    ${SUDO} rc-update add $2
 		fi
 		;;
 	    disable)
 		if [ -n "$(${SUDO} which chkconfig)" ]; then
 		    ${SUDO} chkconfig $2 off
 		elif [ -n "$(${SUDO} which rc-update)" ]; then
-		    ${SUDO} rc-update del $2 
+		    ${SUDO} rc-update del $2
 		fi
 		;;
             *)
@@ -320,7 +321,7 @@ function lcfs_startup_setup()
 	if [ -n "$(${SUDO} which chkconfig)" ]; then
 	    ${SUDO} chkconfig lcfs on
 	elif [ -n "$(${SUDO} which rc-update)" ]; then
-	    ${SUDO} rc-update add lcfs 
+	    ${SUDO} rc-update add lcfs
 	fi
     fi
 
@@ -340,7 +341,7 @@ function lcfs_startup_remove()
 	if [ -n "$(${SUDO} which chkconfig)" ]; then
 	    ${SUDO} chkconfig lcfs off &> /dev/null
 	elif [ -n "$(${SUDO} which rc-update)" ]; then
-	    ${SUDO} rc-update del lcfs 
+	    ${SUDO} rc-update del lcfs
 	fi
 	${SUDO} rm /etc/init.d/lcfs
     fi
