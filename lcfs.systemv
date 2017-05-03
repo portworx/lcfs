@@ -4,17 +4,17 @@
 # description: LCFS service daemon start/stop script
 
 # Source function library
-. /etc/rc.d/init.d/functions
+[ -e /etc/rc.d/init.d/functions ] && . /etc/rc.d/init.d/functions
 
 # Source networking configuration.
-. /etc/sysconfig/network
+[ -e /etc/sysconfig/network ] && . /etc/sysconfig/network
 
 TERM=linux
 
-SERVICE_NAME=lcfs
+SERVICE_NAME=lcfssrv
 SERVICE_LOG=/var/log/${SERVICE_NAME}.log
 SERVICE_SCRIPT=/opt/pwx/bin/lcfs-setup.sh
-SERVICE_ENV_FILE=/etc/pwx/lcfs.env
+SERVICE_ENV_FILE=/etc/lcfs/lcfs.env
 
 function log_service_msg()
 {

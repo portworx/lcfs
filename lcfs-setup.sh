@@ -9,6 +9,9 @@ fi
 
 [ $(id -u) -ne 0 ] && SUDO=sudo
 
+SYS_TYPE=$([ -e /etc/os-release ] && cat /etc/os-release | egrep '^ID=' | sed -e s'/^ID=//')
+[ -n "${SYS_TYPE}" -a "${SYS_TYPE}" == "alpine" ] && isAlpine=1
+
 DOCKER_BIN=docker
 DOCKER_SRV_BIN=dockerd
 LCFS_ENV_DIR=/etc/lcfs
@@ -16,20 +19,32 @@ LCFS_ENV_FL=${LCFS_ENV_FL:-"${LCFS_ENV_DIR}/lcfs.env"}
 
 [ -e "${LCFS_ENV_FL}" ] && source ${LCFS_ENV_FL}
 
-LCFS_PKG=${LCFS_PKG:-"http://lcfs.portworx.com/lcfs.rpm"}
+if [ ${isAlpine} -eq 1 ]; then
+    LCFS_PKG=${LCFS_PKG:-"http://lcfs.portworx.com/alpine/lcfs-alpine.binaries.tgz"}
+else
+    LCFS_PKG=${LCFS_PKG:-"http://lcfs.portworx.com/lcfs.rpm"}
+fi
 LCFS_IMG=${LCFS_IMG:-"portworx/lcfs:latest"}
 DOCKER_MNT=${DOCKER_MNT:-"/var/lib/docker"}
 PLUGIN_MNT=${PLUGIN_MNT:-"/lcfs"}
-DEVFL=${DEVFL:-"/lcfs-dev-file"}
 DEV=${DEV:-"/dev/sdNN"}
-DSZ=${DSZ:-"500M"}
-
+if [ ${isAlpine} -eq 1 ]; then
+    DEVFL=${DEVFL:-"/var/lcfs-dev-file"}
+    DSZ=${DSZ:-"2G"}
+else
+    DEVFL=${DEVFL:-"/lcfs-dev-file"}
+    DSZ=${DSZ:-"500M"}
+fi
 PWX_DIR=/opt/pwx
 
 LCFS_BINARY=${PWX_DIR}/bin/lcfs
 
 LOCAL_DNLD=${PWX_DIR}/dnld
-LOCAL_PKG=${LOCAL_DNLD}/lcfs.rpm
+if [ ${isAlpine} -eq 1 ]; then
+    LOCAL_PKG=${LOCAL_PKG:-"${LOCAL_DNLD}/lcfs-alpine.binaries.tgz"}
+else
+    LOCAL_PKG=${LOCAL_DNLD}/lcfs.rpm
+fi
 LOCAL_MANIFEST=${LOCAL_DNLD}/manifest
 
 DOCKER_DAEMON_CFG=/etc/docker/daemon.json
@@ -42,22 +57,43 @@ function cleanup_and_exit()
 
 function clean_mount()
 {
+    local mnt=""
+
     [ -z "$1" ] && return 0
-    mountpoint -q "$1"
-#    [ $? -eq 0 ] && ${SUDO} fusermount -q -u "$1" && sleep 3
+    # mountpoint -q "$1"
+    # [ $? -eq 0 ] && ${SUDO} fusermount -q -u "$1" && sleep 3
     for mnt in $(cat /proc/mounts | awk '{print $2}' | egrep "^$1"); do ${SUDO} umount -f "${mnt}"; done
     return 0
 }
 
+function getPid()
+{
+    [ -z "$1" ] && echo "" 
+    
+    local cmd="$1"
+    local pid=""
+
+    if [ ${isAlpine} -eq 1 ]; then
+	pid=$(ps -o pid,comm  | egrep "${cmd}$" | awk '{print $1}' | egrep -v "^${PPID}$" | tr '\n' ' ')
+    else
+	pid=$(ps -C "$1" -o pid --no-header | tr '\n' ' ')
+    fi
+
+    echo ${pid}
+}
+
 function killprocess()
 {
-    local pid=$(ps -C "$1" -o pid --no-header | tr '\n' ' ')
+    local pid=$(getPid "$1")
+    local topt=""
+
     [ -z "${pid}" ] && return 0
     for pd in ${pid}; do
 	${SUDO} kill -s 15 ${pd} &> /dev/null
-	timeout 60 bash -c "while ${SUDO} kill -0 \"${pd}\"; do sleep 0.5; done" &> /dev/null
+	[ ${isAlpine} -eq 1 ] && topt="-t"
+	${SUDO} timeout ${topt} 60 bash -c "while ${SUDO} kill -0 \"${pd}\"; do sleep 0.5; done" &> /dev/null
     done
-    pid=$(ps -C "$1" -o pid --no-header)
+    pid=$(getPid "$1")
     [ -n "${pid}" ] && echo "Failed to kill process for $1." && cleanup_and_exit 1
     return 0
 }
@@ -73,18 +109,26 @@ function install_lcfs_binary()
 {
     local flg_fl=${PWX_DIR}/.lcfs
 
-    [ -z "$(ps -C ${DOCKER_SRV_BIN} -o pid --no-header)" ] && dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN}"
-
-    local centos_exists=$(${SUDO} ${DOCKER_BIN} images -q centos:latest)
-
-    ${SUDO} \rm -f ${flg_fl}
-    ${SUDO} ${DOCKER_BIN} run --rm --name centos -v /opt:/opt centos bash -c "rpm -qlp ${LOCAL_PKG} &> ${LOCAL_MANIFEST} && rpm -Uvh --nodeps ${LOCAL_PKG} && touch ${flg_fl}"
-    [ -z "${centos_exists}" ] && ${SUDO} ${DOCKER_BIN} rmi centos:latest &> /dev/null
+    if [ ${isAlpine} -eq 1 ]; then
+	tar -C / -xzf ${LOCAL_PKG}
+	[ $? -eq 0 ] && touch ${flg_fl}
+    else
+	[ -z "$(getPid ${DOCKER_SRV_BIN})" ] && dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN}"
+	
+	local centos_exists=$(${SUDO} ${DOCKER_BIN} images -q centos:latest)
+	
+	${SUDO} \rm -f ${flg_fl}
+	${SUDO} ${DOCKER_BIN} run --rm --name centos -v /opt:/opt centos bash -c "rpm -qlp ${LOCAL_PKG} &> ${LOCAL_MANIFEST} && rpm -Uvh --nodeps ${LOCAL_PKG} && touch ${flg_fl}"
+	[ -z "${centos_exists}" ] && ${SUDO} ${DOCKER_BIN} rmi centos:latest &> /dev/null
+    fi
     [ ! -f ${flg_fl} ] && echo "Failed to install LCFS binaries." && cleanup_and_exit 1
+    \rm -f ${flg_fl}
 }
 
 function install_fuse()
 {
+    [ ${isAlpine} -eq 1 ] && return 0
+
     ${SUDO} which fusermount &> /dev/null
     if [ $? -ne 0 ]; then
 	local ltype=$(cat /proc/version | sed -e s'/(GCC) //' -e 's/.*(\(.*)\) ).*/\1/' -e 's/ [0-9].*$//' | tr -d ' ')
@@ -144,14 +188,16 @@ function dockerd_manual_start()
 {
     local dcmd=($1)
     local out_fl=/tmp/ldocker.out.$$
+    local topt=""
 
     [ -d "/var/run/docker.sock" ] && rmdir "/var/run/docker.sock"
     ${dcmd[@]} >> ${out_fl} 2>&1 &
     sleep 2   # Allow time for docker to start
     local status=1
-    if [ -n "$(ps -C ${DOCKER_SRV_BIN} -o pid --no-header)" ]; then
+    if [ -n "$(getPid ${DOCKER_SRV_BIN})" ]; then
 	# allow 5 mins for docker to come up even with plugins.
-	${SUDO} timeout 300 bash -c "while [ ! -e ${out_fl} ] || ! (tail -n 5 ${out_fl} | egrep -q 'listen on .*docker.sock\".*$'); do echo 'checking docker start...' ; sleep 1; done"
+	[ ${isAlpine} -eq 1 ] && topt="-t"
+	${SUDO} timeout ${topt} 300 bash -c "while [ ! -e ${out_fl} ] || ! (tail -n 5 ${out_fl} | egrep -q 'listen on .*docker.sock\".*$'); do echo 'checking docker start...' ; sleep 1; done"
 	status=$?
     fi
     [ ${status} -ne 0 ] && echo "Error: failed to start docker." && cat ${out_fl}
@@ -164,7 +210,7 @@ function dockerd_manual_start()
 
 function system_docker_stop()
 {
-    local sysd_pid=$(ps -C systemd -o pid --no-header)
+    local sysd_pid=$(getPid systemd)
     local sysV_docker="/etc/init.d/docker"
 
     if [ -z "${START}" -a -z "${STOP}" -a -z "${REMOVE}" ]; then
@@ -176,7 +222,7 @@ function system_docker_stop()
 
 function system_docker_restart()
 {
-    local sysd_pid=$(ps -C systemd -o pid --no-header)
+    local sysd_pid=$(getPid systemd)
     local sysV_docker="/etc/init.d/docker"
 
     if [ -n "${sysd_pid}" ]; then
@@ -190,23 +236,26 @@ function system_manage()
 {
     [ -z "$1" -o -z "$2" ] && echo "Warning: System manage setting failed." && return 1
 
-    local sysd_pid=$(ps -C systemd -o pid --no-header)
+    local sysd_pid=$(getPid systemd)
     local sysV="/etc/init.d/$2"
 
     echo "$1 $2..."
     [ -n "${sysd_pid}" ] && ${SUDO} systemctl $1 $2       # Systemd Manage
 
     if [ -e "${sysV}" ]; then                             # SystemV Manage
-	local chk_config=$(${SUDO} which chkconfig)
 	case $1 in
             enable)
-		if [ -n "${chk_config}" ]; then
-		  ${SUDO} chkconfig $2 on
+		if [ -n "$(${SUDO} which chkconfig)" ]; then
+		    ${SUDO} chkconfig $2 on
+		elif [ -n "$(${SUDO} which rc-update)" ]; then
+		    ${SUDO} rc-update add $2 
 		fi
 		;;
 	    disable)
-		if [ -n "${chk_config}" ]; then
-		  ${SUDO} chkconfig $2 off
+		if [ -n "$(${SUDO} which chkconfig)" ]; then
+		    ${SUDO} chkconfig $2 off
+		elif [ -n "$(${SUDO} which rc-update)" ]; then
+		    ${SUDO} rc-update del $2 
 		fi
 		;;
             *)
@@ -219,7 +268,7 @@ function system_manage()
 
 function lcfs_docker_startup_setup()
 {
-    local sysd_pid=$(ps -C systemd -o pid --no-header)
+    local sysd_pid=$(getPid systemd)
 
     echo "Setup LCFS Docker startup..."
     if [ -n "${sysd_pid}" ]; then   # Systemd setup
@@ -239,7 +288,7 @@ function lcfs_docker_startup_setup()
 
 function lcfs_docker_startup_remove()
 {
-    local sysd_pid=$(ps -C systemd -o pid --no-header)
+    local sysd_pid=$(getPid systemd)
 
     if [ -n "${sysd_pid}" ]; then   # Systemd setup
 	${SUDO} systemctl disable docker &> /dev/null
@@ -259,7 +308,7 @@ function lcfs_docker_startup_remove()
 
 function lcfs_startup_setup()
 {
-    local sysd_pid=$(ps -C systemd -o pid --no-header)
+    local sysd_pid=$(getPid systemd)
 
     echo "Setup LCFS startup..."
     if [ -n "${sysd_pid}" ]; then   # Systemd setup
@@ -267,7 +316,12 @@ function lcfs_startup_setup()
 	${SUDO} systemctl daemon-reexec  # Re-exec systemd bug (http://superuser.com/questions/1125250/systemctl-access-denied-when-root).
 	${SUDO} systemctl enable lcfs
     elif [ -d /etc/init.d ]; then   # SystemV setup
-	${SUDO} cp -a /opt/pwx/services/lcfs.systemv /etc/init.d/lcfs && ${SUDO} chkconfig lcfs on
+	${SUDO} cp -a /opt/pwx/services/lcfs.systemv /etc/init.d/lcfs
+	if [ -n "$(${SUDO} which chkconfig)" ]; then
+	    ${SUDO} chkconfig lcfs on
+	elif [ -n "$(${SUDO} which rc-update)" ]; then
+	    ${SUDO} rc-update add lcfs 
+	fi
     fi
 
     [ $? -ne 0 ] && echo "Warning: LCFS startup configuration failed. LCFS will not start automatically on system reboot."
@@ -277,20 +331,24 @@ function lcfs_startup_setup()
 
 function lcfs_startup_remove()
 {
-    local sysd_pid=$(ps -C systemd -o pid --no-header)
+    local sysd_pid=$(getPid systemd)
 
     if [ -n "${sysd_pid}" ]; then   # Systemd setup
 	${SUDO} systemctl disable lcfs &> /dev/null
 	${SUDO} rm -f /etc/systemd/system/lcfs.service
     elif [ -d /etc/init.d ]; then   # SystemV setup
-	${SUDO} chkconfig lcfs off &> /dev/null
+	if [ -n "$(${SUDO} which chkconfig)" ]; then
+	    ${SUDO} chkconfig lcfs off &> /dev/null
+	elif [ -n "$(${SUDO} which rc-update)" ]; then
+	    ${SUDO} rc-update del lcfs 
+	fi
 	${SUDO} rm /etc/init.d/lcfs
     fi
 }
 
 function isDockerService()
 {
-    local sysd_pid=$(ps -C systemd -o pid --no-header)
+    local sysd_pid=$(getPid systemd)
     local docker_service=""
 
     if [ -n "${sysd_pid}" ]; then   # Systemd setup
@@ -430,10 +488,20 @@ function status_lcfs()
     local lpid="" lcmd="" ldev="" ldmnt="" lpmnt="" lstatus=0
     local ldpid="" lfcmd="" dstatus
 
-    read lpid lcmd ldev ldmnt lpmnt<<<$(ps -C lcfs -o pid,command --no-header)
+    if [ ${isAlpine} -eq 1 ]; then
+	lpid=$(getPid lcfs)
+	[ -n "${lpid}" ] && read lpid lcmd lmode ldev ldmnt lpmnt<<<$(ps -o pid,args  | egrep "^ *${lpid} " | tr '\n' ' ')
+    else
+	read lpid lcmd lmode ldev ldmnt lpmnt<<<$(ps -C lcfs -o pid,command --no-header)
+    fi
     lstatus=$?
 
-    read ldpid lfcmd<<<$(ps -C ${DOCKER_SRV_BIN} -o pid,command --no-header)
+    if [ ${isAlpine} -eq 1 ]; then
+	ldpid=$(getPid ${DOCKER_SRV_BIN})
+	[ -n "${ldpid}" ] && read ldpid lfcmd<<<$(ps -o pid,args  | egrep "^ *${ldpid} " | tr '\n' ' ')
+    else
+	read ldpid lfcmd<<<$(ps -C ${DOCKER_SRV_BIN} -o pid,command --no-header)
+    fi
     dstatus=$?
 
     if [ ${lstatus} -eq 0 -a -n "${lpid}" ]; then
@@ -576,7 +644,7 @@ ${SUDO} mkdir -p ${PLUGIN_MNT} ${DOCKER_MNT}
 ${SUDO} ${LCFS_BINARY} daemon ${DEV} ${DOCKER_MNT} ${PLUGIN_MNT}
 LSTATUS=$?
 sleep 3
-[ -z "$(ps -C lcfs -o pid,command --no-header)" -o ${LSTATUS} -ne 0 ] && echo "Failed to start LCFS binary [${LSTATUS}]." && cleanup_and_exit ${LSTATUS}
+[ -z "$(getPid lcfs)" -o ${LSTATUS} -ne 0 ] && echo "Failed to start LCFS binary [${LSTATUS}]." && cleanup_and_exit ${LSTATUS}
 
 backup_docker_cfg
 
