@@ -36,6 +36,13 @@ else
     DEVFL=${DEVFL:-"/lcfs-dev-file"}
     DSZ=${DSZ:-"500M"}
 fi
+
+# Linux DD is used create a device file for use by LCFS.  However if
+# Large Files is not supported on the running filesystem then the max
+# file size (DSZ) will be 2G. So DCOUNT may need to be updated to
+# create device file larger than 2G.
+DCOUNT=${DCOUNT:-"1"}
+                  
 PWX_DIR=/opt/pwx
 
 LCFS_BINARY=${PWX_DIR}/bin/lcfs
@@ -399,6 +406,7 @@ function lcfs_configure_save()
     echo 'DEVFL=${DEVFL:-"'${DEVFL}'"}' >> ${tmp_cfg}
     echo 'DEV=${DEV:-"'${DEV}'"}' >> ${tmp_cfg}
     echo 'DSZ=${DSZ:-"'${DSZ}'"}' >> ${tmp_cfg}
+    echo 'DCOUNT=${DCOUNT:-"'${DCOUNT}'"}' >> ${tmp_cfg}
 
     ${SUDO} mkdir -p ${LCFS_ENV_DIR}
     ${SUDO} \mv ${tmp_cfg} ${LCFS_ENV_FL}
@@ -424,7 +432,7 @@ function lcfs_configure()
 	    [ "${DEV}" == "/dev/sdNN" ] && ldev=${DEVFL}
 	    read -p "LCFS file: ${ldev} size [${DSZ}]: " lsz
 	    [ -z "${lsz}" ] && lsz="${DSZ}"
-            ${SUDO} dd if=/dev/zero of=${ldev} count=1 bs=${lsz} &> /dev/null
+            ${SUDO} dd if=/dev/zero of=${ldev} count=${DCOUNT} bs=${lsz} &> /dev/null
 	    [ $? -ne 0 ] && echo "Error: Failed to create LCFS device file ${ldev}." && cleanup_and_exit 0
 #	    DEVFL="${ldev}"
 	    DSZ="${lsz}"
@@ -632,9 +640,11 @@ stop_remove_lcfs  # Stop existing docker if setup or --configure.
 
 if [ ! -e "${DEV}" ]; then
     echo "LCFS device: ${DEV} not found.  Creating device file: ${DEVFL} ${DSZ}."
-    ${SUDO} dd if=/dev/zero of=${DEVFL} count=1 bs=${DSZ}
+    ${SUDO} dd if=/dev/zero of=${DEVFL} count=${DCOUNT} bs=${DSZ}
     [ $? -ne 0 ] && echo "Error: Failed to create LCFS device file ${ldev}." && cleanup_and_exit 0
     DEV=${DEVFL}
+else
+    echo "Note: LCFS device file exists. Using existing device file ${DEV} without modifying."
 fi
 
 sleep 5   #  Allow time for unmounts to happen.
