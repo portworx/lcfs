@@ -460,13 +460,11 @@ function stop_remove_lcfs
     system_docker_stop
 
     # Stop docker && cleanup
-    if [ -z "${STOP_DOCKER}" ]; then
-	clean_mount "${DOCKER_MNT}/plugins"
-	clean_mount "${PLUGIN_MNT}"
-	clean_mount "${DOCKER_MNT}"
-	killprocess lcfs
-	sleep 3
-    fi
+    clean_mount "${DOCKER_MNT}/plugins"
+    clean_mount "${PLUGIN_MNT}"
+    clean_mount "${DOCKER_MNT}"
+    killprocess lcfs
+    sleep 3
 
     if [ -n "${REMOVE}" ]; then
 	dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN} -s vfs"
@@ -487,7 +485,7 @@ function stop_remove_lcfs
 	system_manage "enable" "docker"   # Reenable docker startup.
     fi
     [ -z "${rcode}" ] && rcode=0
-    [ -n "${STOP}" -o -n "${REMOVE}" -o -n "${STOP_DOCKER}" ] && cleanup_and_exit ${rcode}
+    [ -n "${STOP}" -o -n "${REMOVE}" ] && cleanup_and_exit ${rcode}
 
     return 0
 }
@@ -604,8 +602,7 @@ while [ "$1" != "" ]; do
 	    stop_remove_lcfs
             ;;
         --stop-docker)
-	    STOP_DOCKER="$1"
-	    stop_remove_lcfs
+	    system_docker_stop
             ;;
 	--configure)
 	    lcfs_configure
