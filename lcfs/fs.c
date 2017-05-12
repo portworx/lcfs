@@ -483,6 +483,7 @@ lc_gfsInit(struct gfs *gfs) {
     pthread_mutex_init(&gfs->gfs_alock, NULL);
     pthread_mutex_init(&gfs->gfs_clock, NULL);
     pthread_mutex_init(&gfs->gfs_flock, NULL);
+    pthread_mutex_init(&gfs->gfs_slock, NULL);
 }
 
 /* Free resources allocated for the global file system */
@@ -514,6 +515,7 @@ lc_gfsDeinit(struct gfs *gfs) {
     pthread_mutex_destroy(&gfs->gfs_alock);
     pthread_mutex_destroy(&gfs->gfs_clock);
     pthread_mutex_destroy(&gfs->gfs_flock);
+    pthread_mutex_destroy(&gfs->gfs_slock);
 #endif
 }
 

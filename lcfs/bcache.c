@@ -873,7 +873,8 @@ lc_purgeTreePages(struct gfs *gfs, struct fs *fs, bool force) {
             if (page->p_refCount == 0) {
 
                 /* Wait for p_hitCount to drop before purging */
-                if (page->p_hitCount == 0) {
+                if (gfs->gfs_pcleaningForced ||
+                    (page->p_hitCount == 0)) {
                     *prev = page->p_cnext;
                     page->p_cnext = NULL;
                     page->p_block = LC_INVALID_BLOCK;

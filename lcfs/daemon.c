@@ -2,6 +2,7 @@
 #include "version/version.h"
 
 static struct gfs *gfs;
+bool lc_verbose = false;
 extern struct fuse_lowlevel_ops lc_ll_oper;
 
 #define LC_SIZEOF_MOUNTARGS 1024
@@ -15,16 +16,20 @@ getfs() {
 /* Display usage */
 static void
 usage(char *prog) {
-    lc_syslog(LOG_ERR, "usage: %s <device> <host-mnt> <plugin-mnt> [-f] [-d]\n", prog);
-    lc_syslog(LOG_ERR, "\tdevice        - device or file - image layers will be saved here\n"
+    lc_syslog(LOG_ERR, "usage: %s <device> <host-mnt> <plugin-mnt>"
+                       " [-f] [-d] [-m] [-r] [-t] [-p] [-v]\n", prog);
+    lc_syslog(LOG_ERR, "\tdevice        - device or file - image layers"
+                       " will be saved here\n"
                     "\thost-mnt      - mount point on host\n"
                     "\tplugin-mnt    - mount point propagated to plugin\n"
                     "\t-f            - run foreground (optional)\n"
                     "\t-d            - display debugging info (optional)\n"
                     "\t-m            - enable memory stats (optional)\n"
                     "\t-r            - enable request stats (optional)\n"
-                    "\t-t            - enable tracking count of file types (optional)\n"
-                    "\t-p            - enable profiling (optional)\n");
+                    "\t-t            - enable tracking count of file types"
+                                       " (optional)\n"
+                    "\t-p            - enable profiling (optional)\n"
+                    "\t-v            - enable verbose mode (optional)\n");
 }
 
 /* Notify parent process completion */
@@ -388,6 +393,8 @@ lcfs_main(int argc, char *argv[]) {
             ftypes = true;
         } else if (!strcmp(argv[i], "-p")) {
             profiling = true;
+        } else if (!strcmp(argv[i], "-v")) {
+            lc_verbose = true;
         } else {
             arg[count++] = argv[i];
         }

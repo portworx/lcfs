@@ -76,7 +76,7 @@ cmd_group lcfs_cmd_group[] = {
     },
     {
         "pcache",
-        "Adjust page cache memory limit (default 25%, minimum 512MB)",
+        "Adjust page cache memory limit (default 5%, minimum 512MB)",
         "<mnt> <limit>",
         "\tmnt     - mount point\n"
         "\tlimit   - memory limit in MB (default 512MB)\n",
