@@ -7,6 +7,8 @@ if [ "$1" == "--debug" -o -n "${DEBUG}" ]; then
     [ "$1" == "--debug" ] && shift
 fi
 
+ulimit -c unlimited
+
 [ $(id -u) -ne 0 ] && SUDO=sudo
 
 isAlpine=0
