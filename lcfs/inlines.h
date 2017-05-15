@@ -3,11 +3,12 @@
 
 #define lc_syslog(level, ...)  syslog(level, __VA_ARGS__)
 
-#if 0
-#define lc_printf(...)  lc_syslog(LOG_INFO,  __VA_ARGS__)
-#else
-#define lc_printf(a...)
-#endif
+extern bool lc_verbose;
+#define lc_printf(...) {\
+    if (lc_verbose) {\
+        lc_syslog(LOG_INFO,  __VA_ARGS__);\
+    }\
+}
 
 #if 0
 /* Display debug information on every file system request */

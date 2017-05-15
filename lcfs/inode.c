@@ -1022,6 +1022,10 @@ lc_destroyInodes(struct fs *fs, bool remove) {
     struct inode *inode;
     int i;
 
+    if (fs->fs_icache == NULL) {
+        return;
+    }
+
     /* Take the inode off the hash list */
     for (i = 0; (i < fs->fs_icacheSize) && (icount < fs->fs_icount); i++) {
         /* XXX Lock is not needed as the file system is locked for exclusive

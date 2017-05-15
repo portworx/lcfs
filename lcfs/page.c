@@ -828,7 +828,9 @@ lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode, off_t soffset,
     }
     fuse_reply_data(req, bufv, FUSE_BUF_SPLICE_MOVE);
     lc_inodeUnlock(inode);
-    lc_releaseReadPages(gfs, fs, pages, pcount, false);
+    if (pcount) {
+        lc_releaseReadPages(gfs, fs, pages, pcount, false);
+    }
 #if 0
                         ((inode->i_fs == fs) && inode->i_private) ||
                         (fs->fs_parent && fs->fs_parent->fs_single));
