@@ -295,6 +295,7 @@ lc_deleteLayer(fuse_req_t req, struct gfs *gfs, const char *name) {
     /* Destroy pages and unlock base layer */
     zfs = fs;
     while (true) {
+        lc_invalidateDirtyPages(gfs, zfs);
         lc_destroyPages(gfs, zfs, true);
         zfs = zfs->fs_zfs;
         if (zfs == NULL) {
@@ -637,6 +638,7 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
     lc_unlock(cfs);
     if (tfs) {
         lc_lockExclusive(tfs);
+        lc_invalidateDirtyPages(gfs, tfs);
         lc_destroyPages(gfs, tfs, true);
         lc_unlock(bfs);
         lc_releaseLayer(gfs, tfs, rfs, &extents);
