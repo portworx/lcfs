@@ -1307,7 +1307,7 @@ lc_statfs(fuse_req_t req, fuse_ino_t ino) {
     buf.f_bsize = LC_BLOCK_SIZE;
     buf.f_frsize = LC_BLOCK_SIZE;
     buf.f_blocks = super->sb_tblocks;
-    buf.f_bfree = buf.f_blocks - super->sb_blocks;
+    buf.f_bfree = buf.f_blocks - (super->sb_blocks + gfs->gfs_dcount);
     buf.f_bavail = buf.f_bfree;
     buf.f_files = (fsfilcnt_t)(LC_FH_INODE - 1);
     buf.f_ffree = buf.f_files - super->sb_inodes;
