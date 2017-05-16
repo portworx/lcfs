@@ -175,7 +175,8 @@ lc_flushDirtyInodeList(struct fs *fs, bool all) {
     if ((fs->fs_dirtyInodes == NULL) || fs->fs_removed) {
         return;
     }
-    force = all || (fs->fs_pcount > LC_MAX_LAYER_DIRTYPAGES);
+    force = all || !lc_checkMemoryAvailable(true) ||
+            (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES);
     pthread_mutex_lock(&fs->fs_dilock);
 
     /* Increment flusher id and store it with inodes flushed by this thread.
@@ -197,7 +198,8 @@ lc_flushDirtyInodeList(struct fs *fs, bool all) {
             inode = lc_removeDirtyInode(fs, inode, prev);
         } else if (!pthread_rwlock_trywrlock(inode->i_rwlock)) {
             next = lc_removeDirtyInode(fs, inode, prev);
-            if (lc_inodeGetDirtyPageCount(inode) && !(inode->i_flags & LC_INODE_REMOVED) &&
+            if (lc_inodeGetDirtyPageCount(inode) &&
+                !(inode->i_flags & LC_INODE_REMOVED) &&
                 ((inode->i_ocount == 0) || force)) {
                 pthread_mutex_unlock(&fs->fs_dilock);
 
@@ -211,11 +213,12 @@ lc_flushDirtyInodeList(struct fs *fs, bool all) {
 
                     /* If inode could not be flushed, add it back to the list
                      */
-                    if (lc_inodeGetDirtyPageCount(inode) && (inode->i_ocount == 0)) {
+                    if (lc_inodeGetDirtyPageCount(inode) &&
+                        (inode->i_ocount == 0)) {
                         lc_addDirtyInode(fs, inode);
                     }
                     pthread_rwlock_unlock(inode->i_rwlock);
-                } else if (!all &&
+                } else if (!all && lc_checkMemoryAvailable(true) &&
                            (fs->fs_pcount < (LC_MAX_LAYER_DIRTYPAGES / 2))) {
                     return;
                 }

@@ -67,7 +67,8 @@ lc_memoryInit(uint64_t limit) {
 
     if (limit == 0) {
         limit = (totalram * LC_PCACHE_MEMORY_MIN) / 100;
-    } else if (limit < LC_PCACHE_MEMORY) {
+    }
+    if (limit < LC_PCACHE_MEMORY) {
         limit = LC_PCACHE_MEMORY;
     }
     if (limit > totalram) {

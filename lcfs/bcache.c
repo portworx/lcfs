@@ -747,7 +747,6 @@ lc_flusher(void *data) {
     struct gfs *gfs = getfs();
     struct timespec interval;
     struct timeval now;
-    time_t recent = 0;
     struct fs *fs;
     bool force;
     int i;
@@ -773,15 +772,15 @@ lc_flusher(void *data) {
 
             /* Skip newly created layers */
             gettimeofday(&now, NULL);
-            recent = now.tv_sec - LC_FLUSH_TIME;
 
             /* Flush dirty data pages from read-write layers.
              * Dirty data from read only layers are flushed as those are
              * created.
              */
             if (!fs->fs_readOnly && fs->fs_dirtyInodes &&
-                ((fs->fs_pcount > LC_MAX_LAYER_DIRTYPAGES) ||
-                 (force && (fs->fs_super->sb_ctime < recent))) &&
+                (fs->fs_pcount &&
+                 (force || !lc_checkMemoryAvailable(true) ||
+                  (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES))) &&
                 !(fs->fs_super->sb_flags & LC_SUPER_INIT) &&
                 !lc_tryLock(fs, false)) {
 
@@ -792,7 +791,7 @@ lc_flusher(void *data) {
                 lc_flushDirtyPages(gfs, fs);
                 lc_unlock(fs);
                 rcu_read_lock();
-            } else if (((fs->fs_dpcount > LC_MAX_LAYER_DIRTYPAGES) ||
+            } else if (((fs->fs_dpcount >= LC_MAX_LAYER_DIRTYPAGES) ||
                         (fs->fs_dpcount && force)) && !lc_tryLock(fs, false)) {
                 rcu_read_unlock();
 
@@ -829,6 +828,7 @@ lc_wakeupCleaner(struct gfs *gfs, bool wait) {
     /* Wakeup cleaner and wait to be woken up */
     pthread_mutex_lock(&gfs->gfs_clock);
     if (!gfs->gfs_pcleaning) {
+        pthread_cond_signal(&gfs->gfs_flusherCond);
 
         /* Let a single thread do the job to avoid contention on locks */
         gfs->gfs_pcleaning = true;
@@ -960,7 +960,7 @@ lc_purgePages(struct gfs *gfs, bool force) {
     gfs->gfs_pcleaning = false;
 
     /* Wakeup flusher */
-    if (!lc_checkMemoryAvailable(false)) {
+    if (!lc_checkMemoryAvailable(true)) {
         pthread_cond_signal(&gfs->gfs_flusherCond);
     }
     gfs->gfs_pcleaningForced = false;
@@ -1006,7 +1006,7 @@ lc_cleaner(void *data) {
             err = pthread_cond_timedwait(&gfs->gfs_cleanerCond,
                                          &gfs->gfs_clock, &interval);
             if (err == ETIMEDOUT) {
-                force = false;
+                force = !lc_checkMemoryAvailable(true);
             }
         }
         pthread_mutex_unlock(&gfs->gfs_clock);

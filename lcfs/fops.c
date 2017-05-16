@@ -1022,14 +1022,15 @@ lc_closeInode(struct fs *fs, struct inode *inode, struct fuse_file_info *fi,
                    lc_inodeGetDirtyPageCount(inode)) {
 
             /* Add inode to dirty list of the layer */
-            if (lc_inodeGetDirtyPageCount(inode) &&
-                (lc_inodeGetDirtyNext(inode) == NULL) &&
+            if ((lc_inodeGetDirtyNext(inode) == NULL) &&
                 (fs->fs_dirtyInodesLast != inode)) {
                 lc_addDirtyInode(fs, inode);
             }
 
             /* Flush pages of the inode if layer has too many dirty pages */
-            if ((fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES) &&
+            if (fs->fs_pcount &&
+                (!lc_checkMemoryAvailable(false) ||
+                 (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES)) &&
                 lc_flushInodeDirtyPages(inode, inode->i_size / LC_BLOCK_SIZE,
                                         true, true)) {
                 return;
@@ -1591,7 +1592,7 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
     }
 
     /* Make sure enough memory available before proceeding */
-    lc_waitMemory(fs->fs_pcount > LC_MAX_LAYER_DIRTYPAGES);
+    lc_waitMemory(true);
 
     /* Copy in the data before taking the lock */
     pcount = lc_copyPages(fs, off, size, dpages, bufv, dst);
@@ -1640,7 +1641,9 @@ out:
     lc_statsAdd(fs, LC_WRITE_BUF, err, &start);
 
     /* Trigger flush of dirty pages if layer has too many now */
-    if (!err && (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES)) {
+    if (!err &&
+        ((fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES) ||
+         !lc_checkMemoryAvailable(true))) {
         lc_flushDirtyInodeList(fs, false);
     }
     lc_unlock(fs);
