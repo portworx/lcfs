@@ -30,35 +30,55 @@ function log_service_msg()
     /bin/sh -c "echo -e \"$date_msg\" $append $log 2>&1"
 }
 
+function start_lcfs()
+{
+	local ret=0
+
+        if [ ! -e ${SERVICE_ENV_FILE} ]; then                                
+            echo "LCFS is not configured to start. Run ${SERVICE_SCRIPT}."   
+            exit 1                                                           
+        fi                                                                   
+        log_service_msg "${ACTION} ${SERVICE_NAME}" "${SERVICE_LOG}" "append"
+        ${SERVICE_SCRIPT} --start >> ${SERVICE_LOG} 2>&1                     
+        ret=$?                                                                                        
+        if [ ${ret} -eq 0 ]; then                                                                     
+            ${SERVICE_SCRIPT} --status                                                                   
+        else                                                                                             
+            echo "Error: failed to start ${SERVICE_NAME} service. Check ${SERVICE_LOG} for more details."
+        fi
+        
+	return ${ret}                                                    
+}
+
+function stop_lcfs()
+{
+	local ret=0
+
+       	log_service_msg "${ACTION} ${SERVICE_NAME}" "${SERVICE_LOG}" "append"                            
+        ${SERVICE_SCRIPT} --stop >> ${SERVICE_LOG} 2>&1                                                  
+        ret=$?                                                                                        
+        if [ ${ret} -eq 0 ]; then                                                                     
+            ${SERVICE_SCRIPT} --status                                                                   
+        else                                                                                             
+            echo "Error: failed to start ${SERVICE_NAME} service. Check ${SERVICE_LOG} for more details."
+        fi
+
+	return ${ret}           
+}
+
 RETVAL=0
 
 case "$1" in
     start)
 	ACTION=Starting
-	if [ ! -e ${SERVICE_ENV_FILE} ]; then
-	    echo "LCFS is not configured to start. Run ${SERVICE_SCRIPT}."
-	    exit 1
-	fi
-	log_service_msg "${ACTION} ${SERVICE_NAME}" "${SERVICE_LOG}" "append"
-	${SERVICE_SCRIPT} --start >> ${SERVICE_LOG} 2>&1
+	start_lcfs
 	RETVAL=$?
-	if [ ${RETVAL} -eq 0 ]; then
-	    ${SERVICE_SCRIPT} --status
-	else
-	    echo "Error: failed to start ${SERVICE_NAME} service. Check ${SERVICE_LOG} for more details."
-	fi
 	echo
 	;;
     stop)
 	ACTION=Stopping
-	log_service_msg "${ACTION} ${SERVICE_NAME}" "${SERVICE_LOG}" "append"
-	${SERVICE_SCRIPT} --stop >> ${SERVICE_LOG} 2>&1
+	stop_lcfs
 	RETVAL=$?
-	if [ ${RETVAL} -eq 0 ]; then
-	    ${SERVICE_SCRIPT} --status
-	else
-	    echo "Error: failed to start ${SERVICE_NAME} service. Check ${SERVICE_LOG} for more details."
-	fi
 	echo
         ;;
     status)
@@ -70,11 +90,13 @@ case "$1" in
         ;;
     restart)
 	log_service_msg "${ACTION} ${SERVICE_NAME}" "${SERVICE_LOG}" "append"
-        $0 stop
-	sleep 2
-        $0 start
+	stop_lcfs
 	RETVAL=$?
-
+	sleep 2
+        if [ ${RETVAL} -eq 0 ]; then
+		start_lcfs
+		RETVAL=$?
+	fi
 	echo
 	;;
     *)
