@@ -424,6 +424,7 @@ function lcfs_configure_save()
 function lcfs_configure()
 {
     local limg dmnt lmnt ldev lsz ploc dyn
+    local sz_msg="${DSZ}" sparse="sparse "
 
     read -p "LCFS install package (full filename|URL) [${LCFS_PKG}]: " ploc
     [ -n "${ploc}" ] && LCFS_PKG="${ploc}"
@@ -438,7 +439,8 @@ function lcfs_configure()
 	read -p  "LCFS device/file does not exist. Create file (y/n)? " dyn
         if [ "${dyn,,}" = "y" ]; then
 	    [ "${DEV}" == "/dev/sdNN" ] && ldev=${DEVFL}
-	    read -p "LCFS file: ${ldev} size [${DSZ}]: " lsz
+	    [ ${DCOUNT} -gt 1 ] && sz_msg="${sz_msg} * ${DCOUNT}" && sparse=""
+	    read -p "LCFS ${sparse}file: ${ldev} size [${sz_msg}]: " lsz
 	    [ -z "${lsz}" ] && lsz="${DSZ}"
 	    if [ ${DCOUNT} -gt 1 ]; then
 		${SUDO} dd if=/dev/zero of=${ldev} count=${DCOUNT} bs=${lsz} &> /dev/null
@@ -648,7 +650,11 @@ stop_remove_lcfs  # Stop existing docker if setup or --configure.
 # * Setup LCFS and start *
 
 if [ ! -e "${DEV}" ]; then
-    echo "LCFS device: ${DEV} not found.  Creating device file: ${DEVFL} ${DSZ}."
+    sz_msg="${DSZ}"
+    sparse="sparse "
+
+    [ ${DCOUNT} -gt 1 ] && sz_msg="${sz_msg} * ${DCOUNT}" && sparse=""
+    echo "LCFS device: ${DEV} not found.  Creating ${sparse}device file: ${DEVFL} ${sz_msg}."
     if [ ${DCOUNT} -gt 1 ]; then
 	${SUDO} dd if=/dev/zero of=${DEVFL} count=${DCOUNT} bs=${DSZ}
     else
