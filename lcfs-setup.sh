@@ -15,6 +15,10 @@ isAlpine=0
 SYS_TYPE=$([ -e /etc/os-release ] && cat /etc/os-release | egrep '^ID=' | sed -e s'/^ID=//')
 [ -n "${SYS_TYPE}" -a "${SYS_TYPE}" == "alpine" ] && isAlpine=1
 
+isBusyBox=0
+readlink -f $(which timeout) | egrep -q 'busybox$'
+[ $? -eq 0 ] && isBusyBox=1
+
 DOCKER_BIN=docker
 DOCKER_SRV_BIN=dockerd
 LCFS_ENV_DIR=/etc/lcfs
@@ -100,7 +104,7 @@ function killprocess()
     [ -z "${pid}" ] && return 0
     for pd in ${pid}; do
 	${SUDO} kill -s 15 ${pd} &> /dev/null
-	[ ${isAlpine} -eq 1 ] && topt="-t"
+	[ ${isAlpine} -eq 1 -a ${isBusyBox} -eq 1 ] && topt="-t"
 	${SUDO} timeout ${topt} 60 bash -c "while ${SUDO} kill -0 \"${pd}\"; do sleep 0.5; done" &> /dev/null
     done
     pid=$(getPid "$1")
@@ -206,7 +210,7 @@ function dockerd_manual_start()
     local status=1
     if [ -n "$(getPid ${DOCKER_SRV_BIN})" ]; then
 	# allow 5 mins for docker to come up even with plugins.
-	[ ${isAlpine} -eq 1 ] && topt="-t"
+	[ ${isAlpine} -eq 1 -a ${isBusyBox} -eq 1 ] && topt="-t"
 	${SUDO} timeout ${topt} 300 bash -c "while [ ! -e ${out_fl} ] || ! (tail -n 5 ${out_fl} | egrep -q 'listen on .*docker.sock\".*$'); do echo 'checking docker start...' ; sleep 1; done"
 	status=$?
     fi
