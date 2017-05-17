@@ -14,6 +14,7 @@ enum ioctl_cmd {
     SYNCER_TIME = 109,              /* Adjust syncer frequency */
     DCACHE_MEMORY = 110,            /* Adjust data pcache size */
     DCACHE_FLUSH = 111,             /* Flush pages not in use */
+    LCFS_COMMIT = 112,              /* Commit to disk */
 };
 
 #ifndef LC_DIFF

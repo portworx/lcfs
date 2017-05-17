@@ -379,9 +379,8 @@ lcfs_main(int argc, char *argv[]) {
             closelog();
             exit(0);
         }
-    } else {
-        lc_syslog(LOG_INFO, "%s %s\n", Build, Release);
     }
+    lc_syslog(LOG_INFO, "%s %s\n", Build, Release);
 
     count = 4;
     for (i = 4; i < argc; i++) {

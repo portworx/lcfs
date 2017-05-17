@@ -1,6 +1,8 @@
 #include "includes.h"
 #include <sys/ioctl.h>
 
+#define LAYER_NAME_MAX  255
+
 /* Display usage and exit */
 static void
 usage(char *name) {
@@ -18,8 +20,8 @@ usage(char *name) {
  */
 int
 ioctl_main(int argc, char *argv[]) {
+    char name[LAYER_NAME_MAX + 1], *dir;
     int fd, err, len, value;
-    char name[256], *dir;
     struct stat st;
 
     if ((argc != 2) && (argc != 3) && (argc != 4)) {
@@ -45,38 +47,49 @@ ioctl_main(int argc, char *argv[]) {
     }
     if (strcmp(argv[0], "stats") == 0) {
         if (argc < 3) {
+            close(fd);
             usage(argv[0]);
         }
         if ((argc == 4) && strcmp(argv[3], "-c")) {
+            close(fd);
             usage(argv[0]);
         }
+        len = strlen(argv[2]);
+        assert(len < LAYER_NAME_MAX);
+        memcpy(name, argv[2], len);
+        name[len] = 0;
         err = ioctl(fd, _IOW(0, argc == 3 ? LAYER_STAT : CLEAR_STAT, name),
-                    argv[2]);
+                    name);
     } else if (strcmp(argv[0], "flush") == 0) {
         if (argc != 2) {
+            close(fd);
             usage(argv[0]);
         }
         err = ioctl(fd, _IO(0, DCACHE_FLUSH), 0);
+    } else if (strcmp(argv[0], "commit") == 0) {
+        if (argc != 2) {
+            close(fd);
+            usage(argv[0]);
+        }
+        err = ioctl(fd, _IO(0, LCFS_COMMIT), 0);
     } else {
-        if (argc < 3) {
+        if (argc != 3) {
+            close(fd);
             usage(argv[0]);
         }
         value = atoll(argv[2]);
-        if ((value < 0) || (argc != 3)) {
+        if (value < 0) {
             close(fd);
             usage(argv[0]);
         }
-        openlog("lcfs", LOG_PID|LOG_CONS|LOG_PERROR, LOG_USER);
         if (strcmp(argv[0], "syncer") == 0) {
-            err = ioctl(fd, _IOW(0, SYNCER_TIME, value), argv[2]);
+            err = ioctl(fd, _IOW(0, SYNCER_TIME, int), argv[2]);
         } else if (value && (strcmp(argv[0], "pcache") == 0)) {
-            err = ioctl(fd, _IOW(0, DCACHE_MEMORY, value), argv[2]);
+            err = ioctl(fd, _IOW(0, DCACHE_MEMORY, int), argv[2]);
         } else {
             close(fd);
-            closelog();
             usage(argv[0]);
         }
-        closelog();
     }
     if (err) {
         perror("ioctl");

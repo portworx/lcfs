@@ -447,7 +447,7 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
             fuse_reply_ioctl(req, 0, NULL, 0);
             lc_displayLayerStats(fs);
             lc_unlock(fs);
-        } else {
+        } else if (!strcmp(name, ".")) {
 
             /* Display stats of all layers */
             lc_displayStatsAll(gfs);

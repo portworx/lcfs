@@ -42,16 +42,18 @@ cmd_group lcfs_cmd_group[] = {
         "daemon",
         "Start the lcfs daemon",
         // "--device=<device/file> --host-mount=<host-mountpath> --plugin-mount=<plugin-mountpath> [-f] [-d]",
-        "<device/file> <host-mountpath> <plugin-mountpath> [-f] [-d]",
+        "<device/file> <host-mountpath> <plugin-mountpath> "
+            "[-f] [-d] [-m] [-r] [-t] [-p] [-v]",
         "\tdevice     - device or file - image layers will be saved here\n"
         "\thost-mount - mount point on host\n"
         "\thost-mount - mount point propogated the plugin\n"
         "\t-f         - run foreground (optional)\n"
-        "\t-d         - display debugging info (optional)\n"
+        "\t-d         - display fuse debugging info (optional)\n"
         "\t-m         - enable memory stats (optional)\n"
         "\t-r         - enable request stats (optional)\n"
         "\t-t         - enable tracking count of file types (optional)\n"
-        "\t-p         - enable profiling (optional)\n",
+        "\t-p         - enable profiling (optional)\n"
+        "\t-v         - enable verbose mode (optional)\n",
         3,
         cmd_daemon
     },
@@ -63,6 +65,14 @@ cmd_group lcfs_cmd_group[] = {
         "\tid      - layer name or .\n"
         "\t[-c]    - clear stats (optional)\n",
         2,
+        cmd_ioctl
+    },
+    {
+        "commit",
+        "Commit to disk",
+        "<mnt>",
+        "\tmnt     - mount point\n",
+        1,
         cmd_ioctl
     },
     {

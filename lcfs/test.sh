@@ -137,6 +137,8 @@ cd $MNT/lcfs
 $LCFS stats $MNT .
 $LCFS syncer $MNT 10
 $LCFS pcache $MNT 520
+$LCFS flush $MNT
+$LCFS commit $MNT
 
 mkdir /tmp/lcfs-build
 cd /tmp/lcfs-build
