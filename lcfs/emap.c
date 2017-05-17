@@ -98,6 +98,7 @@ lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
     assert(inode->i_extentLength == 0);
     assert(count);
 
+    /* XXX Combine emap lookup and removal into a single operation */
     /* Remove existing blocks for the specified range from inode emap */
     while (count) {
 
@@ -159,12 +160,20 @@ lc_inodeEmapUpdate(struct gfs *gfs, struct fs *fs, struct inode *inode,
                     }
                 }
             }
-        } else if (bstart != LC_PAGE_HOLE) {
+        } else {
+            if (bcount) {
+                lc_removeInodeExtents(gfs, fs, inode, pg, blk, bcount,
+                                      extents);
+                extent = lc_inodeGetEmap(inode);
+                bcount = 0;
+            }
 
             /* Increment total block count when a new block allocated for a
              * page which did not have a block before.
              */
-            inode->i_dinode.di_blocks++;
+            if (bstart != LC_PAGE_HOLE) {
+                inode->i_dinode.di_blocks++;
+            }
         }
         page++;
         count--;
