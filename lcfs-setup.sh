@@ -637,7 +637,7 @@ stop_remove_lcfs  # Stop existing docker if setup or --configure.
 if [ ! -e "${DEV}" ]; then
     echo "LCFS device: ${DEV} not found.  Creating sparse device file: ${DEVFL} ${DSZ}."
     truncate -s ${DSZ} ${DEVFL}
-    [ $? -ne 0 ] && echo "Error: Failed to create LCFS device file ${ldev}." && cleanup_and_exit 0
+    [ $? -ne 0 ] && echo "Error: Failed to create LCFS device file ${ldev}." && cleanup_and_exit 1
     DEV=${DEVFL}
 else
     echo "Note: LCFS device file exists. Using existing device file ${DEV} without modifying."
