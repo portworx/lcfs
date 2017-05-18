@@ -250,7 +250,8 @@ void lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head,
                      bool inval);
 void lc_addPageForWriteBack(struct gfs *gfs, struct fs *fs, struct page *head,
                             struct page *tail, uint64_t pcount);
-void *lc_cleaner(void *data);
+void *lc_flusher(void *data);
+void lc_cleaner(void);
 
 uint64_t lc_copyPages(struct fs *fs, off_t off, size_t size,
                       struct dpage *dpages, struct fuse_bufvec *bufv,

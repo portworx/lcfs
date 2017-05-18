@@ -936,7 +936,7 @@ lc_commit(struct gfs *gfs) {
 /* Commit file system periodically */
 void *
 lc_syncer(void *data) {
-    struct gfs *gfs = getfs();
+    struct gfs *gfs = (struct gfs *)data;
     struct timespec interval;
     struct timeval now;
 

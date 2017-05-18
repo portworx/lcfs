@@ -742,9 +742,9 @@ lc_invalidateDirtyPages(struct gfs *gfs, struct fs *fs) {
 }
 
 /* Background thread for flushing dirty pages */
-static void *
+void *
 lc_flusher(void *data) {
-    struct gfs *gfs = getfs();
+    struct gfs *gfs = (struct gfs *)data;
     struct timespec interval;
     struct timeval now;
     struct fs *fs;
@@ -769,9 +769,6 @@ lc_flusher(void *data) {
                 continue;
             }
             force = !lc_checkMemoryAvailable(true);
-
-            /* Skip newly created layers */
-            gettimeofday(&now, NULL);
 
             /* Flush dirty data pages from read-write layers.
              * Dirty data from read only layers are flushed as those are
@@ -976,22 +973,13 @@ lc_purgePages(struct gfs *gfs, bool force) {
 }
 
 /* Background thread for purging clean pages */
-void *
-lc_cleaner(void *data) {
-    pthread_t flusher, syncer;
+void
+lc_cleaner(void) {
     struct gfs *gfs = getfs();
     struct timespec interval;
     struct timeval now;
     bool force;
     int err;
-
-    /* Start a thread to flush dirty pages */
-    err = pthread_create(&flusher, NULL, lc_flusher, NULL);
-    assert(err == 0);
-
-    /* Start a thread to checkpoint file system periodically */
-    err = pthread_create(&syncer, NULL, lc_syncer, NULL);
-    assert(err == 0);
 
     /* Purge clean pages when amount of memory used for pages goes above a
      * certain threshold.
@@ -1014,11 +1002,4 @@ lc_cleaner(void *data) {
             lc_purgePages(gfs, force);
         }
     }
-
-    /* Wait for flusher and syncer to exit */
-    pthread_cond_signal(&gfs->gfs_flusherCond);
-    pthread_cond_signal(&gfs->gfs_syncerCond);
-    pthread_join(syncer, NULL);
-    pthread_join(flusher, NULL);
-    return NULL;
 }

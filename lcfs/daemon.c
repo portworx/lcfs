@@ -92,6 +92,32 @@ lc_stopSession(struct gfs *gfs, struct fuse_session *se, enum lc_mountId id) {
 #endif
 }
 
+/* Start background threads */
+static void *
+lc_startThreads(void *data) {
+    struct gfs *gfs = (struct gfs *)data;
+    pthread_t flusher, syncer;
+    int err;
+
+    /* Start a thread to flush dirty pages */
+    err = pthread_create(&flusher, NULL, lc_flusher, gfs);
+    assert(err == 0);
+
+    /* Start a thread to checkpoint file system periodically */
+    err = pthread_create(&syncer, NULL, lc_syncer, gfs);
+    assert(err == 0);
+
+    /* Flush and purge pages in the background */
+    lc_cleaner();
+
+    /* Wait for flusher and syncer to exit */
+    pthread_cond_signal(&gfs->gfs_flusherCond);
+    pthread_cond_signal(&gfs->gfs_syncerCond);
+    pthread_join(syncer, NULL);
+    pthread_join(flusher, NULL);
+    return NULL;
+}
+
 /* Serve file system requests */
 static void *
 lc_serve(void *data) {
@@ -104,8 +130,7 @@ lc_serve(void *data) {
 
     if (id == LC_LAYER_MOUNT) {
 
-        /* Start a background thread to flush and purge pages */
-        err = pthread_create(&cleaner, NULL, lc_cleaner, NULL);
+        err = pthread_create(&cleaner, NULL, lc_startThreads, gfs);
         if (err) {
             lc_syslog(LOG_ERR,
                       "Cleaner thread could not be created, err %d\n", err);
