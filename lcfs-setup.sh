@@ -49,6 +49,8 @@ fi
 # create device file larger than 2G.
 DCOUNT=${DCOUNT:-"1"}
 
+[ ${DCOUNT} -le 1 ] && DCOUNT=0         # Use sparse file allows for large files without DCOUNT
+
 PWX_DIR=/opt/pwx
 
 LCFS_BINARY=${PWX_DIR}/bin/lcfs
@@ -438,7 +440,11 @@ function lcfs_configure()
 	    [ "${DEV}" == "/dev/sdNN" ] && ldev=${DEVFL}
 	    read -p "LCFS file: ${ldev} size [${DSZ}]: " lsz
 	    [ -z "${lsz}" ] && lsz="${DSZ}"
-            ${SUDO} dd if=/dev/zero of=${ldev} count=${DCOUNT} bs=${lsz} &> /dev/null
+	    if [ ${DCOUNT} -gt 1 ]; then
+		${SUDO} dd if=/dev/zero of=${ldev} count=${DCOUNT} bs=${lsz} &> /dev/null
+	    else
+		${SUDO} dd if=/dev/zero of=${ldev} count=${DCOUNT} bs=1 seek=${lsz} &> /dev/null
+	    fi
 	    [ $? -ne 0 ] && echo "Error: Failed to create LCFS device file ${ldev}." && cleanup_and_exit 0
 #	    DEVFL="${ldev}"
 	    DSZ="${lsz}"
@@ -643,7 +649,11 @@ stop_remove_lcfs  # Stop existing docker if setup or --configure.
 
 if [ ! -e "${DEV}" ]; then
     echo "LCFS device: ${DEV} not found.  Creating device file: ${DEVFL} ${DSZ}."
-    ${SUDO} dd if=/dev/zero of=${DEVFL} count=${DCOUNT} bs=${DSZ}
+    if [ ${DCOUNT} -gt 1 ]; then
+	${SUDO} dd if=/dev/zero of=${DEVFL} count=${DCOUNT} bs=${DSZ}
+    else
+	${SUDO} dd if=/dev/zero of=${DEVFL} count=${DCOUNT} bs=1 seek=${DSZ}
+    fi
     [ $? -ne 0 ] && echo "Error: Failed to create LCFS device file ${ldev}." && cleanup_and_exit 0
     DEV=${DEVFL}
 else
