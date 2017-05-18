@@ -440,18 +440,25 @@ lc_blockFreeLayer(struct gfs *gfs, struct fs *fs, struct fs *rfs,
      * allocation block list.  If the extent is not part of that list, then the
      * extent was not allocated in the layer.
      */
-    if (reuse) {
-        pthread_mutex_lock(&fs->fs_alock);
-        lc_addSpaceExtent(fs->fs_gfs, fs, &fs->fs_extents, block, count,
-                          false);
-        fs->fs_reservedBlocks += count;
-        pthread_mutex_unlock(&fs->fs_alock);
-    } else if (fs != rfs) {
+    if (fs != rfs) {
+
+        /* Freed extents in non-root layers cannot be easily re-used without
+         * taking those off of the allocated list, otherwise allocating them
+         * again will find duplicate entry in the allocated list.
+         */
         count = lc_freeLayerExtent(gfs, fs, rfs, block, count);
     } else {
+        if (reuse) {
+            pthread_mutex_lock(&fs->fs_alock);
+            lc_addSpaceExtent(fs->fs_gfs, fs, &fs->fs_extents, block, count,
+                              false);
+            fs->fs_reservedBlocks += count;
+            pthread_mutex_unlock(&fs->fs_alock);
+        } else {
 
-        /* Release the blocks to the global pool */
-        lc_freeExtentBlocks(gfs, rfs, block, count, true);
+            /* Release the blocks to the global pool */
+            lc_freeExtentBlocks(gfs, rfs, block, count, true);
+        }
     }
     lc_atomicUpdate(fs, &fs->fs_freed, count, true);
 }
