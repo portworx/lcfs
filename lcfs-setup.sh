@@ -43,14 +43,6 @@ else
     DSZ=${DSZ:-"500M"}
 fi
 
-# Linux DD is used create a device file for use by LCFS.  However if
-# Large Files is not supported on the running filesystem then the max
-# file size (DSZ) will be 2G. So DCOUNT may need to be updated to
-# create device file larger than 2G.
-DCOUNT=${DCOUNT:-"1"}
-
-[ ${DCOUNT} -le 1 ] && DCOUNT=0         # Use sparse file allows for large files without DCOUNT
-
 PWX_DIR=/opt/pwx
 
 LCFS_BINARY=${PWX_DIR}/bin/lcfs
@@ -414,7 +406,6 @@ function lcfs_configure_save()
     echo 'DEVFL=${DEVFL:-"'${DEVFL}'"}' >> ${tmp_cfg}
     echo 'DEV=${DEV:-"'${DEV}'"}' >> ${tmp_cfg}
     echo 'DSZ=${DSZ:-"'${DSZ}'"}' >> ${tmp_cfg}
-    echo 'DCOUNT=${DCOUNT:-"'${DCOUNT}'"}' >> ${tmp_cfg}
 
     ${SUDO} mkdir -p ${LCFS_ENV_DIR}
     ${SUDO} \mv ${tmp_cfg} ${LCFS_ENV_FL}
@@ -424,7 +415,6 @@ function lcfs_configure_save()
 function lcfs_configure()
 {
     local limg dmnt lmnt ldev lsz ploc dyn
-    local sz_msg="${DSZ}" sparse="sparse "
 
     read -p "LCFS install package (full filename|URL) [${LCFS_PKG}]: " ploc
     [ -n "${ploc}" ] && LCFS_PKG="${ploc}"
@@ -439,14 +429,9 @@ function lcfs_configure()
 	read -p  "LCFS device/file does not exist. Create file (y/n)? " dyn
         if [ "${dyn,,}" = "y" ]; then
 	    [ "${DEV}" == "/dev/sdNN" ] && ldev=${DEVFL}
-	    [ ${DCOUNT} -gt 1 ] && sz_msg="${sz_msg} * ${DCOUNT}" && sparse=""
-	    read -p "LCFS ${sparse}file: ${ldev} size [${sz_msg}]: " lsz
+	    read -p "LCFS sparse file: ${ldev} size [${DSZ}]: " lsz
 	    [ -z "${lsz}" ] && lsz="${DSZ}"
-	    if [ ${DCOUNT} -gt 1 ]; then
-		${SUDO} dd if=/dev/zero of=${ldev} count=${DCOUNT} bs=${lsz} &> /dev/null
-	    else
-		${SUDO} dd if=/dev/zero of=${ldev} count=${DCOUNT} bs=1 seek=${lsz} &> /dev/null
-	    fi
+	    truncate -s ${lsz} ${ldev}
 	    [ $? -ne 0 ] && echo "Error: Failed to create LCFS device file ${ldev}." && cleanup_and_exit 0
 #	    DEVFL="${ldev}"
 	    DSZ="${lsz}"
@@ -650,16 +635,8 @@ stop_remove_lcfs  # Stop existing docker if setup or --configure.
 # * Setup LCFS and start *
 
 if [ ! -e "${DEV}" ]; then
-    sz_msg="${DSZ}"
-    sparse="sparse "
-
-    [ ${DCOUNT} -gt 1 ] && sz_msg="${sz_msg} * ${DCOUNT}" && sparse=""
-    echo "LCFS device: ${DEV} not found.  Creating ${sparse}device file: ${DEVFL} ${sz_msg}."
-    if [ ${DCOUNT} -gt 1 ]; then
-	${SUDO} dd if=/dev/zero of=${DEVFL} count=${DCOUNT} bs=${DSZ}
-    else
-	${SUDO} dd if=/dev/zero of=${DEVFL} count=${DCOUNT} bs=1 seek=${DSZ}
-    fi
+    echo "LCFS device: ${DEV} not found.  Creating sparse device file: ${DEVFL} ${DSZ}."
+    truncate -s ${DSZ} ${DEVFL}
     [ $? -ne 0 ] && echo "Error: Failed to create LCFS device file ${ldev}." && cleanup_and_exit 0
     DEV=${DEVFL}
 else
