@@ -48,7 +48,7 @@ gr-plugin:
 gr-clean:
 	@echo "removing $(REPO)$(GR_CONTAINER)"
 	-docker rm -vf $(REPO)$(GR_CONTAINER)
-	-docker rmi $(GR_CONTAINER)
+	-docker rmi $(GR_CONTAINER) alpine-$(GR_CONTAINER)
 
 plugin:
 	@cd plugin && make
@@ -57,19 +57,16 @@ lcfs:
 	@echo "====================> building lcfs docker plugin..."
 	cd plugin/ && make lcfs #./build_plugin.sh
 
-lcfs-alpine: BASEDIR=$(shell pwd)
-lcfs-alpine: INSTDIR=$(BASEDIR)/pkgs/alpine/opt/pwx
+lcfs-alpine: BASEDIR:=$(shell pwd)
+lcfs-alpine: INSTDIR:=$(BASEDIR)/pkgs
+lcfs-alpine: GR_CONTAINER:=alpine-$(GR_CONTAINER)
 lcfs-alpine:
-	\rm -rf fusebld && mkdir fusebld && wget -q -O fusebld/fuse-3.0.0.tar.gz https://github.com/libfuse/libfuse/releases/download/fuse-3.0.0/fuse-3.0.0.tar.gz
-	cd fusebld && tar -xzf fuse-3.0.0.tar.gz && cd fuse-3.0.0 && cp $(BASEDIR)/fuse/fusermount.c util && ./configure --bindir=/opt/pwx/bin && make -j8
-	cd $(BASEDIR) && make -C lcfs STATIC=y clean all
-	mkdir -p $(INSTDIR)/bin && \
-		cp $(BASEDIR)/lcfs-setup.sh $(INSTDIR)/bin && \
-		cp $(BASEDIR)/lcfs/lcfs $(INSTDIR)/bin && \
-		cp $(BASEDIR)/fusebld/fuse-3.0.0/util/fusermount3 $(INSTDIR)/bin
-	mkdir -p $(INSTDIR)/services && \
-		cp $(BASEDIR)/lcfs.system* $(INSTDIR)/services
-	cd $(BASEDIR)/pkgs/alpine && tar -czvf lcfs-alpine.binaries.tgz opt
+	@echo "====================> building Alpine lcfs binary package"
+	mkdir -p $(INSTDIR)
+	docker build -t $(GR_CONTAINER) $(BUILD_ARGS) -f Dockerfile.alpine-lcfs.build .
+	docker run --name $(GR_CONTAINER) $(GR_CONTAINER) ls -l /
+	docker cp $(GR_CONTAINER):/lcfs-alpine.binaries.tgz pkgs
+	docker rm $(GR_CONTAINER)
 
 deploy:
 	@echo "====================> pushing lcfs to dockerhub..."

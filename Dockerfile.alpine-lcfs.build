@@ -1,0 +1,38 @@
+# vim:set ft=dockerfile ts=4:
+# lcfs build Docker file [201701.06MeV]
+# NOTE: this dockerfile does NOT create a runnable container
+# it builds the lcfs and docker plugin binaries which will be copied out
+# and run in it's own container with a private version of docker
+
+FROM alpine
+MAINTAINER Jose Rivera <jrivera@portworx.com>
+ARG VERSION
+ENV VERSION ${VERSION}
+
+ARG REVISION
+ENV REVISION ${REVISION}
+
+ARG BUILD_FLAGS
+ENV BUILD_FLAGS ${BUILD_FLAGS}
+
+# tools to build libfuse for lcfs
+RUN apk update && \
+    apk add build-base gcc abuild binutils binutils-doc gcc-doc util-linux pciutils usbutils coreutils binutils findutils grep alpine-sdk automake  m4 autoconf libtool linux-headers zlib-dev userspace-rcu-dev libunwind-dev gdb
+
+ADD . /go/src/github.com/portworx/lcfs
+
+WORKDIR /go/src/github.com/portworx/lcfs
+RUN wget -q https://github.com/libfuse/libfuse/releases/download/fuse-3.0.0/fuse-3.0.0.tar.gz && \
+    tar -xzf fuse-3.0.0.tar.gz
+WORKDIR fuse-3.0.0
+RUN cp ../fuse/fusermount.c util && ./configure --bindir=/opt/pwx/bin && make -j8 && make install && cp -a /opt/pwx/bin/fusermount3 /go/src/github.com/portworx/lcfs/lcfs
+
+WORKDIR /go/src/github.com/portworx/lcfs/lcfs
+RUN make STATIC=y BUILD_FLAGS="${BUILD_FLAGS}" VERSION="${VERSION}" REVISION="${REVISION}" clean all
+
+WORKDIR /go/src/github.com/portworx/lcfs
+RUN mkdir -p /opt/pwx/services && \
+    \cp lcfs-setup.sh /opt/pwx/bin && \
+    \cp lcfs/lcfs /opt/pwx/bin && \
+    \cp lcfs.system* /opt/pwx/services && \
+    tar -C / -czvf /lcfs-alpine.binaries.tgz opt
