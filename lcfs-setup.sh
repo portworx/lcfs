@@ -37,7 +37,7 @@ PLUGIN_MNT=${PLUGIN_MNT:-"/lcfs"}
 DEV=${DEV:-"/dev/sdNN"}
 if [ ${isAlpine} -eq 1 ]; then
     DEVFL=${DEVFL:-"/var/lcfs-dev-file"}
-    DSZ=${DSZ:-"2G"}
+    DSZ=${DSZ:-"20G"}
 else
     DEVFL=${DEVFL:-"/lcfs-dev-file"}
     DSZ=${DSZ:-"500M"}
@@ -452,6 +452,12 @@ function lcfs_configure()
     lcfs_configure_save
 }
 
+function clear_dev
+{
+    [ -z "$1" ] && return 0
+    ${SUDO} dd if=/dev/zero of=$1 count=1 bs=4096 conv=notrunc &> /dev/null
+}
+
 function stop_remove_lcfs
 {
     local rcode=$1
@@ -471,7 +477,7 @@ function stop_remove_lcfs
 	killprocess ${DOCKER_SRV_BIN}
 	[ "${DEV}" != "/dev/sdNN" -a -z "${ZERODEV}" ] && read -p "Clear (dd) or remove the lcfs device or file [${DEV}] (y/n)? " yn
 	if [ "${yn,,}" = "y" -o -n "${ZERODEV}"  ]; then
-	    [ "${DEV}" != "/dev/sdNN" ] && ${SUDO} dd if=/dev/zero of=${DEV} count=1 bs=4096 &> /dev/null
+	    [ "${DEV}" != "/dev/sdNN" ] && clear_dev ${DEV}
 	    ${SUDO} \rm -f ${DEVFL}
 	fi
 
@@ -541,8 +547,7 @@ function version_lcfs()
 
 function help()
 {
-    echo "Usage: $0 [--help] [--configure] [--start] [--stop] [--status] [--stop-docker] [--remove]"
-    echo -e "\t--configure: \tCreate and use configuration file."
+    echo "Usage: $0 [--help] [--start] [--stop] [--status] [--stop-docker] [--remove]"
     echo -e "\t--start: \tStart docker and lcfs."
     echo -e "\t--stop: \tStop docker and lcfs."
     echo -e "\t--status: \tStatus docker and lcfs."
@@ -635,12 +640,28 @@ stop_remove_lcfs  # Stop existing docker if setup or --configure.
 # * Setup LCFS and start *
 
 if [ ! -e "${DEV}" ]; then
-    echo "LCFS device: ${DEV} not found.  Creating sparse device file: ${DEVFL} ${DSZ}."
-    truncate -s ${DSZ} ${DEVFL}
-    [ $? -ne 0 ] && echo "Error: Failed to create LCFS device file ${ldev}." && cleanup_and_exit 1
+    if [ ! -e "${DEVFL}" ]; then
+	echo "LCFS device: ${DEV} not found.  Creating sparse device file: ${DEVFL} ${DSZ}."
+	${SUDO} truncate -s ${DSZ} ${DEVFL}
+	[ $? -ne 0 ] && echo "Error: Failed to create LCFS device file ${DEVFL}." && cleanup_and_exit 1
+    else
+	if [ ! -e ${LCFS_ENV_FL} ]; then
+	    echo "Note: LCFS device file ${DEVFL} exists. Size of the device will not be changed. Device will just be cleared for LCFS use."
+	    clear_dev ${DEVFL}
+	    DSZ=$(ls -lh ${DEVFL}  | awk '{print $5}')
+	    DEV=${DEVFL}
+	else
+	    echo "Note: LCFS device file ${DEVFL} exists. Using existing device file ${DEVFL} without modifying."
+	fi
+    fi
     DEV=${DEVFL}
 else
-    echo "Note: LCFS device file exists. Using existing device file ${DEV} without modifying."
+    if [ ! -e ${LCFS_ENV_FL} ]; then
+	echo "Clearing device ${DEV} for LCFS use."
+	clear_dev ${DEV}
+    else
+	echo "Note: LCFS device file exists. Using existing device file ${DEV} without modifying."
+    fi
 fi
 
 sleep 5   #  Allow time for unmounts to happen.
