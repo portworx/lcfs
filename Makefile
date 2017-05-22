@@ -57,6 +57,20 @@ lcfs:
 	@echo "====================> building lcfs docker plugin..."
 	cd plugin/ && make lcfs #./build_plugin.sh
 
+lcfs-alpine: BASEDIR=$(shell pwd)
+lcfs-alpine: INSTDIR=$(BASEDIR)/pkgs/alpine/opt/pwx
+lcfs-alpine:
+	\rm -rf fusebld && mkdir fusebld && wget -q -O fusebld/fuse-3.0.0.tar.gz https://github.com/libfuse/libfuse/releases/download/fuse-3.0.0/fuse-3.0.0.tar.gz
+	cd fusebld && tar -xzf fuse-3.0.0.tar.gz && cd fuse-3.0.0 && cp $(BASEDIR)/fuse/fusermount.c util && ./configure --bindir=/opt/pwx/bin && make -j8
+	cd $(BASEDIR) && make -C lcfs STATIC=y clean all
+	mkdir -p $(INSTDIR)/bin && \
+		cp $(BASEDIR)/lcfs-setup.sh $(INSTDIR)/bin && \
+		cp $(BASEDIR)/lcfs/lcfs $(INSTDIR)/bin && \
+		cp $(BASEDIR)/fusebld/fuse-3.0.0/util/fusermount3 $(INSTDIR)/bin
+	mkdir -p $(INSTDIR)/services && \
+		cp $(BASEDIR)/lcfs.system* $(INSTDIR)/services
+	cd $(BASEDIR)/pkgs/alpine && tar -czvf lcfs-alpine.binaries.tgz opt
+
 deploy:
 	@echo "====================> pushing lcfs to dockerhub..."
 	@cd plugin/ && make push_plugin  #./push_plugin.sh
