@@ -856,8 +856,10 @@ lc_commit(struct gfs *gfs) {
     count = gfs->gfs_syncRequired;
     for (i = 1; i <= gfs->gfs_scount; i++) {
         fs = rcu_dereference(gfs->gfs_fs[i]);
-        if ((fs == NULL) || (!fs->fs_frozen && fs->fs_mcount) ||
-            (!fs->fs_inodesDirty && !fs->fs_extentsDirty)) {
+        if ((fs == NULL) ||
+            (!fs->fs_frozen && fs->fs_mcount && (fs->fs_fextents == NULL)) ||
+            (!fs->fs_inodesDirty && !fs->fs_extentsDirty &&
+             (fs->fs_fextents == NULL))) {
             continue;
         }
         gindex = fs->fs_gindex;
@@ -870,7 +872,7 @@ lc_commit(struct gfs *gfs) {
                 return;
             }
             rcu_read_unlock();
-            if (fs->fs_mcount || gfs->gfs_layerInProgress) {
+            if (gfs->gfs_layerInProgress) {
                 lc_unlock(fs);
                 rcu_unregister_thread();
                 return;
@@ -887,14 +889,14 @@ lc_commit(struct gfs *gfs) {
          * allocated extent list.
          */
         if ((fs == NULL) || (gindex != fs->fs_gindex) ||
-            (!fs->fs_frozen && fs->fs_mcount) || lc_tryLock(fs, true)) {
+            gfs->gfs_layerInProgress || lc_tryLock(fs, true)) {
             rcu_read_unlock();
             rcu_unregister_thread();
             return;
         }
         rcu_read_unlock();
         assert(gindex == fs->fs_gindex);
-        if (fs->fs_mcount || gfs->gfs_layerInProgress) {
+        if (gfs->gfs_layerInProgress) {
             lc_unlock(fs);
             rcu_unregister_thread();
             return;

@@ -752,12 +752,11 @@ lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode, off_t soffset,
     struct page *page = NULL, **rpages = NULL;
     off_t poffset, off = soffset;
     struct gfs *gfs = fs->fs_gfs;
-    uint32_t count, rcount = 0;
+    uint32_t rcount = 0;
     uint64_t i = 0;
     char *data;
 
     assert(S_ISREG(inode->i_mode));
-    count = (rsize / LC_BLOCK_SIZE) + 2;
     while (rsize) {
         assert(pg == (off / LC_BLOCK_SIZE));
         if (off == soffset) {
@@ -805,7 +804,7 @@ lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode, off_t soffset,
                  */
                 if (!page->p_dvalid) {
                     if (rpages == NULL) {
-                        rpages = alloca(count * sizeof(struct page *));
+                        rpages = alloca(asize * sizeof(struct page *));
                     }
                     rpages[rcount] = page;
                     rcount++;
@@ -815,13 +814,12 @@ lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode, off_t soffset,
             bufv->buf[i].mem = &data[poffset];
         }
         bufv->buf[i].size = psize;
-        count--;
         i++;
         pg++;
         off += psize;
         rsize -= psize;
     }
-    assert(i <= asize);
+    assert(i == asize);
     assert(pcount <= asize);
     bufv->count = i;
 

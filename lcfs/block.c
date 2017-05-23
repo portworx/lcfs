@@ -89,19 +89,26 @@ lc_reclaimSpace(struct gfs *gfs) {
 
 /* Check if file system has enough space for the operation to proceed */
 bool
-lc_hasSpace(struct gfs *gfs, bool layer) {
-    while (gfs->gfs_super->sb_tblocks <=
-           (gfs->gfs_super->sb_blocks + gfs->gfs_blocksReserved +
-            gfs->gfs_dcount)) {
+lc_hasSpace(struct gfs *gfs, bool root, bool layer) {
+    struct super *super = gfs->gfs_super;
+    uint64_t min;
+
+    min = gfs->gfs_blocksReserved;
+    if (root) {
+
+        /* Allow operations in root layer to proceed for somemore */
+        min /= 2;
+    } else if (layer) {
+        min += LC_LAYER_MIN_BLOCKS;
+    }
+    while (super->sb_tblocks <= (super->sb_blocks + gfs->gfs_dcount + min)) {
 
         /* Try to reclaim reserved space from all layers */
         if (lc_reclaimSpace(gfs) == 0) {
             break;
         }
     }
-    return gfs->gfs_super->sb_tblocks >
-           (gfs->gfs_super->sb_blocks + gfs->gfs_blocksReserved +
-            gfs->gfs_dcount + (layer ? LC_LAYER_MIN_BLOCKS : 0));
+    return super->sb_tblocks > (super->sb_blocks + gfs->gfs_dcount + min);
 }
 
 /* Add an extent to an extent list tracking space */
@@ -127,12 +134,12 @@ lc_allocateBlock(struct gfs *gfs, struct fs *fs, uint64_t count, bool layer) {
 
             /* Remove the requested number of blocks from the extent */
             block = lc_getExtentStart(extent);
-            lc_incrExtentStart(NULL, extent, count);
             release = lc_decrExtentCount(gfs, extent, count);
-
             /* Free the extent if it is fully consumed */
             if (release) {
                 lc_freeExtent(gfs, fs, extent, prev, layer);
+            } else {
+                lc_incrExtentStart(NULL, extent, count);
             }
 
             if (layer) {
@@ -718,10 +725,11 @@ lc_processFreeExtents(struct gfs *gfs, struct fs *fs, bool umount) {
         while (extent) {
             if (lc_getExtentCount(extent) >= pcount) {
                 block = lc_getExtentStart(extent);
-                lc_incrExtentStart(NULL, extent, pcount);
                 release = lc_decrExtentCount(gfs, extent, pcount);
                 if (release) {
                     lc_freeExtent(gfs, fs, extent, prev, true);
+                } else {
+                    lc_incrExtentStart(NULL, extent, pcount);
                 }
                 break;
             }

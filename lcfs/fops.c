@@ -34,7 +34,7 @@ lc_createInode(struct fs *fs, ino_t parent, const char *name, mode_t mode,
     }
 
     /* Do not allow new files when file system does not have much free space */
-    if (!lc_hasSpace(gfs, false)) {
+    if (!lc_hasSpace(gfs, fs == lc_getGlobalFs(gfs), false)) {
         lc_reportError(__func__, __LINE__, parent, ENOSPC);
         return ENOSPC;
     }
@@ -1090,7 +1090,17 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
         fuse_reply_buf(req, NULL, 0);
         return;
     }
-    pcount = (size / LC_BLOCK_SIZE) + 2;
+    endoffset = off + size;
+
+    /* Find number of pages to read including partial pages */
+    pcount = (size / LC_BLOCK_SIZE);
+    if (off % LC_BLOCK_SIZE) {
+        pcount++;
+    }
+    if ((endoffset % LC_BLOCK_SIZE) &&
+        ((off / LC_BLOCK_SIZE) != (endoffset / LC_BLOCK_SIZE))) {
+        pcount++;
+    }
     fsize = sizeof(struct fuse_bufvec) + (sizeof(struct fuse_buf) * pcount);
     bufv = alloca(fsize);
     pages = alloca(sizeof(struct page *) * pcount);
@@ -1115,7 +1125,6 @@ retry:
     }
 
     /* Check if end of read is past the size of the file */
-    endoffset = off + size;
     if (endoffset > fsize) {
         endoffset = fsize;
     }
@@ -1606,7 +1615,7 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
     __sync_add_and_fetch(&gfs->gfs_dcount, pcount);
 
     /* Check if file system has enough space for this write to proceed */
-    if (!lc_hasSpace(fs->fs_gfs, false)) {
+    if (!lc_hasSpace(gfs, fs == lc_getGlobalFs(gfs), false)) {
         lc_reportError(__func__, __LINE__, ino, ENOSPC);
         fuse_reply_err(req, ENOSPC);
         err = ENOSPC;
@@ -1737,14 +1746,14 @@ struct fuse_lowlevel_ops lc_ll_oper = {
     .destroy    = lc_destroy,
     .lookup     = lc_lookup,
     //.forget     = lc_forget,
-	.getattr	= lc_getattr,
+    .getattr    = lc_getattr,
     .setattr    = lc_setattr,
-	.readlink	= lc_readlink,
-	.mknod  	= lc_mknod,
-	.mkdir  	= lc_mkdir,
-	.unlink  	= lc_unlink,
-	.rmdir		= lc_rmdir,
-	.symlink	= lc_symlink,
+    .readlink   = lc_readlink,
+    .mknod      = lc_mknod,
+    .mkdir      = lc_mkdir,
+    .unlink     = lc_unlink,
+    .rmdir      = lc_rmdir,
+    .symlink    = lc_symlink,
     .rename     = lc_rename,
     .link       = lc_link,
     .open       = lc_open,

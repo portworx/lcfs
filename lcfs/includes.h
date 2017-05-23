@@ -108,7 +108,7 @@ void lc_freeExtent(struct gfs *gfs, struct fs *fs, struct extent *extent,
 
 void lc_blockAllocatorInit(struct gfs *gfs, struct fs *fs);
 void lc_processFreeExtents(struct gfs *gfs, struct fs *fs, bool umount);
-bool lc_hasSpace(struct gfs *gfs, bool layer);
+bool lc_hasSpace(struct gfs *gfs, bool root, bool layer);
 void lc_addSpaceExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
                        uint64_t start, uint64_t count, bool sort);
 void lc_processLayerBlocks(struct gfs *gfs, struct fs *fs, bool unmount,

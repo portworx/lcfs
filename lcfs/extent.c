@@ -127,8 +127,10 @@ lc_updateExtent(struct fs *fs, struct extent *extent, struct extent **prev,
     if (estart == start) {
 
         /* Trim at the start */
-        lc_incrExtentStart(gfs, extent, freed);
         release = lc_decrExtentCount(gfs, extent, freed);
+        if (!release) {
+            lc_incrExtentStart(gfs, extent, freed);
+        }
     } else if ((start + freed) == (estart + ecount)) {
 
         /* Trim at the end */

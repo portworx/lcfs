@@ -482,6 +482,7 @@ lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
         lc_freeInodeDataBlocks(fs, inode, &extents);
         assert(inode->i_dinode.di_blocks >= bcount);
         inode->i_dinode.di_blocks -= bcount;
+        lc_layerChanged(gfs, false, false);
     } else {
         assert(extents == NULL);
     }
