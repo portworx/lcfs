@@ -406,7 +406,7 @@ lc_xattrCopy(struct inode *inode, struct inode *parent) {
 static uint64_t
 lc_xattrFlushBlocks(struct gfs *gfs, struct fs *fs,
                     struct page *fpage, uint64_t pcount) {
-    struct page *page = fpage, *tpage;
+    struct page *page = fpage, *tpage = NULL;
     uint64_t block, count = pcount;
     struct xblock *xblock;
 

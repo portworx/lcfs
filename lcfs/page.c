@@ -676,6 +676,20 @@ lc_zeroFillLastPage(struct gfs *gfs, struct inode *inode) {
     }
 }
 
+/* Extend inode size */
+void
+lc_updateInodeSize(struct gfs *gfs, struct inode *inode,
+                   bool zero, uint64_t size) {
+    if (size > inode->i_size) {
+
+        /* Zero fill last page if that is a partial page */
+        if (zero && (inode->i_size % LC_BLOCK_SIZE)) {
+            lc_zeroFillLastPage(gfs, inode);
+        }
+        inode->i_size = size;
+    }
+}
+
 /* Update pages of a file with provided data */
 uint64_t
 lc_addPages(struct inode *inode, off_t off, size_t size,
@@ -691,17 +705,11 @@ lc_addPages(struct inode *inode, off_t off, size_t size,
     assert(S_ISREG(inode->i_mode));
 
     /* Update inode size if needed */
-    if (endoffset > inode->i_size) {
-
-        /* Zero fill last page if that is a partial page */
-        if ((off > inode->i_size) && (inode->i_size % LC_BLOCK_SIZE)) {
-            lc_zeroFillLastPage(gfs, inode);
-        }
-        inode->i_size = endoffset;
-    }
+    lc_updateInodeSize(gfs, inode, off > inode->i_size, endoffset);
 
     /* Skip the write if incoming data is fully zeroes and the file empty */
-    if ((inode->i_dinode.di_blocks == 0) && (lc_inodeGetDirtyPageCount(inode) == 0)) {
+    if ((inode->i_dinode.di_blocks == 0) &&
+        (lc_inodeGetDirtyPageCount(inode) == 0)) {
         while (count < pcount) {
             dpage = &dpages[count];
             if (memcmp(&dpage->dp_data[dpage->dp_poffset], gfs->gfs_zPage,
@@ -757,15 +765,10 @@ lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode, off_t soffset,
     char *data;
 
     assert(S_ISREG(inode->i_mode));
+    poffset = soffset % LC_BLOCK_SIZE;
+    psize = LC_BLOCK_SIZE - poffset;
     while (rsize) {
         assert(pg == (off / LC_BLOCK_SIZE));
-        if (off == soffset) {
-            poffset = soffset % LC_BLOCK_SIZE;
-            psize = LC_BLOCK_SIZE - poffset;
-        } else {
-            poffset = 0;
-            psize = LC_BLOCK_SIZE;
-        }
         if (psize > rsize) {
             psize = rsize;
         }
@@ -818,6 +821,8 @@ lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode, off_t soffset,
         pg++;
         off += psize;
         rsize -= psize;
+        poffset = 0;
+        psize = LC_BLOCK_SIZE;
     }
     assert(i == asize);
     assert(pcount <= asize);

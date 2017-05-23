@@ -40,6 +40,7 @@ static const char *requests[] = {
     "REMOVEXATTR",
     "CREATE",
     "WRITE_BUF",
+    "FALLOCATE",
     "READDIR_PLUS",
     "LAYER_CREATE",
     "LAYER_REMOVE",

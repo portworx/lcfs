@@ -5,7 +5,7 @@ BUILD_OS=$(shell [ -e /etc/os-release ] && cat /etc/os-release | egrep '^ID=' | 
 
 ifndef BUILD_FLAGS
 	override BUILD_FLAGS := $(BUILD_FLAGS) -g
-	#override BUILD_FLAGS := $(BUILD_FLAGS) -O3 -DNDEBUG
+	#override BUILD_FLAGS := $(BUILD_FLAGS) -O3 -DNDEBUG -Wno-unused-but-set-variable -Wno-unused-variable
 endif
 
 UNAME=$(shell uname)

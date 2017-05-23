@@ -256,6 +256,8 @@ void lc_cleaner(void);
 uint64_t lc_copyPages(struct fs *fs, off_t off, size_t size,
                       struct dpage *dpages, struct fuse_bufvec *bufv,
                       struct fuse_bufvec *dst);
+void lc_updateInodeSize(struct gfs *gfs, struct inode *inode,
+                        bool zero, uint64_t size);
 uint64_t lc_addPages(struct inode *inode, off_t off, size_t size,
                      struct dpage *dpages, uint64_t pcount);
 int lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode,

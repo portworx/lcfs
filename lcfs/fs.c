@@ -63,7 +63,7 @@ lc_releaseInodeBlock(struct gfs *gfs, struct fs *fs) {
 void
 lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs) {
     uint64_t count, block, pcount = fs->fs_inodeBlockCount;
-    struct page *page, *fpage, *tpage;
+    struct page *page, *fpage, *tpage = NULL;
     struct iblock *iblock;
 
     if (pcount == 0) {

@@ -30,14 +30,15 @@ enum lc_stats {
     LC_REMOVEXATTR = 24,
     LC_CREATE = 25,
     LC_WRITE_BUF = 26,
-    LC_READDIRPLUS = 27,
-    LC_LAYER_CREATE = 28,
-    LC_LAYER_REMOVE = 29,
-    LC_MOUNT = 30,
-    LC_STAT = 31,
-    LC_UMOUNT = 32,
-    LC_CLEANUP = 33,
-    LC_REQUEST_MAX = 34,
+    LC_FALLOCATE = 27,
+    LC_READDIRPLUS = 28,
+    LC_LAYER_CREATE = 29,
+    LC_LAYER_REMOVE = 30,
+    LC_MOUNT = 31,
+    LC_STAT = 32,
+    LC_UMOUNT = 33,
+    LC_CLEANUP = 34,
+    LC_REQUEST_MAX = 35,
 };
 
 /* Structure tracking stats */

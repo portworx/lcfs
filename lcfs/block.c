@@ -219,7 +219,7 @@ lc_findFreeBlock(struct gfs *gfs, struct fs *fs,
 static void
 lc_flushExtentPages(struct gfs *gfs, struct fs *fs, struct page *fpage,
                     uint64_t pcount, uint64_t block) {
-    struct page *page = fpage, *tpage;
+    struct page *page = fpage, *tpage = NULL;
     struct dextentBlock *eblock;
     uint64_t count = pcount;
 

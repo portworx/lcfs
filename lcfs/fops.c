@@ -1091,16 +1091,8 @@ lc_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
         return;
     }
     endoffset = off + size;
-
-    /* Find number of pages to read including partial pages */
-    pcount = (size / LC_BLOCK_SIZE);
-    if (off % LC_BLOCK_SIZE) {
-        pcount++;
-    }
-    if ((endoffset % LC_BLOCK_SIZE) &&
-        ((off / LC_BLOCK_SIZE) != (endoffset / LC_BLOCK_SIZE))) {
-        pcount++;
-    }
+    pcount = ((endoffset + LC_BLOCK_SIZE - 1) -
+              (off & ~(LC_BLOCK_SIZE - 1))) / LC_BLOCK_SIZE;
     fsize = sizeof(struct fuse_bufvec) + (sizeof(struct fuse_buf) * pcount);
     bufv = alloca(fsize);
     pages = alloca(sizeof(struct page *) * pcount);
@@ -1577,7 +1569,7 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
 /* Write provided data to file at the specified offset */
 static void
 lc_write_buf(fuse_req_t req, fuse_ino_t ino,
-              struct fuse_bufvec *bufv, off_t off, struct fuse_file_info *fi) {
+             struct fuse_bufvec *bufv, off_t off, struct fuse_file_info *fi) {
     uint64_t pcount, counted = 0, count = 0;
     struct fuse_bufvec *dst;
     struct timeval start;
@@ -1591,7 +1583,8 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
     lc_statsBegin(&start);
     lc_displayEntry(__func__, ino, 0, NULL);
     size = bufv->buf[bufv->idx].size;
-    pcount = (size / LC_BLOCK_SIZE) + 2;
+    pcount = (((off + size) + LC_BLOCK_SIZE - 1) -
+              (off & ~(LC_BLOCK_SIZE - 1))) / LC_BLOCK_SIZE;
     wsize = sizeof(struct fuse_bufvec) + (sizeof(struct fuse_buf) * pcount);
     dst = alloca(wsize);
     memset(dst, 0, wsize);
@@ -1661,6 +1654,60 @@ out:
          !lc_checkMemoryAvailable(true))) {
         lc_flushDirtyInodeList(fs, false);
     }
+    lc_unlock(fs);
+}
+
+/* Allocate requested space */
+static void
+lc_fallocate(fuse_req_t req, fuse_ino_t ino, int mode,
+             off_t offset, off_t length, struct fuse_file_info *fi) {
+    bool hole = mode & FALLOC_FL_PUNCH_HOLE;
+    uint64_t endoffset = offset + length;
+    struct timeval start;
+    struct inode *inode;
+    struct gfs *gfs;
+    struct fs *fs;
+    int err = 0;
+
+    lc_statsBegin(&start);
+    lc_displayEntry(__func__, ino, 0, NULL);
+    fs = lc_getLayerLocked(ino, false);
+    if (unlikely(fs->fs_frozen)) {
+        lc_reportError(__func__, __LINE__, ino, EROFS);
+        err = EROFS;
+        goto out;
+    }
+    gfs = fs->fs_gfs;
+    inode = lc_getInode(fs, ino, (struct inode *)fi->fh, true, true);
+    if (unlikely(inode == NULL)) {
+        lc_reportError(__func__, __LINE__, ino, ENOENT);
+        err = ENOENT;
+        goto out;
+    }
+    assert(S_ISREG(inode->i_mode));
+    if (hole) {
+        if (offset > inode->i_size) {
+            goto out;
+        }
+        if (endoffset < inode->i_size) {
+            lc_reportError(__func__, __LINE__, ino, EOPNOTSUPP);
+            err = EOPNOTSUPP;
+            goto out;
+        }
+        lc_truncateFile(inode, endoffset, false);
+    }
+
+    /* XXX Reserve blocks for this inode so that future writes will not
+     * encounter ENOSPC.
+     */
+    if (!(mode & FALLOC_FL_KEEP_SIZE)) {
+        lc_updateInodeSize(gfs, inode, true, endoffset);
+    }
+    lc_inodeUnlock(inode);
+
+out:
+    fuse_reply_err(req, err);
+    lc_statsAdd(fs, LC_FALLOCATE, err, &start);
     lc_unlock(fs);
 }
 
@@ -1786,8 +1833,8 @@ struct fuse_lowlevel_ops lc_ll_oper = {
     .retrieve_reply = lc_retrieve_reply,
     .forget_multi = lc_forget_multi,
     .flock      = lc_flock,
-    .fallocate  = lc_fallocate,
 #endif
+    .fallocate  = lc_fallocate,
 #ifdef FUSE3
     .readdirplus = lc_readdirplus,
 #endif

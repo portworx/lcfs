@@ -224,7 +224,7 @@ lc_copyEmap(struct gfs *gfs, struct fs *fs, struct inode *inode) {
 static uint64_t
 lc_flushEmapBlocks(struct gfs *gfs, struct fs *fs,
                    struct page *fpage, uint64_t pcount) {
-    struct page *page = fpage, *tpage;
+    struct page *page = fpage, *tpage = NULL;
     uint64_t count = pcount, block;
     struct emapBlock *eblock;
 
