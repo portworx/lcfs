@@ -61,7 +61,7 @@ static const char *mrequests[] = {
 };
 
 /* Initialize limit based on available memory */
-void
+uint64_t
 lc_memoryInit(uint64_t limit) {
     uint64_t totalram = lc_getTotalMemory();
 
@@ -79,6 +79,7 @@ lc_memoryInit(uint64_t limit) {
                           / 100;
     lc_syslog(LOG_INFO, "Maximum memory allowed for data pages %ld MB\n",
               lc_mem.m_purgeMemory / (1024 * 1024));
+    return limit;
 }
 
 /* Check memory usage for data pages is under limit or not */

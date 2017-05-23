@@ -150,6 +150,9 @@ struct super {
     /* Count of blocks in use */
     uint64_t sb_blocks;
 
+    /* Count of blocks reserved */
+    uint64_t sb_reservedBlocks;
+
     /* Count of inodes in use */
     uint64_t sb_inodes;
 
@@ -168,10 +171,19 @@ struct super {
     /* Version of the file system layout */
     uint32_t sb_version;
 
+    /* Syncer frequency */
+    uint32_t sb_syncer;
+
+    /* pcache limit */
+    uint32_t sb_pcache;
+
     /* Padding for filling up a block */
-    uint8_t  sb_pad[LC_BLOCK_SIZE - 200];
+    uint8_t  sb_pad[LC_BLOCK_SIZE - 216];
 } __attribute__((packed));
 static_assert(sizeof(struct super) == LC_BLOCK_SIZE, "superblock size != LC_BLOCK_SIZE");
+
+/* Zero block */
+#define LC_ZERO_BLOCK   ((uint64_t)-2)
 
 /* Extent entry */
 struct dextent {

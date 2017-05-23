@@ -23,6 +23,7 @@ lc_superInit(struct super *super, uint64_t root, size_t size,
         super->sb_ninode = LC_START_INODE;
         super->sb_inodes = 1;
         super->sb_tblocks = size / LC_BLOCK_SIZE;
+        super->sb_syncer = LC_SYNC_INTERVAL;
     }
 }
 

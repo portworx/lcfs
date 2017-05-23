@@ -672,6 +672,10 @@ lc_mount(struct gfs *gfs, char *device, bool ftypes, size_t size) {
         gfs->gfs_super->sb_mounts++;
         lc_syslog(LOG_INFO, "Mounting %s, size %ld nmounts %ld\n",
                device, size, gfs->gfs_super->sb_mounts);
+        gfs->gfs_syncInterval = gfs->gfs_super->sb_syncer;
+        if (gfs->gfs_super->sb_pcache) {
+            lc_memoryInit(gfs->gfs_super->sb_pcache);
+        }
         lc_initLayers(gfs, fs);
         for (i = 0; i <= gfs->gfs_scount; i++) {
             fs = gfs->gfs_fs[i];
@@ -942,6 +946,7 @@ lc_syncer(void *data) {
     struct timespec interval;
     struct timeval now;
 
+    lc_printf("Syncer interval is %d seconds\n", gfs->gfs_syncInterval);
     interval.tv_nsec = 0;
     while (!gfs->gfs_unmounting) {
         if (gfs->gfs_syncInterval == 0) {

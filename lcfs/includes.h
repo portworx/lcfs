@@ -69,7 +69,7 @@ int lcfs_main(int argc, char *argv[]);
 int ioctl_main(int argc, char *argv[]);
 
 void lc_memStatsEnable();
-void lc_memoryInit(uint64_t limit);
+uint64_t lc_memoryInit(uint64_t limit);
 void *lc_malloc(struct fs *fs, size_t size, enum lc_memTypes type);
 void lc_mallocBlockAligned(struct fs *fs, void **memptr,
                            enum lc_memTypes type);

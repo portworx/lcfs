@@ -1529,10 +1529,14 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
 
     case SYNCER_TIME:
         value = atoll(in_buf);
-        gfs->gfs_syncInterval = value;
-        pthread_cond_signal(&gfs->gfs_syncerCond);
-        lc_syslog(LOG_INFO, "New sync interval %d seconds\n",
-                  gfs->gfs_syncInterval);
+        if (gfs->gfs_syncInterval != value) {
+            gfs->gfs_syncInterval = value;
+            pthread_cond_signal(&gfs->gfs_syncerCond);
+            lc_syslog(LOG_INFO, "New sync interval %d seconds\n",
+                      gfs->gfs_syncInterval);
+            gfs->gfs_super->sb_syncer = value;
+            lc_markSuperDirty(lc_getGlobalFs(gfs));
+        }
         fuse_reply_ioctl(req, 0, NULL, 0);
         break;
 
@@ -1542,7 +1546,8 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
         if (value < LC_PCACHE_MEMORY) {
             value = LC_PCACHE_MEMORY;
         }
-        lc_memoryInit(value);
+        gfs->gfs_super->sb_pcache = lc_memoryInit(value);
+        lc_markSuperDirty(lc_getGlobalFs(gfs));
         if (lc_checkMemoryAvailable(true)) {
             fuse_reply_ioctl(req, 0, NULL, 0);
             break;
