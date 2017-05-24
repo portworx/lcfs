@@ -23,6 +23,7 @@ usage(char *prog) {
                     "\thost-mnt      - mount point on host\n"
                     "\tplugin-mnt    - mount point propagated to plugin\n"
                     "\t-f            - run foreground (optional)\n"
+                    "\t-c            - format file system (optional)\n"
                     "\t-d            - display debugging info (optional)\n"
                     "\t-m            - enable memory stats (optional)\n"
                     "\t-r            - enable request stats (optional)\n"
@@ -309,6 +310,7 @@ lcfs_main(int argc, char *argv[]) {
     int i, err = -1, waiter[2], fd, count;
     char *arg[argc + 1], completed;
     struct fuse_session *se;
+    bool format = false;
     struct stat st;
     size_t size;
 
@@ -411,6 +413,8 @@ lcfs_main(int argc, char *argv[]) {
     for (i = 4; i < argc; i++) {
         if (!strcmp(argv[i], "-m")) {
             lc_memStatsEnable();
+        } else if (!strcmp(argv[i], "-c")) {
+            format = true;
         } else if (!strcmp(argv[i], "-r")) {
             lc_statsEnable();
         } else if (!strcmp(argv[i], "-t")) {
@@ -477,7 +481,7 @@ lcfs_main(int argc, char *argv[]) {
     }
 
     /* Set up the file system before starting services */
-    lc_mount(gfs, argv[1], ftypes, size);
+    lc_mount(gfs, argv[1], ftypes, size, format);
 
     /* Start file system services on the mount points */
     for (i = 0; i < LC_MAX_MOUNTS; i++) {

@@ -48,6 +48,7 @@ cmd_group lcfs_cmd_group[] = {
         "\thost-mount - mount point on host\n"
         "\thost-mount - mount point propogated the plugin\n"
         "\t-f         - run foreground (optional)\n"
+        "\t-c         - format file system (optional)\n"
         "\t-d         - display fuse debugging info (optional)\n"
         "\t-m         - enable memory stats (optional)\n"
         "\t-r         - enable request stats (optional)\n"

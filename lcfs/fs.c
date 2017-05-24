@@ -643,7 +643,8 @@ lc_setupSpecialInodes(struct gfs *gfs, struct fs *fs) {
 
 /* Mount the device */
 void
-lc_mount(struct gfs *gfs, char *device, bool ftypes, size_t size) {
+lc_mount(struct gfs *gfs, char *device, bool ftypes, size_t size,
+         bool format) {
     struct fs *fs;
     int i;
 
@@ -664,7 +665,7 @@ lc_mount(struct gfs *gfs, char *device, bool ftypes, size_t size) {
     /* Try to find a valid superblock, if not found, format the device */
     lc_superRead(gfs, fs, fs->fs_sblock);
     gfs->gfs_super = fs->fs_super;
-    if (!lc_superValid(gfs->gfs_super)) {
+    if (format || !lc_superValid(gfs->gfs_super)) {
         lc_syslog(LOG_INFO, "Formatting %s, size %ld\n", device, size);
         lc_format(gfs, fs, ftypes, size);
     } else {

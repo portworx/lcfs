@@ -149,7 +149,8 @@ int lc_tryLock(struct fs *fs, bool exclusive);
 void lc_lockExclusive(struct fs *fs);
 void lc_unlock(struct fs *fs);
 void lc_unlockExclusive(struct fs *fs);
-void lc_mount(struct gfs *gfs, char *device, bool ftypes, size_t size);
+void lc_mount(struct gfs *gfs, char *device, bool ftypes, size_t size,
+              bool format);
 void lc_cleanupAfterRestart(struct gfs *gfs, struct fs *fs);
 void lc_newInodeBlock(struct gfs *gfs, struct fs *fs);
 void lc_releaseInodeBlock(struct gfs *gfs, struct fs *fs);
