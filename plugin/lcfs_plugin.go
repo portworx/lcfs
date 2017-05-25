@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"path"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -405,6 +406,12 @@ func main() {
 		return
 	}
 	//logrus.SetLevel(logrus.DebugLevel)
+	go func() {
+		for {
+			time.Sleep(30 * time.Second)
+			debug.FreeOSMemory()
+		}
+	}()
 	handler := graphPlugin.NewHandler(&Driver{driver: nil, init: Init,
 		home: "", options: nil})
 	logrus.Infof("Starting to serve requests on %s", socketAddress)
