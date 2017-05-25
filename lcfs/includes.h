@@ -41,6 +41,7 @@
 #else
 #include <sys/sysinfo.h>
 #include <asm/ioctls.h>
+#include <linux/falloc.h>
 #endif
 
 #ifndef __MUSL__

@@ -939,7 +939,9 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs, bool unmount) {
         prev = &fs->fs_icache[i].ic_head;
         while (inode && !fs->fs_removed) {
             if ((inode->i_flags & LC_INODE_REMOVED) &&
-                ((inode->i_ocount == 0) || unmount)) {
+                (unmount ||
+                 (!(inode->i_flags & LC_INODE_NOTRUNC) &&
+                  (inode->i_ocount == 0)))) {
                 assert(lc_inodeDirty(inode));
 
                 /* Truncate pages of a removed inode on umount */
@@ -954,18 +956,19 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs, bool unmount) {
             if (lc_inodeDirty(inode)) {
                 count += lc_flushInode(gfs, fs, inode);
             }
-            if ((inode->i_flags & LC_INODE_REMOVED) &&
-                !(inode->i_flags & LC_INODE_NOTRUNC) &&
-                (inode->i_ocount == 0)) {
+            if (unmount ||
+                ((inode->i_flags & LC_INODE_REMOVED) &&
+                 !(inode->i_flags & LC_INODE_NOTRUNC) &&
+                 (inode->i_ocount == 0))) {
 
-                /* Purge removed inodes */
+                /* Purge removed inodes or when unmounted */
                 *prev = inode->i_cnext;
                 lc_freeInode(inode);
-                rcount++;
-            } else if (unmount) {
-                *prev = inode->i_cnext;
-                lc_freeInode(inode);
-                fcount++;
+                if (unmount) {
+                    fcount++;
+                } else {
+                    rcount++;
+                }
             } else {
                 prev = &inode->i_cnext;
             }
@@ -973,15 +976,14 @@ lc_syncInodes(struct gfs *gfs, struct fs *fs, bool unmount) {
             inode = *prev;
         }
     }
-    if (rcount) {
+    if (unmount) {
+        assert(fs->fs_icount == fcount);
+        fs->fs_icount = 0;
+    } else if (rcount) {
         assert(fs->fs_ricount >= rcount);
         fs->fs_ricount -= rcount;
         assert(fs->fs_icount > rcount);
         fs->fs_icount -= rcount;
-    }
-    if (unmount) {
-        assert(fs->fs_icount == fcount);
-        fs->fs_icount = 0;
     }
     if (fs->fs_inodePagesCount && !fs->fs_removed) {
         lc_flushInodePages(gfs, fs);
