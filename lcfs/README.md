@@ -131,3 +131,4 @@ By default, syncer attempts to create checkpoint of the file system every minute
 By default, lcfs page cache is limited to around around 5% of available memory.  This could be changed by running the command "lcfs pcache /lcfs memory".
 
 For recreating the file system, unmount it and zero out the first block (4KB) of the device/file and remount the device/file.
+Alternatively, specify -c option while mounting LCFS.

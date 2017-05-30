@@ -57,6 +57,7 @@ reasons.  Those could be enabled by specifying appropriate options while
 mounting the LCFS.  Here is a complete list of options.
 
 
+```
 usage: lcfs daemon <device/file> <host-mountpath> <plugin-mountpath> [-f] [-d] [-m] [-r] [-t] [-p] [-v]
 	device     - device or file - image layers will be saved here
 	host-mount - mount point on host
@@ -69,6 +70,7 @@ usage: lcfs daemon <device/file> <host-mountpath> <plugin-mountpath> [-f] [-d] [
 	-t         - enable tracking count of file types (optional)
 	-p         - enable profiling (optional)
 	-v         - enable verbose mode (optional)
+```
 
 # Stats
 
