@@ -14,6 +14,7 @@ lc_mergeExtents(struct gfs *gfs, struct fs *fs,
         lc_incrExtentCount(gfs, extent, lc_getExtentCount(next));
         extent->ex_next = next->ex_next;
         lc_free(fs, next, sizeof(struct extent), LC_MEMTYPE_EXTENT);
+        return;
     }
 
     /* Check if the extent can be combined with previous one in the list */

@@ -66,6 +66,12 @@ ioctl_main(int argc, char *argv[]) {
             usage(argv[0]);
         }
         err = ioctl(fd, _IO(0, DCACHE_FLUSH), 0);
+    } else if (strcmp(argv[0], "grow") == 0) {
+        if (argc != 2) {
+            close(fd);
+            usage(argv[0]);
+        }
+        err = ioctl(fd, _IO(0, LCFS_GROW), 0);
     } else if (strcmp(argv[0], "commit") == 0) {
         if (argc != 2) {
             close(fd);

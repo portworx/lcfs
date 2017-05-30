@@ -777,3 +777,32 @@ lc_processFreeExtents(struct gfs *gfs, struct fs *fs, bool umount) {
         lc_markSuperDirty(fs);
     }
 }
+
+/* Grow the size of a file system */
+void
+lc_grow(struct gfs *gfs) {
+    struct super *super = gfs->gfs_super;
+    struct fs *fs = lc_getGlobalFs(gfs);
+    uint64_t block, oblock;
+    size_t size;
+
+    oblock = super->sb_tblocks;
+    size = lseek(gfs->gfs_fd, 0, SEEK_END);
+    assert(size != -1);
+    assert(size >= (oblock * LC_BLOCK_SIZE));
+    block = size / LC_BLOCK_SIZE;
+    lc_printf("lc_grow: old blocks %ld new size %ld new blocks %ld\n", oblock, size, block);
+    if (block <= oblock) {
+        return;
+    }
+    lc_lockExclusive(fs);
+    pthread_mutex_lock(&gfs->gfs_alock);
+    super->sb_tblocks = block;
+    lc_addSpaceExtent(gfs, fs, &gfs->gfs_extents, oblock, block - oblock,
+                      true);
+    gfs->gfs_blocksReserved = (super->sb_tblocks * LC_RESERVED_BLOCKS) / 100ul;
+    pthread_mutex_unlock(&gfs->gfs_alock);
+    lc_markSuperDirty(fs);
+    lc_unlockExclusive(fs);
+}
+

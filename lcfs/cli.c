@@ -102,6 +102,14 @@ cmd_group lcfs_cmd_group[] = {
         1,
         cmd_ioctl
     },
+    {
+        "grow",
+        "Grow size of the file system",
+        "<mnt>",
+        "\tmnt     - mount point\n",
+        1,
+        cmd_ioctl
+    },
     {NULL},
 };
 

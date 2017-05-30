@@ -15,6 +15,7 @@ enum ioctl_cmd {
     DCACHE_MEMORY = 110,            /* Adjust data pcache size */
     DCACHE_FLUSH = 111,             /* Flush pages not in use */
     LCFS_COMMIT = 112,              /* Commit to disk */
+    LCFS_GROW = 113,                /* Grow file system */
 };
 
 #ifndef LC_DIFF

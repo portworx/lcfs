@@ -129,6 +129,7 @@ uint64_t lc_blockFreeExtents(struct gfs *gfs, struct fs *fs,
 void lc_replaceFreedExtents(struct fs *fs, struct extent **extents,
                             uint64_t block, uint64_t count);
 void lc_readExtents(struct gfs *gfs, struct fs *fs);
+void lc_grow(struct gfs *gfs);
 void lc_displayAllocStats(struct fs *fs);
 
 bool lc_superValid(struct super *super);
