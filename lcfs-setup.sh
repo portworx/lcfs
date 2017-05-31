@@ -19,6 +19,9 @@ isBusyBox=0
 readlink -f $(which timeout) | egrep -q 'busybox$'
 [ $? -eq 0 ] && isBusyBox=1
 
+QIMG="$(which qemu-img)"
+QNBD="$(which qemu-nbd)"
+
 DOCKER_BIN=docker
 DOCKER_SRV_BIN=dockerd
 LCFS_ENV_DIR=/etc/lcfs
@@ -36,8 +39,8 @@ DOCKER_MNT=${DOCKER_MNT:-"/var/lib/docker"}
 PLUGIN_MNT=${PLUGIN_MNT:-"/lcfs"}
 DEV=${DEV:-"/dev/sdNN"}
 if [ ${isAlpine} -eq 1 ]; then
-    DEVFL=${DEVFL:-"/var/lcfs-dev-file"}
-    DSZ=${DSZ:-"20G"}
+    DEVFL=${DEVFL:-"/var/lcfs-dev-file"}      # Set for all Alpine & Mac VM.  May want 
+    DSZ=${DSZ:-"20G"}                         # to separate for Mac VM & Alpine.
 else
     DEVFL=${DEVFL:-"/lcfs-dev-file"}
     DSZ=${DSZ:-"500M"}
@@ -429,9 +432,9 @@ function lcfs_configure()
 	read -p  "LCFS device/file does not exist. Create file (y/n)? " dyn
         if [ "${dyn,,}" = "y" ]; then
 	    [ "${DEV}" == "/dev/sdNN" ] && ldev=${DEVFL}
-	    read -p "LCFS sparse file: ${ldev} size [${DSZ}]: " lsz
+	    read -p "LCFS file: ${ldev} size [${DSZ}]: " lsz
 	    [ -z "${lsz}" ] && lsz="${DSZ}"
-	    truncate -s ${lsz} ${ldev}
+	    create_dev_file  "${ldev}" "${lsz}"
 	    [ $? -ne 0 ] && echo "Error: Failed to create LCFS device file ${ldev}." && cleanup_and_exit 0
 #	    DEVFL="${ldev}"
 	    DSZ="${lsz}"
@@ -452,13 +455,80 @@ function lcfs_configure()
     lcfs_configure_save
 }
 
-function clear_dev
+function get_nbd_dev()
+{
+    local ndev="" dsz=""
+
+    for blkd in $(ls -d /sys/class/block/nbd*); do
+        dsz=$(cat ${blkd}/size)
+        [ ${dsz} -eq 0 ] && ndev="/dev/$(basename ${blkd})" && break
+    done
+
+    echo "${ndev}"
+}
+
+function clear_dev()
 {
     [ -z "$1" ] && return 0
     ${SUDO} dd if=/dev/zero of=$1 count=1 bs=4096 conv=notrunc &> /dev/null
 }
 
-function stop_remove_lcfs
+function connect_dev_file()
+{
+    local devfl="$1"
+
+    echo "Connecting to device image, please wait..."
+    if [ -n "${devfl}" ]; then
+	if [ ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ]; then  # for now qemu only for mac docker.
+	    local qdev=$(get_nbd_dev)
+
+	    if [ -n "${QNBD}" -a -n "${qdev}" ] && [[ ${qdev} == /dev/nbd* ]]; then
+		${QNBD} -f raw -c ${qdev} ${devfl}
+		if [ $? -ne 0 ]; then
+		    ${QNBD} -d ${qdev}
+		    return 1
+		fi
+
+		DEVFL=${devfl} 
+		DEV=${qdev}
+	    fi
+	fi
+    fi
+
+    return 0
+}
+
+function create_dev_file()
+{
+    [ -z "$1" -o -z "$2" ] && echo "Error: Missing file device or size parameter." && return 1
+
+    local dev_fl="$1" sz="$2"
+    local done=0
+
+    if [ ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ]; then     # for now qemu only for mac docker.
+	local pdevfl=/host_docker_app/lcfs-dev.img                   # This location needs to change if
+	                                                             # not using the mac.
+	[ "${DEVFL}" != "/var/lcfs-dev-file" ] && pdevfl=${DEVFL}
+ 
+	if [ -n "${QIMG}" ]; then
+	    echo "Creating device image..."
+	    ${QIMG} create -f raw -o size=${sz} ${pdevfl}
+	    if [ $? -eq 0 ]; then
+		done=1
+		connect_dev_file ${pdevfl} 
+		[ $? -ne 0 ] && done=0 && \rm -f ${pdevfl}
+	    fi
+	fi
+    fi
+    
+    if [ ${done} -eq 0 ]; then
+	echo "Creating sparse device file: ${devl_FL} ${sz}."
+	${SUDO} truncate -s ${sz} ${dev_fl}
+	DEV=${dev_fl}
+    fi
+}
+
+function stop_remove_lcfs()
 {
     local rcode=$1
 
@@ -478,6 +548,9 @@ function stop_remove_lcfs
 	[ "${DEV}" != "/dev/sdNN" -a -z "${ZERODEV}" ] && read -p "Clear (dd) or remove the lcfs device or file [${DEV}] (y/n)? " yn
 	if [ "${yn,,}" = "y" -o -n "${ZERODEV}"  ]; then
 	    [ "${DEV}" != "/dev/sdNN" ] && clear_dev ${DEV}
+	    if [ ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ]; then      # for now qemu only for mac docker.   
+		[ -n "${QNBD}" ] && [[ ${DEV} == /dev/nbd* ]] && ${QNBD} -d ${DEV} 
+	    fi
 	    ${SUDO} \rm -f ${DEVFL}
 	fi
 
@@ -493,6 +566,36 @@ function stop_remove_lcfs
     [ -n "${STOP}" -o -n "${REMOVE}" ] && cleanup_and_exit ${rcode}
 
     return 0
+}
+
+function setup_lcfs_device()
+{
+    if [ ! -e "${DEV}" ]; then
+	if [ ! -e "${DEVFL}" ]; then
+	    echo "LCFS device: ${DEV} not found."
+	    create_dev_file "${DEVFL}" "${DSZ}"
+	    [ $? -ne 0 ] && echo "Error: Failed to create LCFS device file ${DEVFL}." && cleanup_and_exit 1
+	else
+	    if [ ! -e ${LCFS_ENV_FL} ]; then
+		echo "Note: LCFS device file ${DEVFL} exists. Size of the device will not be changed. Device will just be cleared for LCFS use."
+		connect_dev_file ${DEVFL}
+		[ $? -ne 0 ] && echo "Error: Failed to connect to device file." && cleanup_and_exit 1
+		clear_dev ${DEV}
+		DSZ=$(ls -lh ${DEVFL}  | awk '{print $5}')
+	    else
+		echo "Note: LCFS device file ${DEVFL} exists. Using existing device file ${DEVFL} without modifying."
+	    fi
+	fi
+    else
+	if [ ! -e ${LCFS_ENV_FL} ]; then
+	    connect_dev_file ${DEVFL}
+	    [ $? -ne 0 ] && echo "Error: Failed to connect to device file." && cleanup_and_exit 1
+	    echo "Clearing device ${DEV} for LCFS use."
+	    clear_dev ${DEV}
+	else
+	    echo "Note: LCFS device file exists. Using existing device file ${DEV} without modifying."
+	fi
+    fi
 }
 
 function status_lcfs()
@@ -637,34 +740,11 @@ fi
 
 stop_remove_lcfs  # Stop existing docker if setup or --configure.
 
+sleep 5   #  Allow time for unmounts to happen.
+
 # * Setup LCFS and start *
 
-if [ ! -e "${DEV}" ]; then
-    if [ ! -e "${DEVFL}" ]; then
-	echo "LCFS device: ${DEV} not found.  Creating sparse device file: ${DEVFL} ${DSZ}."
-	${SUDO} truncate -s ${DSZ} ${DEVFL}
-	[ $? -ne 0 ] && echo "Error: Failed to create LCFS device file ${DEVFL}." && cleanup_and_exit 1
-    else
-	if [ ! -e ${LCFS_ENV_FL} ]; then
-	    echo "Note: LCFS device file ${DEVFL} exists. Size of the device will not be changed. Device will just be cleared for LCFS use."
-	    clear_dev ${DEVFL}
-	    DSZ=$(ls -lh ${DEVFL}  | awk '{print $5}')
-	    DEV=${DEVFL}
-	else
-	    echo "Note: LCFS device file ${DEVFL} exists. Using existing device file ${DEVFL} without modifying."
-	fi
-    fi
-    DEV=${DEVFL}
-else
-    if [ ! -e ${LCFS_ENV_FL} ]; then
-	echo "Clearing device ${DEV} for LCFS use."
-	clear_dev ${DEV}
-    else
-	echo "Note: LCFS device file exists. Using existing device file ${DEV} without modifying."
-    fi
-fi
-
-sleep 5   #  Allow time for unmounts to happen.
+setup_lcfs_device
 
 ${SUDO} mkdir -p ${PLUGIN_MNT} ${DOCKER_MNT}
 
