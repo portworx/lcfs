@@ -62,6 +62,18 @@ static int mount_max = 1000;
 
 static int auto_unmount = 0;
 
+char *
+strdup(const char *src) {
+  int len = strlen(src);
+  char *copy = malloc(len + 1);
+
+  if (copy) {
+    memcpy(copy, src, len);
+    copy[len] = 0;
+  }       
+  return copy;
+}
+
 static const char *get_user_name(void)
 {
 	struct passwd *pw = getpwuid(getuid());
