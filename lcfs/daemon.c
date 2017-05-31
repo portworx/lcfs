@@ -305,8 +305,8 @@ lc_start(struct gfs *gfs, char *device, enum lc_mountId id) {
 
 /* Mount the specified device and start serving requests */
 int
-lcfs_main(int argc, char *argv[]) {
-    bool daemon = argc == 4, profiling = false, ftypes = false;
+lcfs_main(char *pgm, int argc, char *argv[]) {
+    bool daemon = true, profiling = false, ftypes = false;
     int i, err = -1, waiter[2], fd, count;
     char *arg[argc + 1], completed;
     struct fuse_session *se;
@@ -380,6 +380,32 @@ lcfs_main(int argc, char *argv[]) {
         exit(EINVAL);
     }
 
+    count = 4;
+    for (i = 4; i < argc; i++) {
+        if (!strcmp(argv[i], "-m")) {
+            lc_memStatsEnable();
+        } else if (!strcmp(argv[i], "-c")) {
+            format = true;
+        } else if (!strcmp(argv[i], "-r")) {
+            lc_statsEnable();
+        } else if (!strcmp(argv[i], "-t")) {
+            ftypes = true;
+        } else if (!strcmp(argv[i], "-p")) {
+            profiling = true;
+        } else if (!strcmp(argv[i], "-v")) {
+            lc_verbose = true;
+        } else {
+            if (!strcmp(argv[i], "-f") ||
+                !strcmp(argv[i], "-d")) {
+                daemon = false;
+            }
+            arg[count++] = argv[i];
+        }
+    }
+    for (i = count; i < argc; i++) {
+        arg[i] = NULL;
+    }
+
     /* Fork a new process if run in background mode */
     if (daemon) {
         err = pipe(waiter);
@@ -409,28 +435,6 @@ lcfs_main(int argc, char *argv[]) {
     }
     lc_syslog(LOG_INFO, "%s %s\n", Build, Release);
 
-    count = 4;
-    for (i = 4; i < argc; i++) {
-        if (!strcmp(argv[i], "-m")) {
-            lc_memStatsEnable();
-        } else if (!strcmp(argv[i], "-c")) {
-            format = true;
-        } else if (!strcmp(argv[i], "-r")) {
-            lc_statsEnable();
-        } else if (!strcmp(argv[i], "-t")) {
-            ftypes = true;
-        } else if (!strcmp(argv[i], "-p")) {
-            profiling = true;
-        } else if (!strcmp(argv[i], "-v")) {
-            lc_verbose = true;
-        } else {
-            arg[count++] = argv[i];
-        }
-    }
-    for (i = count; i < argc; i++) {
-        arg[i] = NULL;
-    }
-
     /* Initialize memory allocator */
     lc_memoryInit(0);
 
@@ -444,7 +448,7 @@ lcfs_main(int argc, char *argv[]) {
     gfs->gfs_profiling = profiling;
 
     /* Setup arguments for fuse mount */
-    arg[0] = argv[0];
+    arg[0] = pgm;
     arg[1] = argv[2];
     arg[2] = "-o";
     arg[3] = lc_malloc(NULL, LC_SIZEOF_MOUNTARGS, LC_MEMTYPE_GFS);

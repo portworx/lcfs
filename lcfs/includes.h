@@ -65,9 +65,9 @@
 #endif
 
 struct gfs *getfs();
-int lcfs_main(int argc, char *argv[]);
+int lcfs_main(char *pgm, int argc, char *argv[]);
 
-int ioctl_main(int argc, char *argv[]);
+int ioctl_main(char *pgm, int argc, char *argv[]);
 
 void lc_memStatsEnable();
 uint64_t lc_memoryInit(uint64_t limit);

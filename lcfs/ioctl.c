@@ -5,13 +5,27 @@
 
 /* Display usage and exit */
 static void
-usage(char *name) {
-    fprintf(stderr, "usage: %s <mnt> <id> [-c]\n", name);
-    fprintf(stderr, "\t mnt   - mount point\n");
-    fprintf(stderr, "\t id    - layer name, syncer time in seconds or "
-            "pcache limit in MB\n");
-    fprintf(stderr, "\t [-c]  - clear stats (optional)\n");
-    fprintf(stderr, "Specify . as id for displaying stats for all layers\n");
+usage(char *pgm, char *name) {
+    if (strcmp(name, "stats") == 0) {
+        fprintf(stderr, "usage: %s %s <mnt> <id> [-c]\n", pgm, name);
+        fprintf(stderr, "\t mnt    - mount point\n");
+        fprintf(stderr, "\t id     - layer name\n");
+        fprintf(stderr, "\t [-c]   - clear stats (optional)\n");
+        fprintf(stderr,
+                "Specify . as id for displaying stats for all layers\n");
+    } else if (strcmp(name, "syncer") == 0) {
+        fprintf(stderr, "usage: %s %s <mnt> <time>\n", pgm, name);
+        fprintf(stderr, "\t mnt    - mount point\n");
+        fprintf(stderr, "\t time   - time in seconds, "
+                "0 to disable (default 1 minute)\n");
+    } else if (strcmp(name, "pcache") == 0) {
+        fprintf(stderr, "usage: %s %s <mnt> <pcache>\n", pgm, name);
+        fprintf(stderr, "\t mnt    - mount point\n");
+        fprintf(stderr, "\t memory - memory limit in MB (default 512MB)\n");
+    } else {
+        fprintf(stderr, "usage: %s %s <mnt>\n", pgm, name);
+        fprintf(stderr, "\t mnt    - mount point\n");
+    }
     exit(EINVAL);
 }
 
@@ -19,18 +33,18 @@ usage(char *name) {
  * Issue the command from the layer root directory.
  */
 int
-ioctl_main(int argc, char *argv[]) {
+ioctl_main(char *pgm, int argc, char *argv[]) {
     char name[LAYER_NAME_MAX + 1], *dir;
     int fd, err, len, value;
     struct stat st;
 
     if ((argc != 2) && (argc != 3) && (argc != 4)) {
-        usage(argv[0]);
+        usage(pgm, argv[0]);
     }
     if (stat(argv[1], &st)) {
         perror("stat");
         fprintf(stderr, "Make sure %s exists\n", argv[1]);
-        usage(argv[0]);
+        usage(pgm, argv[0]);
     }
     len = strlen(argv[1]);
     dir = alloca(len + strlen(LC_LAYER_ROOT_DIR) + 3);
@@ -48,11 +62,11 @@ ioctl_main(int argc, char *argv[]) {
     if (strcmp(argv[0], "stats") == 0) {
         if (argc < 3) {
             close(fd);
-            usage(argv[0]);
+            usage(pgm, argv[0]);
         }
         if ((argc == 4) && strcmp(argv[3], "-c")) {
             close(fd);
-            usage(argv[0]);
+            usage(pgm, argv[0]);
         }
         len = strlen(argv[2]);
         assert(len < LAYER_NAME_MAX);
@@ -63,30 +77,30 @@ ioctl_main(int argc, char *argv[]) {
     } else if (strcmp(argv[0], "flush") == 0) {
         if (argc != 2) {
             close(fd);
-            usage(argv[0]);
+            usage(pgm, argv[0]);
         }
         err = ioctl(fd, _IO(0, DCACHE_FLUSH), 0);
     } else if (strcmp(argv[0], "grow") == 0) {
         if (argc != 2) {
             close(fd);
-            usage(argv[0]);
+            usage(pgm, argv[0]);
         }
         err = ioctl(fd, _IO(0, LCFS_GROW), 0);
     } else if (strcmp(argv[0], "commit") == 0) {
         if (argc != 2) {
             close(fd);
-            usage(argv[0]);
+            usage(pgm, argv[0]);
         }
         err = ioctl(fd, _IO(0, LCFS_COMMIT), 0);
     } else {
         if (argc != 3) {
             close(fd);
-            usage(argv[0]);
+            usage(pgm, argv[0]);
         }
         value = atoll(argv[2]);
         if (value < 0) {
             close(fd);
-            usage(argv[0]);
+            usage(pgm, argv[0]);
         }
         if (strcmp(argv[0], "syncer") == 0) {
             err = ioctl(fd, _IOW(0, SYNCER_TIME, int), argv[2]);
@@ -94,7 +108,7 @@ ioctl_main(int argc, char *argv[]) {
             err = ioctl(fd, _IOW(0, DCACHE_MEMORY, int), argv[2]);
         } else {
             close(fd);
-            usage(argv[0]);
+            usage(pgm, argv[0]);
         }
     }
     if (err) {

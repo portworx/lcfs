@@ -21,19 +21,19 @@ typedef struct cmd_group {
     int min;
 
     /* Function to invoke */
-    int (*func)(int argc, char *argv[]);
+    int (*func)(char *pgm, int argc, char *argv[]);
 } cmd_group;
 
 /* Run daemon to mount the file system */
 static int
-cmd_daemon(int argc, char *argv[]) {
-    return lcfs_main(argc, argv);
+cmd_daemon(char *pgm, int argc, char *argv[]) {
+    return lcfs_main(pgm, argc, argv);
 }
 
 /* Perform requested action */
 static int
-cmd_ioctl(int argc, char *argv[]) {
-    return ioctl_main(argc, argv);
+cmd_ioctl(char *pgm, int argc, char *argv[]) {
+    return ioctl_main(pgm, argc, argv);
 }
 
 static struct
@@ -170,7 +170,7 @@ run_cli(int argc, char *argv[]) {
             if (argc < (2 + grp->min)) {
                 return print_cmd_usage(grp);
             }
-            return grp->func(argc - 1, &argv[1]);
+            return grp->func(argv[0], argc - 1, &argv[1]);
         }
     }
     fprintf(stderr, "unknown command: %s\n", argv[1]);
