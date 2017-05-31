@@ -25,7 +25,7 @@ endif
 
 ifdef STATIC
 	ifeq ($(BUILD_OS),alpine)
-		LCFSSTATICLIBS="libtcmalloc_minimal.a libfuse3.a libunwind.a liburcu.a"
+		LCFSSTATICLIBS="libtcmalloc_minimal.a libfuse3.a libunwind.a liburcu.a libstdc++.a"
 	else
 		LCFSSTATICLIBS="libtcmalloc_and_profiler.a libfuse3.a libunwind.a liburcu.a"
 	endif
