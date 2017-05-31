@@ -60,7 +60,7 @@ lcfs:
 lcfs-alpine: BASEDIR:=$(shell pwd)
 lcfs-alpine: INSTDIR:=$(BASEDIR)/pkgs
 lcfs-alpine: GR_CONTAINER:=alpine-$(GR_CONTAINER)
-lcfs-alpine:
+lcfs-alpine: submodules
 	@echo "====================> building Alpine lcfs binary package"
 	mkdir -p $(INSTDIR)
 	docker build -t $(GR_CONTAINER) $(BUILD_ARGS) -f Dockerfile.alpine-lcfs.build .

@@ -30,6 +30,7 @@ struct fuse_opt_context {
 	int nonopt;
 };
 
+#ifdef __MUSL__
 char *
 strdup(const char *src) {
   int len = strlen(src);
@@ -41,6 +42,7 @@ strdup(const char *src) {
   }       
   return copy;
 }
+#endif
 
 void fuse_opt_free_args(struct fuse_args *args)
 {

@@ -62,6 +62,7 @@ static int mount_max = 1000;
 
 static int auto_unmount = 0;
 
+#ifdef __MUSL__
 char *
 strdup(const char *src) {
   int len = strlen(src);
@@ -73,6 +74,7 @@ strdup(const char *src) {
   }       
   return copy;
 }
+#endif
 
 static const char *get_user_name(void)
 {
