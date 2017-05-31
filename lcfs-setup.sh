@@ -19,8 +19,8 @@ isBusyBox=0
 readlink -f $(which timeout) | egrep -q 'busybox$'
 [ $? -eq 0 ] && isBusyBox=1
 
-QIMG="$(which qemu-img)"
-QNBD="$(which qemu-nbd)"
+QIMG="$(which qemu-img 2> /dev/null)"
+QNBD="$(which qemu-nbd 2> /dev/null)"
 
 DOCKER_BIN=docker
 DOCKER_SRV_BIN=dockerd
