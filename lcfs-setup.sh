@@ -266,7 +266,10 @@ function system_manage()
 		if [ -n "$(${SUDO} which chkconfig)" ]; then
 		    ${SUDO} chkconfig $2 off
 		elif [ -n "$(${SUDO} which rc-update)" ]; then
-		    ${SUDO} rc-update del $2
+		    ${SUDO} rc-update show | egrep -q "^ *$2" 
+		    if [ $? -eq 0 ]; then 
+			${SUDO} rc-update del $2
+		    fi
 		fi
 		;;
             *)
