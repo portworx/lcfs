@@ -59,17 +59,18 @@ mounting the LCFS.  Here is a complete list of options.
 
 ```
 usage: lcfs daemon <device/file> <host-mountpath> <plugin-mountpath> [-f] [-d] [-m] [-r] [-t] [-p] [-v]
-	device     - device or file - image layers will be saved here
-	host-mount - mount point on host
-	host-mount - mount point propogated the plugin
-	-f         - run foreground (optional)
-	-c         - format file system (optional)
-	-d         - display fuse debugging info (optional)
-	-m         - enable memory stats (optional)
-	-r         - enable request stats (optional)
-	-t         - enable tracking count of file types (optional)
-	-p         - enable profiling (optional)
-	-v         - enable verbose mode (optional)
+    device     - device or file - image layers will be saved here
+    host-mount - mount point on host
+    host-mount - mount point propogated the plugin
+    -f         - run foreground (optional)
+    -c         - format file system (optional)
+    -d         - display fuse debugging info (optional)
+    -m         - enable memory stats (optional)
+    -r         - enable request stats (optional)
+    -t         - enable tracking count of file types (optional)
+    -p         - enable profiling (optional)
+    -s         - swap layers when committed
+    -v         - enable verbose mode (optional)
 ```
 
 # Stats

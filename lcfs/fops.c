@@ -267,7 +267,6 @@ lc_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
     if (ino == LC_INVALID_INODE) {
         lc_inodeUnlock(dir);
 
-#ifndef LC_DIFF
         /* Return fake inode info while looking up the diff path */
         if ((fs->fs_commitInProgress ||
              (fs->fs_super->sb_flags & LC_SUPER_INIT)) &&
@@ -280,7 +279,6 @@ lc_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
             fuse_reply_entry(req, &ep);
             goto out;
         }
-#endif
 
         /* Let kernel remember lookup failure as a negative entry */
         memset(&ep, 0, sizeof(struct fuse_entry_param));
@@ -335,7 +333,6 @@ lc_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
 
     lc_displayEntry(__func__, 0, ino, NULL);
 
-#ifndef LC_DIFF
     /* Check if the operation is on the fake inode */
     if ((lc_getInodeHandle(ino) == LC_COMMIT_TRIGGER_INODE) &&
         lc_getFsHandle(ino)) {
@@ -344,7 +341,6 @@ lc_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
         fuse_reply_attr(req, &stbuf, LC_TIMEOUT_SEC);
         return;
     }
-#endif
     lc_statsBegin(&start);
     fs = lc_getLayerLocked(ino, false);
     inode = lc_getInode(fs, ino, NULL, false, false);
@@ -379,7 +375,6 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
 
     lc_displayEntry(__func__, ino, 0, NULL);
 
-#ifndef LC_DIFF
     /* Check if the operation is on the fake inode */
     if ((lc_getInodeHandle(ino) == LC_COMMIT_TRIGGER_INODE) &&
         lc_getFsHandle(ino)) {
@@ -388,7 +383,6 @@ lc_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
         fuse_reply_attr(req, &stbuf, LC_TIMEOUT_SEC);
         return;
     }
-#endif
     lc_statsBegin(&start);
     change = (to_set &
               (FUSE_SET_ATTR_MODE | FUSE_SET_ATTR_UID | FUSE_SET_ATTR_GID |
@@ -1155,16 +1149,12 @@ lc_flush(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
 
     lc_displayEntry(__func__, ino, 0, NULL);
     fuse_reply_err(req, 0);
-#ifndef LC_DIFF
     if (inode) {
-#endif
         lc_statsAdd(inode->i_fs, LC_FLUSH, 0, NULL);
-#ifndef LC_DIFF
     } else {
         assert(lc_getInodeHandle(ino) == LC_COMMIT_TRIGGER_INODE);
         assert(lc_getFsHandle(ino));
     }
-#endif
 }
 
 /* Decrement open count on an inode */
@@ -1188,14 +1178,12 @@ lc_release(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     bool inval;
 
     lc_displayEntry(__func__, ino, 0, NULL);
-#ifndef LC_DIFF
     if ((struct inode *)fi->fh == NULL) {
         fuse_reply_err(req, 0);
         assert(lc_getInodeHandle(ino) == LC_COMMIT_TRIGGER_INODE);
         assert(lc_getFsHandle(ino));
         return;
     }
-#endif
     lc_statsBegin(&start);
     fs = lc_getLayerLocked(ino, false);
     lc_releaseInode(req, fs, ino, fi, &inval);
@@ -1354,13 +1342,7 @@ lc_getxattr(fuse_req_t req, fuse_ino_t ino, const char *name, size_t size
     lc_displayEntry(__func__, ino, 0, name);
 
     /* Check if the request is for finding changes made in a layer */
-    if ((ino == gfs->gfs_layerRoot) &&
-#ifdef LC_DIFF
-        (size == LC_BLOCK_SIZE) &&
-#else
-        (size == sizeof(uint64_t)) &&
-#endif
-        (lc_layerDiff(req, name, size) == 0)) {
+    if ((ino == gfs->gfs_layerRoot) && (lc_layerDiff(req, name, size) == 0)) {
         return;
     }
 
@@ -1371,14 +1353,12 @@ lc_getxattr(fuse_req_t req, fuse_ino_t ino, const char *name, size_t size
         return;
     }
 
-#ifndef LC_DIFF
     /* Take care of the special inode when commit is in progress */
     if ((lc_getInodeHandle(ino) == LC_COMMIT_TRIGGER_INODE) &&
         lc_getFsHandle(ino)) {
         fuse_reply_err(req, ENODATA);
         return;
     }
-#endif
 
     /* XXX Figure out a way to avoid invoking this for system.posix_acl_access
      * and system.posix_acl_default.
@@ -1420,14 +1400,12 @@ lc_removexattr(fuse_req_t req, fuse_ino_t ino, const char *name) {
         return;
     }
 
-#ifndef LC_DIFF
     /* Take care of the special inode when commit is in progress */
     if ((lc_getInodeHandle(ino) == LC_COMMIT_TRIGGER_INODE) &&
         lc_getFsHandle(ino)) {
         fuse_reply_err(req, ENODATA);
         return;
     }
-#endif
     lc_xattrRemove(req, ino, name);
 }
 
@@ -1445,14 +1423,12 @@ lc_create(fuse_req_t req, fuse_ino_t parent, const char *name,
     lc_displayEntry(__func__, parent, 0, name);
     fs = lc_getLayerLocked(parent, false);
 
-#ifndef LC_DIFF
     /* Check if a layer commit is triggerd */
     if (fs->fs_parent && (lc_getInodeHandle(parent) == fs->fs_root) &&
         strstr(name, LC_COMMIT_TRIGGER_PREFIX)) {
         lc_commitLayer(req, fs, parent, name, fi);
         return;
     }
-#endif
     err = lc_createInode(fs, parent, name, S_IFREG | (mode & ~ctx->umask),
                          ctx->uid, ctx->gid, 0, NULL, fi, &e);
     if (unlikely(err)) {

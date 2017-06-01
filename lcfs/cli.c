@@ -1,8 +1,6 @@
 #include "includes.h"
 #include "version/version.h"
 
-#define PROG_NAME "lcfs"
-
 typedef struct cmd_group {
 
     /* Sub-command */
@@ -54,6 +52,7 @@ cmd_group lcfs_cmd_group[] = {
         "\t-r         - enable request stats (optional)\n"
         "\t-t         - enable tracking count of file types (optional)\n"
         "\t-p         - enable profiling (optional)\n"
+        "\t-s         - swap layers when committed\n"
         "\t-v         - enable verbose mode (optional)\n",
         3,
         cmd_daemon
@@ -123,11 +122,12 @@ print_version() {
 
 /* Display usage */
 static int
-print_usage() {
+print_usage(char *pgm) {
     cmd_group *grp;
     int pad;
 
-    fprintf(stderr, "usage: lcfs [--help] [--version] <command> [<args>]\n\n");
+    fprintf(stderr, "usage: %s [--help] [--version] <command> [<args>]\n\n",
+            pgm);
     fprintf(stderr, "Commands:\n");
     for (grp = lcfs_cmd_group; grp->cmd; grp++) {
         pad = 20 - strlen(grp->cmd);
@@ -138,8 +138,8 @@ print_usage() {
 
 /* Display command usage */
 static int
-print_cmd_usage(cmd_group *grp) {
-    fprintf(stderr, "usage: %s %s %s\n", PROG_NAME, grp->cmd, grp->usage);
+print_cmd_usage(char *pgm, cmd_group *grp) {
+    fprintf(stderr, "usage: %s %s %s\n", pgm, grp->cmd, grp->usage);
     fprintf(stderr, "%s", grp->help);
     return 0;
 }
@@ -150,13 +150,13 @@ run_cli(int argc, char *argv[]) {
     cmd_group *grp;
 
     if (argc < 2) {
-        print_usage();
+        print_usage(argv[0]);
         return -1;
     }
 
     for (grp = lcfs_cmd_group; grp->cmd; grp++) {
         if (!strcasecmp(argv[1], "--help")) {
-            return print_usage();
+            return print_usage(argv[0]);
         }
 
         if (!strcasecmp(argv[1], "--version")) {
@@ -165,16 +165,16 @@ run_cli(int argc, char *argv[]) {
 
         if (!strcasecmp(argv[1], grp->cmd)) {
             if ((argc > 2) && (!strcasecmp(argv[2], "--help"))) {
-                return print_cmd_usage(grp);
+                return print_cmd_usage(argv[0], grp);
             }
             if (argc < (2 + grp->min)) {
-                return print_cmd_usage(grp);
+                return print_cmd_usage(argv[0], grp);
             }
             return grp->func(argv[0], argc - 1, &argv[1]);
         }
     }
     fprintf(stderr, "unknown command: %s\n", argv[1]);
-    print_usage();
+    print_usage(argv[0]);
     return 0;
 }
 
