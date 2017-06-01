@@ -394,7 +394,7 @@ lcfs_main(char *pgm, int argc, char *argv[]) {
         } else if (!strcmp(argv[i], "-p")) {
             profiling = true;
         } else if (!strcmp(argv[i], "-s")) {
-            lc_syslog("WARNING: Enabling layer swapping will break "
+            lc_syslog(LOG_INFO, "WARNING: Enabling layer swapping will break "
                       "docker save/push operations");
             swap = true;
         } else if (!strcmp(argv[i], "-v")) {
