@@ -461,7 +461,9 @@ function get_nbd_dev()
 
     for blkd in $(ls -d /sys/class/block/nbd*); do
         dsz=$(cat ${blkd}/size)
-        [ ${dsz} -eq 0 ] && ndev="/dev/$(basename ${blkd})" && break
+	if [ $? -eq 0 ]; then
+            [ ${dsz} -eq 0 ] && ndev="/dev/$(basename ${blkd})" && break
+	fi
     done
 
     echo "${ndev}"
@@ -492,6 +494,25 @@ function connect_dev_file()
 		DEVFL=${devfl} 
 		DEV=${qdev}
 	    fi
+	fi
+    fi
+
+    return 0
+}
+
+function connect_dev()
+{
+    local qdev="$1"
+    
+    echo "Connecting to device, please wait..."
+    [ -z "${qdev}" ] || [ ! -e "${qdev}" ] && return 1
+
+    if [ ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ]; then  # for now qemu only for mac docker.
+	if [ -n "${QNBD}" -a -n "${qdev}" ] && [[ ${qdev} == /dev/nbd* ]]; then		
+	    local dsz=$(cat /sys/class/block/$(basename ${qdev})/size)
+
+	    [ $? -ne 0 ] && return 1
+	    [ ${dsz} -eq 0 ] && echo "Error: Device not connected to image." && return 1
 	fi
     fi
 
@@ -574,12 +595,12 @@ function setup_lcfs_device()
 	if [ ! -e "${DEVFL}" ]; then
 	    echo "LCFS device: ${DEV} not found."
 	    create_dev_file "${DEVFL}" "${DSZ}"
-	    [ $? -ne 0 ] && echo "Error: Failed to create LCFS device file ${DEVFL}." && cleanup_and_exit 1
+	    [ $? -ne 0 ] && echo "Error: Failed to create LCFS device file ${DEVFL}." && system_docker_restart && cleanup_and_exit 1
 	else
 	    if [ ! -e ${LCFS_ENV_FL} ]; then
 		echo "Note: LCFS device file ${DEVFL} exists. Size of the device will not be changed. Device will just be cleared for LCFS use."
 		connect_dev_file ${DEVFL}
-		[ $? -ne 0 ] && echo "Error: Failed to connect to device file." && cleanup_and_exit 1
+		[ $? -ne 0 ] && echo "Error: Failed to connect to device file." && system_docker_restart && cleanup_and_exit 1
 		clear_dev ${DEV}
 		DSZ=$(ls -lh ${DEVFL}  | awk '{print $5}')
 	    else
@@ -588,8 +609,8 @@ function setup_lcfs_device()
 	fi
     else
 	if [ ! -e ${LCFS_ENV_FL} ]; then
-	    connect_dev_file ${DEVFL}
-	    [ $? -ne 0 ] && echo "Error: Failed to connect to device file." && cleanup_and_exit 1
+	    connect_dev ${DEV}
+	    [ $? -ne 0 ] && echo "Error: Failed to connect to device ${DEV}." && system_docker_restart && cleanup_and_exit 1
 	    echo "Clearing device ${DEV} for LCFS use."
 	    clear_dev ${DEV}
 	else
