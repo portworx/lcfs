@@ -115,7 +115,10 @@ struct page {
     uint32_t p_refCount;
 
     /* Page cache hitcount */
-    uint32_t p_hitCount:29;
+    uint32_t p_hitCount:28;
+
+    /* page is not in hash lists */
+    uint32_t p_nohash:1;
 
     /* Don't free p_data if set */
     uint32_t p_nofree:1;

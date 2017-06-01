@@ -19,6 +19,7 @@ lc_newPage(struct gfs *gfs, struct fs *fs) {
     page->p_block = LC_INVALID_BLOCK;
     page->p_refCount = 1;
     page->p_hitCount = 0;
+    page->p_nohash = 0;
     page->p_nofree = 0;
     page->p_nocache = 0;
     page->p_dvalid = 0;
@@ -225,9 +226,22 @@ lc_destroyPages(struct gfs *gfs, struct fs *fs, bool remove) {
     }
 }
 
+/* Remove a page from a hash list */
+static void
+lc_removePageFromHashList(struct pcache *pcache, struct page *page,
+                          uint64_t hash) {
+    assert(page->p_refCount == 0);
+    assert(pcache[hash].pc_pcount > 0);
+
+    page->p_block = LC_INVALID_BLOCK;
+    page->p_cnext = NULL;
+    pcache[hash].pc_pcount--;
+}
+
 /* Release a page */
 void
-lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page, bool read) {
+lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page, bool read,
+               bool inval) {
     struct pcache *pcache = fs->fs_bcache->lb_pcache;
     struct page *cpage, *fpage = NULL, **prev;
     uint32_t lhash;
@@ -239,10 +253,11 @@ lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page, bool read) {
 
     /* Decrement the reference count on the page */
     assert(page->p_refCount > 0);
+    assert(!page->p_nohash);
     page->p_refCount--;
 
     /* If page does not have to be cached, then free it. */
-    if (page->p_nocache && (page->p_refCount == 0)) {
+    if (inval && (page->p_refCount == 0)) {
         cpage = pcache[hash].pc_head;
         prev = &pcache[hash].pc_head;
 
@@ -256,10 +271,7 @@ lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page, bool read) {
             cpage = cpage->p_cnext;
         }
         assert(cpage);
-        page->p_block = LC_INVALID_BLOCK;
-        page->p_cnext = NULL;
-        assert(pcache[hash].pc_pcount > 0);
-        pcache[hash].pc_pcount--;
+        lc_removePageFromHashList(pcache, page, hash);
         fpage = page;
     } else if (read) {
 
@@ -286,18 +298,16 @@ lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head,
         page->p_dnext = NULL;
 
         /* If block is not in the cache, free it */
-        if (page->p_block == LC_INVALID_BLOCK) {
+        if ((page->p_block == LC_INVALID_BLOCK) || page->p_nohash) {
             assert(page->p_refCount == 1);
+            page->p_block = LC_INVALID_BLOCK;
             page->p_refCount = 0;
             lc_freePage(gfs, fs, page);
         } else if (inval && fs->fs_removed) {
             assert(page->p_refCount == 1);
             page->p_refCount = 0;
         } else {
-            if (inval) {
-                page->p_nocache = 1;
-            }
-            lc_releasePage(gfs, fs, page, false);
+            lc_releasePage(gfs, fs, page, false, inval);
         }
         page = next;
     }
@@ -310,10 +320,7 @@ lc_releaseReadPages(struct gfs *gfs, struct fs *fs,
     uint64_t i;
 
     for (i = 0; i < pcount; i++) {
-        if (nocache) {
-            pages[i]->p_nocache = 1;
-        }
-        lc_releasePage(gfs, fs, pages[i], !nocache);
+        lc_releasePage(gfs, fs, pages[i], !nocache, nocache);
     }
 }
 
@@ -355,32 +362,41 @@ lc_invalPage(struct gfs *gfs, struct fs *fs, uint64_t block) {
     return 0;
 }
 
+/* Set block number on a page */
+void
+lc_setPageBlock(struct page *page, uint64_t block) {
+    assert(page->p_block == LC_INVALID_BLOCK);
+    assert(page->p_refCount == 1);
+    assert(page->p_cnext == NULL);
+    page->p_block = block;
+    page->p_nohash = 1;
+}
+
 /* Add a page to page block hash list */
 void
 lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
                     struct page *page, uint64_t block) {
     struct pcache *pcache = fs->fs_bcache->lb_pcache;
     int hash = lc_pageBlockHash(fs, block);
-    struct page *cpage;
+    struct page *cpage, **prev;
     uint32_t lhash;
 
     /* Initialize the page structure and lock the hash list */
-    assert(page->p_block == LC_INVALID_BLOCK);
-    assert(page->p_refCount == 1);
-    page->p_block = block;
-    page->p_nocache = 1;
+    lc_setPageBlock(page, block);
     lhash = lc_pcLockHash(fs, hash);
     cpage = pcache[hash].pc_head;
+    prev = &pcache[hash].pc_head;
 
     /* Invalidate previous instance of this block if there is one.
      * Blocks are not invalidated in cache when freed.
      */
     while (cpage) {
         if (cpage->p_block == block) {
-            assert(cpage->p_refCount == 0);
-            cpage->p_block = LC_INVALID_BLOCK;
+            *prev = cpage->p_cnext;
+            lc_removePageFromHashList(pcache, cpage, hash);
             break;
         }
+        prev = &cpage->p_cnext;
         cpage = cpage->p_cnext;
     }
 
@@ -389,6 +405,9 @@ lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
     pcache[hash].pc_head = page;
     pcache[hash].pc_pcount++;
     lc_pcUnLockHash(fs, lhash);
+    if (cpage) {
+        lc_freePage(gfs, fs, cpage);
+    }
 }
 
 /* Lookup/Create a page in the block hash */

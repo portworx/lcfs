@@ -228,7 +228,7 @@ lc_flushExtentPages(struct gfs *gfs, struct fs *fs, struct page *fpage,
     /* Link the blocks together */
     while (page) {
         count--;
-        lc_addPageBlockHash(gfs, fs, page, block + count);
+        lc_setPageBlock(page, block + count);
         eblock = (struct dextentBlock *)page->p_data;
         eblock->de_magic = LC_EXTENT_MAGIC;
         eblock->de_next = (page == fpage) ?

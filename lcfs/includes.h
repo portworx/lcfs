@@ -242,11 +242,12 @@ struct page *lc_getPageNew(struct gfs *gfs, struct fs *fs,
 void lc_readPages(struct gfs *gfs, struct fs *fs, struct page **pages,
                   uint32_t count);
 void lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page,
-                    bool read);
+                    bool read, bool inval);
 void lc_releaseReadPages(struct gfs *gfs, struct fs *fs,
                          struct page **pages, uint64_t pcount, bool nocache);
 int lc_invalPage(struct gfs *gfs, struct fs *fs, uint64_t block);
 struct page *lc_getPageNewData(struct fs *fs, uint64_t block, char *data);
+void lc_setPageBlock(struct page *page, uint64_t block);
 void lc_addPageBlockHash(struct gfs *gfs, struct fs *fs,
                          struct page *page, uint64_t block);
 void lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head,

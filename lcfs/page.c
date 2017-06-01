@@ -302,7 +302,7 @@ lc_fillPage(struct gfs *gfs, struct inode *inode, struct dpage *dpage,
     }
     assert(dpage->dp_psize == LC_BLOCK_SIZE);
     if (bpage) {
-        lc_releasePage(inode->i_fs->fs_gfs, inode->i_fs, bpage, true);
+        lc_releasePage(inode->i_fs->fs_gfs, inode->i_fs, bpage, false, true);
     }
 }
 

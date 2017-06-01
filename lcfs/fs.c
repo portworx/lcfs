@@ -76,7 +76,7 @@ lc_flushInodeBlocks(struct gfs *gfs, struct fs *fs) {
     count = pcount;
     while (page) {
         count--;
-        lc_addPageBlockHash(gfs, fs, page, block + count);
+        lc_setPageBlock(page, block + count);
         iblock = (struct iblock *)page->p_data;
         iblock->ib_magic = LC_INODE_MAGIC;
         iblock->ib_next = (page == fpage) ?

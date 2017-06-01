@@ -671,7 +671,7 @@ lc_flushInodePages(struct gfs *gfs, struct fs *fs) {
 
     /* Insert newly allocated blocks to the list of inode blocks */
     while (count) {
-        lc_addPageBlockHash(gfs, fs, page, block);
+        lc_setPageBlock(page, block);
         buf = page->p_data;
         lc_updateCRC(buf, (uint32_t *)&buf[LC_BLOCK_SIZE - sizeof(uint32_t)]);
         page = page->p_dnext;

@@ -421,8 +421,13 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
         lc_unlock(rfs);
         return;
     }
-    root = lc_getRootIno(rfs, name, NULL, cmd != LAYER_STAT);
-    err = (root == LC_INVALID_INODE) ? ENOENT : 0;
+    if (strcmp(name, ".")) {
+        root = lc_getRootIno(rfs, name, NULL, true);
+        err = (root == LC_INVALID_INODE) ? ENOENT : 0;
+    } else {
+        root = 0;
+        err = ENOENT;
+    }
     switch (cmd) {
     case LAYER_MOUNT:
 
@@ -476,6 +481,13 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
             lc_statsDeinit(fs);
             lc_statsNew(fs);
             lc_unlock(fs);
+        } else if (!strcmp(name, ".")) {
+            fuse_reply_ioctl(req, 0, NULL, 0);
+            lc_unlock(rfs);
+            lc_lock(rfs, true);
+            lc_statsDeinit(rfs);
+            lc_statsNew(rfs);
+            err = 0;
         }
         break;
 

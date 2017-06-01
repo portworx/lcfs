@@ -344,7 +344,7 @@ lc_dirFlushBlocks(struct gfs *gfs, struct fs *fs,
     /* Link all directory blocks */
     while (page) {
         count--;
-        lc_addPageBlockHash(gfs, fs, page, block + count);
+        lc_setPageBlock(page, block + count);
         dblock = (struct dblock *)page->p_data;
         dblock->db_magic = LC_DIR_MAGIC;
         dblock->db_next = (page == fpage) ? LC_INVALID_BLOCK :

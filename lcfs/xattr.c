@@ -415,7 +415,7 @@ lc_xattrFlushBlocks(struct gfs *gfs, struct fs *fs,
     /* Link all the blocks together */
     while (page) {
         count--;
-        lc_addPageBlockHash(gfs, fs, page, block + count);
+        lc_setPageBlock(page, block + count);
         xblock = (struct xblock *)page->p_data;
         xblock->xb_magic = LC_XATTR_MAGIC;
         xblock->xb_next = (page == fpage) ? LC_INVALID_BLOCK :

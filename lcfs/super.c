@@ -70,7 +70,7 @@ lc_superWrite(struct gfs *gfs, struct fs *fs, struct fs *rfs) {
         /* Queue the superblock for write */
         page = lc_getPageNoBlock(gfs, rfs, (char *)super, NULL);
         page->p_nofree = 1;
-        lc_addPageBlockHash(gfs, rfs, page, fs->fs_sblock);
+        lc_setPageBlock(page, fs->fs_sblock);
         lc_addPageForWriteBack(gfs, rfs, page, page, 1);
     }
     fs->fs_dirty = false;

@@ -233,7 +233,7 @@ lc_flushEmapBlocks(struct gfs *gfs, struct fs *fs,
     /* Link the blocks together */
     while (page) {
         count--;
-        lc_addPageBlockHash(gfs, fs, page, block + count);
+        lc_setPageBlock(page, block + count);
         eblock = (struct emapBlock *)page->p_data;
         eblock->eb_magic = LC_EMAP_MAGIC;
         eblock->eb_next = (page == fpage) ?
