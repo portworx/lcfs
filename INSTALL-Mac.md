@@ -15,7 +15,7 @@ LCFS is running as a Docker V2 plugin and the plugin requires memory for transfe
 ## Install and run LCFS
 
 ```
-# apk update && apk add bash util-linux qemu qemu-img && qemu-img create -f raw -o size=10G /tmp/lcfs.img && qemu-nbd -f raw -c /dev/nbd0 /tmp/lcfs.img
+# apk update && apk add bash util-linux qemu qemu-img
 # curl -fsSL http://lcfs.portworx.com/latest-alpine/lcfs-setup.sh | LCFS_PKG=http://lcfs.portworx.com/latest-alpine/lcfs-alpine.binaries.tgz DEV=/dev/nbd0 bash
 ```
 As of now, this step is required everytime Docker is restarted from the Menu.  Docker may be manually restarted from the VM by running "/etc/init.d/lcfs restart".
@@ -24,7 +24,7 @@ As of now, this step is required everytime Docker is restarted from the Menu.  D
 To uninstall the LCFS, simply restart Docker from the Menu.  When Docker is up, remove the device image used for lcfs.
 
 ```
-# rm /tmp/lcfs.img
+# /opt/pwx/bin/lcfs-setup.sh --remove
 ```
 
 Note that your original image data from the previous driver will be intact.
