@@ -16,7 +16,7 @@ LCFS is running as a Docker V2 plugin and the plugin requires memory for transfe
 
 ```
 # apk update && apk add bash util-linux qemu qemu-img
-# curl -fsSL http://lcfs.portworx.com/alpine/lcfs-setup.sh | LCFS_PKG=http://lcfs.portworx.com/alpine/lcfs-alpine.binaries.tgz bash
+# curl -fsSL http://lcfs.portworx.com/alpine/lcfs-setup.sh | bash
 ```
 As of now, this step is required everytime Docker is restarted from the Menu.  Docker may be manually restarted from the VM by running "/etc/init.d/lcfs restart".
 
