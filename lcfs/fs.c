@@ -689,6 +689,12 @@ lc_mount(struct gfs *gfs, char *device, bool ftypes, size_t size,
     if (fs->fs_super->sb_flags & LC_SUPER_FSTATS) {
         gfs->gfs_ftypes = true;
     }
+    if (gfs->gfs_swapLayersForCommit &&
+        !(fs->fs_super->sb_flags & LC_SUPER_SWAP)) {
+        fs->fs_super->sb_flags |= LC_SUPER_SWAP;
+    } else if (fs->fs_super->sb_flags & LC_SUPER_SWAP) {
+        gfs->gfs_swapLayersForCommit = true;
+    }
     lc_unlockExclusive(fs);
 }
 

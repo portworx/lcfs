@@ -101,12 +101,13 @@ lc_removeHlink(struct fs *fs, struct inode *inode, ino_t parent) {
     struct hldata *hldata, **prev;
     ino_t ino;
 
-    /* Hardlinks are not tracked after remount */
-    if (fs->fs_gfs->gfs_swapLayersForCommit || fs->fs_rfs->fs_restarted) {
-        return;
-    }
+    assert(!fs->fs_rfs->fs_restarted);
+    assert(!fs->fs_gfs->gfs_swapLayersForCommit);
     assert(!S_ISDIR(inode->i_mode));
     assert(inode->i_flags & LC_INODE_MLINKS);
+    if (fs->fs_hlinks == NULL) {
+        return;
+    }
     if (parent == fs->fs_root) {
         parent = LC_ROOT_INODE;
     }

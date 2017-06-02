@@ -394,8 +394,6 @@ lcfs_main(char *pgm, int argc, char *argv[]) {
         } else if (!strcmp(argv[i], "-p")) {
             profiling = true;
         } else if (!strcmp(argv[i], "-s")) {
-            lc_syslog(LOG_INFO, "WARNING: Enabling layer swapping will break "
-                      "docker save/push operations");
             swap = true;
         } else if (!strcmp(argv[i], "-v")) {
             lc_verbose = true;
@@ -492,6 +490,10 @@ lcfs_main(char *pgm, int argc, char *argv[]) {
 
     /* Set up the file system before starting services */
     lc_mount(gfs, argv[1], ftypes, size, format);
+    if (gfs->gfs_swapLayersForCommit) {
+        lc_syslog(LOG_INFO, "WARNING: Enabled layer swapping, "
+                      "docker save/push operations will not work");
+    }
 
     /* Start file system services on the mount points */
     for (i = 0; i < LC_MAX_MOUNTS; i++) {

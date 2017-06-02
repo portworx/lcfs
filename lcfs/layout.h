@@ -65,6 +65,7 @@
 #define LC_SUPER_INIT      0x00000008  /* Init layer */
 #define LC_SUPER_ZOMBIE    0x00000010  /* Removed layer */
 #define LC_SUPER_FSTATS    0x00000020  /* Tracking count of file types */
+#define LC_SUPER_SWAP      0x00000040  /* Layers being swapped for commit */
 
 /* Directory name in which layers are created */
 #define LC_LAYER_ROOT_DIR   "lcfs"

@@ -58,7 +58,7 @@ mounting the LCFS.  Here is a complete list of options.
 
 
 ```
-usage: lcfs daemon <device/file> <host-mountpath> <plugin-mountpath> [-f] [-d] [-m] [-r] [-t] [-p] [-v]
+usage: lcfs daemon <device/file> <host-mountpath> <plugin-mountpath> [-f] [-c] [-d] [-m] [-r] [-t] [-p] [-s] [-v]
     device     - device or file - image layers will be saved here
     host-mount - mount point on host
     host-mount - mount point propogated the plugin
