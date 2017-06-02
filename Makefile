@@ -68,6 +68,17 @@ lcfs-alpine: submodules
 	docker cp $(GR_CONTAINER):/lcfs-alpine.binaries.tgz pkgs
 	docker rm $(GR_CONTAINER)
 
+lcfs-centos: BASEDIR:=$(shell pwd)
+lcfs-centos: INSTDIR:=$(BASEDIR)/pkgs
+lcfs-centos: GR_CONTAINER:=centos-$(GR_CONTAINER)
+lcfs-centos: submodules
+	@echo "====================> building Centos lcfs binary package"
+	mkdir -p $(INSTDIR)
+	docker build -t $(GR_CONTAINER) $(BUILD_ARGS) -f Dockerfile.centos.build .
+	docker run --name $(GR_CONTAINER) $(GR_CONTAINER) ls -l /
+	docker cp $(GR_CONTAINER):/lcfs-centos.binaries.tgz pkgs
+	docker rm $(GR_CONTAINER)
+
 deploy:
 	@echo "====================> pushing lcfs to dockerhub..."
 	@cd plugin/ && make push_plugin  #./push_plugin.sh
