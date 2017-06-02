@@ -20,6 +20,16 @@ LCFS is running as a Docker V2 plugin and the plugin requires memory for transfe
 ```
 As of now, this step is required everytime Docker is restarted from the Menu.  Docker may be manually restarted from the VM by running "/etc/init.d/lcfs restart".
 
+## Growing the backend image (device)
+By default, LCFS uses a device /dev/nbd0 which is backed up by /host_docker_app/lcfs-dev.img.  The image is created as a 20GB file when LCFS is installed.  Having a separate device for LCFS keeps the vmdk of the VM from growing as more images and containers are created.  Instead the backend image of the LCFS can be resized as the demand for space grows with more number of images and containers.  That can be done without stopping LCFS or docker.  Here are the steps for doing so, assuming additional 10GB of space is needed.
+
+```
+# qemu-nbd -d /dev/nbd0
+# qemu-img resize -f raw /host_docker_app/lcfs-dev.img  +10G
+# qemu-nbd -f raw -c /dev/nbd0 /host_docker_app/lcfs-dev.img
+# /opt/pwx/bin/lcfs grow /lcfs
+```
+
 ## Uninstalling LCFS
 To uninstall the LCFS, simply restart Docker from the Menu.  When Docker is up, remove the device image used for lcfs.
 
