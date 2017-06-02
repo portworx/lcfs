@@ -968,7 +968,7 @@ lc_openInode(struct fs *fs, fuse_ino_t ino, struct fuse_file_info *fi) {
 static void
 lc_closeInode(struct fs *fs, struct inode *inode, struct fuse_file_info *fi,
               bool *inval) {
-    bool reg = S_ISREG(inode->i_mode), ro;
+    bool reg = S_ISREG(inode->i_mode), ro, excl = false;
 
     /* Nothing to do if inode is not part of this layer */
     if (inode->i_fs != fs) {
@@ -989,10 +989,9 @@ lc_closeInode(struct fs *fs, struct inode *inode, struct fuse_file_info *fi,
     }
 
     /* Lock the inode exclusive and decrement open count */
-    lc_inodeLock(inode, true);
-    assert(inode->i_fs == fs);
     assert(inode->i_ocount > 0);
-    inode->i_ocount--;
+    lc_inodeLock(inode, false);
+    __sync_sub_and_fetch(&inode->i_ocount, 1);
 
     /* XXX Defer this for sometime for the file to become really idle,
      * otherwise operations may block on the inode lock.
@@ -1006,20 +1005,33 @@ lc_closeInode(struct fs *fs, struct inode *inode, struct fuse_file_info *fi,
 
         /* Truncate a removed file on last close */
         if (inode->i_flags & LC_INODE_REMOVED) {
+            lc_inodeUnlock(inode);
+            lc_inodeLock(inode, true);
+            assert(inode->i_ocount == 0);
             lc_truncate(inode, 0, false);
+            excl = true;
         }
 
         /* Flush dirty pages of a file on last close */
-        if (inode->i_flags & LC_INODE_EMAPDIRTY) {
+        if (lc_inodeGetDirtyPageCount(inode)) {
 
             /* Inode emap needs to be stable before an inode could be cloned */
             if (ro || ((fs->fs_gfs->gfs_layerRoot == 0) &&
                        (fs->fs_gfs->gfs_dbIno != inode->i_ino))) {
-                lc_flushPages(fs->fs_gfs, fs, inode, true, true);
-                return;
+                if (!excl) {
+                    lc_inodeUnlock(inode);
+                    lc_inodeLock(inode, true);
+                }
+                if (inode->i_ocount == 0) {
+                    lc_flushPages(fs->fs_gfs, fs, inode, true, true);
+                    return;
+                }
             }
-            if (!(inode->i_flags & (LC_INODE_REMOVED | LC_INODE_TMP)) &&
-                lc_inodeGetDirtyPageCount(inode)) {
+            if (!(inode->i_flags & (LC_INODE_REMOVED | LC_INODE_TMP))) {
+                if (!excl) {
+                    lc_inodeUnlock(inode);
+                    lc_inodeLock(inode, true);
+                }
 
                 /* Add inode to dirty list of the layer */
                 if ((lc_inodeGetDirtyNext(inode) == NULL) &&
