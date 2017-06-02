@@ -768,10 +768,6 @@ while [ "$1" != "" ]; do
     shift
 done
 
-stop_remove_lcfs  # Stop existing docker if setup or --configure.
-
-sleep 5   #  Allow time for unmounts to happen.
-
 # Install lcfs binary
 if [ -z "${START}" ]; then
     install_fuse
@@ -781,6 +777,9 @@ elif [ ! -e "${LCFS_ENV_FL}" ]; then # --start was executed. Check config
     echo "LCFS not configured.  Re-execute this command with no options for a default configuration or with the '--configure' option."
     cleanup_and_exit 1
 fi
+
+stop_remove_lcfs  # Stop existing docker if setup or --configure.
+sleep 5   #  Allow time for unmounts to happen.
 
 # * Setup LCFS and start *
 
