@@ -497,6 +497,8 @@ function connect_dev_file()
 		DEVFL=${devfl} 
 		DEV=${qdev}
 	    fi
+	else
+	    DEV=${devfl}
 	fi
     fi
 
