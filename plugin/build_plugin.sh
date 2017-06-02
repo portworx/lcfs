@@ -39,6 +39,6 @@ $SUDO docker plugin create $DOCKER_HUB_REPO/$DOCKER_HUB_LCFS_PLUGIN:$DOCKER_HUB_
 $SUDO docker rm -vf "$id"
 $SUDO docker rmi rootfsimage
 
-# Remove the archive direcgtory
+# Remove the archive directory
 $SUDO rm -rf $PLUGIN_BASE_DIR
 

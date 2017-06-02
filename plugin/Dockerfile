@@ -1,6 +1,5 @@
-FROM centos:centos7.2.1511
-
-RUN mkdir -p /run/docker/plugins /etc/docker/plugins /lcfs
+FROM jvinod/hose:lcfs_plugin_base
+#FROM portworx/lcfs:lcfs_plugin_base
 
 WORKDIR /
 COPY lcfs_plugin /
