@@ -637,6 +637,7 @@ lc_setupSpecialInodes(struct gfs *gfs, struct fs *fs) {
 void
 lc_mount(struct gfs *gfs, char *device, bool ftypes, size_t size,
          bool format) {
+    bool grow = false;
     struct fs *fs;
     int i;
 
@@ -661,7 +662,11 @@ lc_mount(struct gfs *gfs, char *device, bool ftypes, size_t size,
         lc_syslog(LOG_INFO, "Formatting %s, size %ld\n", device, size);
         lc_format(gfs, fs, ftypes, size);
     } else {
-        assert(size == (gfs->gfs_super->sb_tblocks * LC_BLOCK_SIZE));
+        if (size > (gfs->gfs_super->sb_tblocks * LC_BLOCK_SIZE)) {
+            grow = true;
+        } else {
+            assert(size == (gfs->gfs_super->sb_tblocks * LC_BLOCK_SIZE));
+        }
         gfs->gfs_super->sb_mounts++;
         lc_syslog(LOG_INFO, "Mounting %s, size %ld nmounts %ld\n",
                device, size, gfs->gfs_super->sb_mounts);
@@ -696,6 +701,9 @@ lc_mount(struct gfs *gfs, char *device, bool ftypes, size_t size,
         gfs->gfs_swapLayersForCommit = true;
     }
     lc_unlockExclusive(fs);
+    if (grow) {
+        lc_grow(gfs);
+    }
 }
 
 /* Sync a dirty inodes in a layer */

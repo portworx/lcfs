@@ -525,7 +525,6 @@ lc_getPageNoBlock(struct gfs *gfs, struct fs *fs, char *data,
     struct page *page = lc_newPage(gfs, fs);
 
     page->p_data = data;
-    page->p_lindex = fs->fs_gindex;
     page->p_dvalid = 1;
     page->p_dnext = prev;
     return page;

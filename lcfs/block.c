@@ -791,10 +791,11 @@ lc_grow(struct gfs *gfs) {
     assert(size != -1);
     assert(size >= (oblock * LC_BLOCK_SIZE));
     block = size / LC_BLOCK_SIZE;
-    lc_printf("lc_grow: old blocks %ld new size %ld new blocks %ld\n", oblock, size, block);
     if (block <= oblock) {
         return;
     }
+    lc_printf("Growing file system, old size %ld new size %ld\n",
+              oblock * LC_BLOCK_SIZE, size);
     lc_lockExclusive(fs);
     pthread_mutex_lock(&gfs->gfs_alock);
     super->sb_tblocks = block;
@@ -802,6 +803,7 @@ lc_grow(struct gfs *gfs) {
                       true);
     gfs->gfs_blocksReserved = (super->sb_tblocks * LC_RESERVED_BLOCKS) / 100ul;
     pthread_mutex_unlock(&gfs->gfs_alock);
+    lc_markExtentsDirty(fs);
     lc_markSuperDirty(fs);
     lc_unlockExclusive(fs);
 }
