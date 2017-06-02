@@ -32,7 +32,8 @@ WORKDIR fuse-3.0.2
 RUN cp ../fuse/fusermount.c util && ./configure --bindir=/opt/lcfs/bin && make -j8 && make install 
 
 WORKDIR /go/src/github.com/portworx/lcfs
-RUN rpm -Uvh c7rpms/rpmbuild/RPMS/noarch/pprof-2.4-8.el7.centos.noarch.rpm c7rpms/rpmbuild/RPMS/x86_64/gperftools-2.4-8.el7.centos.x86_64.rpm c7rpms/rpmbuild/RPMS/x86_64/gperftools-devel-2.4-8.el7.centos.x86_64.rpm c7rpms/rpmbuild/RPMS/x86_64/gperftools-libs-2.4-8.el7.centos.x86_64.rpm  c7rpms/rpmbuild/RPMS/x86_64/libunwind-1.1-5.el7.centos.2.x86_64.rpm c7rpms/rpmbuild/RPMS/x86_64/libunwind-devel-1.1-5.el7.centos.2.x86_64.rpm
+RUN wget -q http://yum.portworx.com/repo/rpms/lcfs/c7rpms.tgz && tar -xzf c7rpms.tgz
+RUN rpm -Uvh rpmbuild/RPMS/noarch/pprof-2.4-8.el7.centos.noarch.rpm rpmbuild/RPMS/x86_64/gperftools-2.4-8.el7.centos.x86_64.rpm rpmbuild/RPMS/x86_64/gperftools-devel-2.4-8.el7.centos.x86_64.rpm rpmbuild/RPMS/x86_64/gperftools-libs-2.4-8.el7.centos.x86_64.rpm  rpmbuild/RPMS/x86_64/libunwind-1.1-5.el7.centos.2.x86_64.rpm rpmbuild/RPMS/x86_64/libunwind-devel-1.1-5.el7.centos.2.x86_64.rpm
 
 WORKDIR /go/src/github.com/portworx/lcfs/lcfs
 
