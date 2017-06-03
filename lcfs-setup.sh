@@ -127,8 +127,15 @@ function download_lcfs_binary()
 function install_lcfs_binary()
 {
     local flg_fl=${PWX_DIR}/.lcfs
+    local isTar=0
 
-    if [ ${isAlpine} -eq 1 -o ${isCentos} -eq 1 ]; then
+    local file_cmd=$(which file 2>/dev/null)
+    if [ $? -eq 0 ]; then
+	${file_cmd} -b -L ${LOCAL_PKG} 2>&1 | egrep -q 'gzip compressed data' 
+	[ $? -eq 0 ] && isTar=1
+    fi    
+    
+    if [ ${isAlpine} -eq 1 -o ${isTar} -eq 1 ]; then
 	tar -tzf ${LOCAL_PKG} | grep -v '.*/$' &> ${LOCAL_MANIFEST}
 	tar -C / -xzf ${LOCAL_PKG}
 	[ $? -eq 0 ] && touch ${flg_fl}
