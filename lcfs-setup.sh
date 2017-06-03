@@ -130,7 +130,7 @@ function install_lcfs_binary()
     local isTar=0
 
     local file_cmd=$(which file 2>/dev/null)
-    if [ $? -eq 0 ]; then
+    if [ $? -eq 0 -a -n "${file_cmd}" ]; then
 	${file_cmd} -b -L ${LOCAL_PKG} 2>&1 | egrep -q 'gzip compressed data' 
 	[ $? -eq 0 ] && isTar=1
     fi    
