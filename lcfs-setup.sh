@@ -596,6 +596,10 @@ function stop_remove_lcfs()
     clean_mount "${DOCKER_MNT}"
     killprocess lcfs
     sleep 3
+    
+    if [ ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ]; then      # for now qemu only for mac docker.   
+	[ -n "${QNBD}" ] && [[ ${DEV} == /dev/nbd* ]] && ${QNBD} -d ${DEV} 
+    fi
 
     if [ -n "${REMOVE}" ]; then
 	dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN} -s vfs"
@@ -604,9 +608,6 @@ function stop_remove_lcfs()
 	[ "${DEV}" != "/dev/sdNN" -a -z "${ZERODEV}" ] && read -p "Clear (dd) or remove the lcfs device or file [${DEV}] (y/n)? " yn
 	if [ "${yn,,}" = "y" -o -n "${ZERODEV}"  ]; then
 	    [ "${DEV}" != "/dev/sdNN" ] && clear_dev ${DEV}
-	    if [ ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ]; then      # for now qemu only for mac docker.   
-		[ -n "${QNBD}" ] && [[ ${DEV} == /dev/nbd* ]] && ${QNBD} -d ${DEV} 
-	    fi
 	    ${SUDO} \rm -f ${DEVFL}
 	fi
 
@@ -640,8 +641,12 @@ function setup_lcfs_device()
 	    echo "Note: LCFS device file ${DEVFL} exists. Using existing device file ${DEVFL} without modifying."
 	fi
     else
+	connect_dev ${DEV}
+	if [ $? -ne 0 -a ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ]; then      # for now qemu only for mac docker.   
+	    connect_dev_file ${DEVFL}
+	fi
+
 	if [ ! -e ${LCFS_ENV_FL} ]; then
-	    connect_dev ${DEV}
 	    [ $? -ne 0 ] && echo "Error: Failed to connect to device ${DEV}." && system_docker_restart && cleanup_and_exit 1
 	    echo "Clearing device ${DEV} for LCFS use."
 	    clear_dev ${DEV}
