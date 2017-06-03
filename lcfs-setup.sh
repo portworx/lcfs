@@ -41,9 +41,10 @@ fi
 LCFS_IMG=${LCFS_IMG:-"portworx/lcfs:latest"}
 DOCKER_MNT=${DOCKER_MNT:-"/var/lib/docker"}
 PLUGIN_MNT=${PLUGIN_MNT:-"/lcfs"}
-DEV=${DEV:-"/dev/sdNN"}
-if [ ${isAlpine} -eq 1 ]; then
-    DEVFL=${DEVFL:-"/var/lcfs-dev-file"}      # Set for all Alpine & Mac VM.  May want 
+DEV=${DEV:-"/dev/sdNN"
+}
+if [ ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ]; then  # for now qemu only for mac docker.
+    DEVFL=${DEVFL:-"/host_docker_app/lcfs-dev.img"}      # Set for all Alpine & Mac VM.  May want 
     DSZ=${DSZ:-"20G"}                         # to separate for Mac VM & Alpine.
 else
     DEVFL=${DEVFL:-"/lcfs-dev-file"}
@@ -547,9 +548,7 @@ function create_dev_file()
     local done=0
 
     if [ ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ]; then     # for now qemu only for mac docker.
-	local pdevfl=/host_docker_app/lcfs-dev.img                   # This location needs to change if
-	                                                             # not using the mac.
-	[ "${DEVFL}" != "/var/lcfs-dev-file" ] && pdevfl=${DEVFL}
+	local pdevfl=${DEVFL}
  
 	if [ -n "${QIMG}" ]; then
 	    echo "Creating device image..."
