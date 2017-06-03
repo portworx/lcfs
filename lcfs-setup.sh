@@ -633,15 +633,11 @@ function setup_lcfs_device()
 	    create_dev_file "${DEVFL}" "${DSZ}"
 	    [ $? -ne 0 ] && echo "Error: Failed to create LCFS device file ${DEVFL}." && system_docker_restart && cleanup_and_exit 1
 	else
-	    if [ ! -e ${LCFS_ENV_FL} ]; then
-		echo "Note: LCFS device file ${DEVFL} exists. Size of the device will not be changed. Device will just be cleared for LCFS use."
-		connect_dev_file ${DEVFL}
-		[ $? -ne 0 ] && echo "Error: Failed to connect to device file." && system_docker_restart && cleanup_and_exit 1
-		clear_dev ${DEV}
-		DSZ=$(ls -lh ${DEVFL}  | awk '{print $5}')
-	    else
-		echo "Note: LCFS device file ${DEVFL} exists. Using existing device file ${DEVFL} without modifying."
-	    fi
+	    connect_dev_file ${DEVFL}
+	    [ $? -ne 0 ] && echo "Error: Failed to connect to device file." && system_docker_restart && cleanup_and_exit 1
+	    
+	    [ ! -e ${LCFS_ENV_FL} ] && DSZ=$(ls -lh ${DEVFL}  | awk '{print $5}')
+	    echo "Note: LCFS device file ${DEVFL} exists. Using existing device file ${DEVFL} without modifying."
 	fi
     else
 	if [ ! -e ${LCFS_ENV_FL} ]; then
