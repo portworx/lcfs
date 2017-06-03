@@ -644,15 +644,10 @@ function setup_lcfs_device()
 	connect_dev ${DEV}
 	if [ $? -ne 0 -a ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ]; then      # for now qemu only for mac docker.   
 	    connect_dev_file ${DEVFL}
+	    [ $? -ne 0 ] && echo "Error: Failed to connect to device file." && system_docker_restart && cleanup_and_exit 1
 	fi
 
-	if [ ! -e ${LCFS_ENV_FL} ]; then
-	    [ $? -ne 0 ] && echo "Error: Failed to connect to device ${DEV}." && system_docker_restart && cleanup_and_exit 1
-	    echo "Clearing device ${DEV} for LCFS use."
-	    clear_dev ${DEV}
-	else
-	    echo "Note: LCFS device file exists. Using existing device file ${DEV} without modifying."
-	fi
+	echo "Note: LCFS device file exists. Using existing device file ${DEV} without modifying."
     fi
 }
 
