@@ -57,6 +57,7 @@ lcfs:
 	@echo "====================> building lcfs docker plugin..."
 	cd plugin/ && make lcfs #./build_plugin.sh
 
+lcfs-alpine: CPVER:=$(shell ./lcfs/version_gen.sh -p)
 lcfs-alpine: BASEDIR:=$(shell pwd)
 lcfs-alpine: INSTDIR:=$(BASEDIR)/pkgs
 lcfs-alpine: GR_CONTAINER:=alpine-$(GR_CONTAINER)
@@ -65,9 +66,12 @@ lcfs-alpine: submodules
 	mkdir -p $(INSTDIR)
 	docker build -t $(GR_CONTAINER) $(BUILD_ARGS) -f Dockerfile.alpine-lcfs.build .
 	docker run --name $(GR_CONTAINER) $(GR_CONTAINER) ls -l /
-	docker cp $(GR_CONTAINER):/lcfs-alpine.binaries.tgz pkgs
+	docker cp $(GR_CONTAINER):/lcfs-$(CPVER)-alpine.binaries.tgz pkgs
+	cd pkgs && ln -s lcfs-$(CPVER)-alpine.binaries.tgz lcfs-alpine.binaries.tgz && cd ../
 	docker rm $(GR_CONTAINER)
 
+
+lcfs-centos: CPVER:=$(shell ./lcfs/version_gen.sh -p)
 lcfs-centos: BASEDIR:=$(shell pwd)
 lcfs-centos: INSTDIR:=$(BASEDIR)/pkgs
 lcfs-centos: GR_CONTAINER:=centos-$(GR_CONTAINER)
@@ -76,7 +80,8 @@ lcfs-centos: submodules
 	mkdir -p $(INSTDIR)
 	docker build -t $(GR_CONTAINER) $(BUILD_ARGS) -f Dockerfile.centos.build .
 	docker run --name $(GR_CONTAINER) $(GR_CONTAINER) ls -l /
-	docker cp $(GR_CONTAINER):/lcfs-centos.binaries.tgz pkgs
+	docker cp $(GR_CONTAINER):/lcfs-$(CPVER)-centos.binaries.tgz pkgs
+	cd pkgs && ln -s lcfs-$(CPVER)-centos.binaries.tgz lcfs-centos.binaries.tgz && cd ../
 	docker rm $(GR_CONTAINER)
 
 deploy:

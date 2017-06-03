@@ -39,4 +39,4 @@ RUN mkdir -p /opt/lcfs/services && \
     \cp lcfs-setup.sh /opt/lcfs/bin && \
     \cp lcfs/lcfs /opt/lcfs/bin && \
     \cp lcfs.system* /opt/lcfs/services && \
-    tar -C / -czvf /lcfs-alpine.binaries.tgz opt
+    tar -C / -czvf /lcfs-$(lcfs/version_gen.sh -p)-alpine.binaries.tgz opt
