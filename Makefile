@@ -48,7 +48,7 @@ gr-plugin:
 gr-clean:
 	@echo "removing $(REPO)$(GR_CONTAINER)"
 	-docker rm -vf $(REPO)$(GR_CONTAINER)
-	-docker rmi $(GR_CONTAINER) alpine-$(GR_CONTAINER)
+	-docker rmi $(GR_CONTAINER) alpine-$(GR_CONTAINER) centos-$(GR_CONTAINER)
 
 plugin:
 	@cd plugin && make

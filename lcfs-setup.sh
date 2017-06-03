@@ -10,8 +10,12 @@ ulimit -c unlimited
 [ $(id -u) -ne 0 ] && SUDO=sudo
 
 isAlpine=0
-SYS_TYPE=$([ -e /etc/os-release ] && cat /etc/os-release | egrep '^ID=' | sed -e s'/^ID=//')
-[ -n "${SYS_TYPE}" -a "${SYS_TYPE}" == "alpine" ] && isAlpine=1
+isCentos=0
+SYS_TYPE=$([ -e /etc/os-release ] && cat /etc/os-release | egrep '^ID=' | sed -e 's/^ID=//' -e 's/"//g')
+if [ -n "${SYS_TYPE}" ]; then
+   [ "${SYS_TYPE}" == "alpine" ] && isAlpine=1
+   [ "${SYS_TYPE}" == "centos" -o "${SYS_TYPE}" == "fedora" -o "${SYS_TYPE}" == "rhel" ] && isCentos=1
+fi
 
 isBusyBox=0
 readlink -f $(which timeout) | egrep -q 'busybox$'
@@ -29,6 +33,8 @@ LCFS_ENV_FL=${LCFS_ENV_FL:-"${LCFS_ENV_DIR}/lcfs.env"}
 
 if [ ${isAlpine} -eq 1 ]; then
     LCFS_PKG=${LCFS_PKG:-"http://lcfs.portworx.com/alpine/lcfs-alpine.binaries.tgz"}
+elif [ ${isCentos} -eq 1 ]; then
+    LCFS_PKG=${LCFS_PKG:-"http://lcfs.portworx.com/lcfs-centos.binaries.tgz"}
 else
     LCFS_PKG=${LCFS_PKG:-"http://lcfs.portworx.com/lcfs.rpm"}
 fi
@@ -51,6 +57,8 @@ LCFS_BINARY=${PWX_DIR}/bin/lcfs
 LOCAL_DNLD=${PWX_DIR}/dnld
 if [ ${isAlpine} -eq 1 ]; then
     LOCAL_PKG=${LOCAL_PKG:-"${LOCAL_DNLD}/lcfs-alpine.binaries.tgz"}
+elif [ ${isCentos} -eq 1 ]; then
+    LOCAL_PKG=${LOCAL_PKG:-"${LOCAL_DNLD}/lcfs-centos.binaries.tgz"}
 else
     LOCAL_PKG=${LOCAL_DNLD}/lcfs.rpm
 fi
@@ -120,7 +128,7 @@ function install_lcfs_binary()
 {
     local flg_fl=${PWX_DIR}/.lcfs
 
-    if [ ${isAlpine} -eq 1 ]; then
+    if [ ${isAlpine} -eq 1 -o ${isCentos} -eq 1 ]; then
 	tar -tzf ${LOCAL_PKG} | grep -v '.*/$' &> ${LOCAL_MANIFEST}
 	tar -C / -xzf ${LOCAL_PKG}
 	[ $? -eq 0 ] && touch ${flg_fl}
