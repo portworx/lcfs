@@ -285,7 +285,6 @@ function system_manage()
 		    ${SUDO} rc-update show | egrep -q "^ *$2 " 
 		    if [ $? -eq 0 ]; then 
 			${SUDO} rc-update del $2
-			${SUDO} rc-update del $2 shutdown
 		    fi
 		fi
 		;;
