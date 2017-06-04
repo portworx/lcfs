@@ -15,6 +15,7 @@ SERVICE_NAME=lcfssrv
 SERVICE_LOG=/var/log/${SERVICE_NAME}.log
 SERVICE_SCRIPT=/opt/lcfs/bin/lcfs-setup.sh
 SERVICE_ENV_FILE=/etc/lcfs/lcfs.env
+SERVICE_LOCK_FILE=/var/lock/${lcfssrv}
 
 function log_service_msg()
 {
@@ -41,7 +42,8 @@ function start_lcfs()
         log_service_msg "${ACTION} ${SERVICE_NAME}" "${SERVICE_LOG}" "append"
         ${SERVICE_SCRIPT} --start >> ${SERVICE_LOG} 2>&1                     
         ret=$?                                                                                        
-        if [ ${ret} -eq 0 ]; then                                                                     
+        if [ ${ret} -eq 0 ]; then
+	    touch ${SERVICE_LOCK_FILE}
             ${SERVICE_SCRIPT} --status                                                                   
         else                                                                                             
             echo "Error: failed to start ${SERVICE_NAME} service. Check ${SERVICE_LOG} for more details."
@@ -57,7 +59,8 @@ function stop_lcfs()
        	log_service_msg "${ACTION} ${SERVICE_NAME}" "${SERVICE_LOG}" "append"                            
         ${SERVICE_SCRIPT} --stop >> ${SERVICE_LOG} 2>&1                                                  
         ret=$?                                                                                        
-        if [ ${ret} -eq 0 ]; then                                                                     
+        if [ ${ret} -eq 0 ]; then
+	    \rm -f ${SERVICE_LOCK_FILE}                                                                
             ${SERVICE_SCRIPT} --status                                                                   
         else                                                                                             
             echo "Error: failed to start ${SERVICE_NAME} service. Check ${SERVICE_LOG} for more details."

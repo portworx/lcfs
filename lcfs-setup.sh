@@ -285,6 +285,7 @@ function system_manage()
 		    ${SUDO} rc-update show | egrep -q "^ *$2 " 
 		    if [ $? -eq 0 ]; then 
 			${SUDO} rc-update del $2
+			${SUDO} rc-update del $2 shutdown
 		    fi
 		fi
 		;;
@@ -351,6 +352,7 @@ function lcfs_startup_setup()
 	    ${SUDO} chkconfig lcfs on
 	elif [ -n "$(${SUDO} which rc-update)" ]; then
 	    ${SUDO} rc-update add lcfs
+	    ${SUDO} rc-update add lcfs shutdown
 	fi
     fi
 
