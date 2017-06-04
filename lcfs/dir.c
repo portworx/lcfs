@@ -700,7 +700,8 @@ lc_dirReaddir(fuse_req_t req, struct fs *fs, struct inode *dir,
                 if (parent == fs->fs_gfs->gfs_layerRoot) {
                     gindex = lc_getIndex(fs, parent, ino);
                     if (fs->fs_gindex != gindex) {
-                        nfs = lc_getLayerLocked(lc_setHandle(gindex, ino), false);
+                        nfs = lc_getLayerLocked(lc_setHandle(gindex, ino),
+                                                false);
                     }
                 } else {
                     gindex = fs->fs_gindex;

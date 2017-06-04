@@ -17,7 +17,8 @@ getfs() {
 static void
 usage(char *prog) {
     lc_syslog(LOG_ERR, "usage: %s daemon <device> <host-mnt> <plugin-mnt>"
-                       " [-f] [-c] [-d] [-m] [-r] [-t] [-p] [-s] [-v]\n", prog);
+                       " [-f] [-c] [-d] [-m] [-r] [-t] [-p] [-s] [-v]\n",
+                       prog);
     lc_syslog(LOG_ERR, "\tdevice        - device or file - image layers"
                        " will be saved here\n"
                     "\thost-mnt      - mount point on host\n"

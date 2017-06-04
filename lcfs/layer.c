@@ -581,7 +581,6 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
     fs->fs_mcount = blocks;
 
     /* Switch layer roots and indices */
-    //lc_printf("Swapping layers fs %p cfs %p with index %d and %d\n", fs, cfs, gindex, newgindex);
     assert(fs->fs_child == NULL);
     assert(gfs->gfs_roots[newgindex] == cfs->fs_root);
     assert(gfs->gfs_roots[gindex] == root);

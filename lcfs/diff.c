@@ -16,7 +16,6 @@ lc_addFile(struct fs *fs, struct cdir *cdir, ino_t ino, char *name,
            uint16_t len, enum lc_changeType ctype) {
     struct cfile *cfile = cdir->cd_file, **prev = &cdir->cd_file;
 
-    //lc_printf("Adding file %s inode %ld, path %s type %d\n", name, ino, cdir->cd_path, ctype);
     assert(cdir->cd_type != LC_REMOVED);
 
     /* Check if the file already in the list */
@@ -199,7 +198,8 @@ lc_compareDirectory(struct fs *fs, struct inode *dir, struct inode *pdir,
             }
             if (ino == LC_INVALID_INODE) {
                 lc_addName(fs, cdir, dirent->di_ino, dirent->di_name,
-                           dirent->di_mode, dirent->di_size, lastIno, LC_ADDED);
+                           dirent->di_mode, dirent->di_size, lastIno,
+                           LC_ADDED);
             }
             count++;
             dirent = dirent->di_next;
@@ -474,7 +474,6 @@ lc_addName(struct fs *fs, struct cdir *cdir, ino_t ino, char *name,
            enum lc_changeType ctype) {
     struct inode *dir, *inode;
 
-    //lc_printf("Adding name %s ino %ld mode %d type %d\n", name, ino, mode, ctype);
     if (S_ISDIR(mode) && (ctype != LC_REMOVED)) {
         dir = lc_getInode(fs, ino, NULL, false, false);
         if (!(dir->i_flags & LC_INODE_CTRACKED) || (ctype == LC_ADDED)) {
@@ -507,7 +506,6 @@ lc_replyDiff(fuse_req_t req, struct fs *fs) {
 
     /* Traverse change list */
     while ((cdir = fs->fs_changes)) {
-        //lc_printf("Dir %s len %d type %d\n", cdir->cd_path, cdir->cd_len, cdir->cd_type);
         if (cdir->cd_ino == fs->fs_root) {
             cdir->cd_type = LC_NONE;
         }
@@ -532,7 +530,6 @@ lc_replyDiff(fuse_req_t req, struct fs *fs) {
             if ((size + plen) >= LC_BLOCK_SIZE) {
                 goto out;
             }
-            //lc_printf("file %s len %d type %d\n", cfile->cf_name, cfile->cf_len, cfile->cf_type);
             pchange = (struct pchange *)&buf[size];
             pchange->ch_type = cfile->cf_type;
             pchange->ch_len = cfile->cf_len;

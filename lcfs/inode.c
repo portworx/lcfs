@@ -528,7 +528,8 @@ lc_readInodes(struct gfs *gfs, struct fs *fs) {
         lc_cloneRootDir(fs->fs_parent->fs_rootInode, fs->fs_rootInode);
         return;
     }
-    lc_printf("Reading inodes for fs %d %ld, block %ld\n", fs->fs_gindex, fs->fs_root, block);
+    lc_printf("Reading inodes for fs %d %ld, block %ld\n",
+              fs->fs_gindex, fs->fs_root, block);
     lc_mallocBlockAligned(fs, (void **)&buf, LC_MEMTYPE_BLOCK);
     lc_mallocBlockAligned(fs, (void **)&ibuf, LC_MEMTYPE_BLOCK);
     lc_mallocBlockAligned(fs, (void **)&xbuf, LC_MEMTYPE_BLOCK);
@@ -779,7 +780,6 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
                 fs->fs_super->sb_flags |= LC_SUPER_ICHECK;
             }
 
-            //lc_printf("Writing inode %ld to offset %ld\n", inode->i_ino, offset);
             if (offset == 0) {
                 lc_mallocBlockAligned(fs->fs_rfs, (void **)&inodes,
                                       LC_MEMTYPE_DATA);

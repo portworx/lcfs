@@ -289,7 +289,6 @@ lc_emapFlush(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         emap->e_block = lc_getExtentBlock(extent);
         emap->e_count = lc_getExtentCount(extent);
         bcount += emap->e_count;
-        //lc_printf("page %ld at block %ld count %d\n", emap->e_off, emap->e_block, emap->e_count);
         extent = extent->ex_next;
     }
     assert(inode->i_dinode.di_blocks == bcount);
@@ -339,7 +338,8 @@ lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
         return;
     }
 
-    lc_printf("Inode %ld with fragmented extents, blocks %d\n", inode->i_ino, inode->i_dinode.di_blocks);
+    lc_printf("Inode %ld with fragmented extents, blocks %d\n", inode->i_ino,
+              inode->i_dinode.di_blocks);
     bcount = inode->i_dinode.di_blocks;
     inode->i_dinode.di_blocks = 0;
     block = inode->i_emapDirBlock;
@@ -358,7 +358,6 @@ lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
                 break;
             }
             assert(emap->e_count > 0);
-            //lc_printf("page %ld at block %ld count %d\n", emap->e_off, emap->e_block, emap->e_count);
             lc_addEmapExtent(gfs, fs, extents,
                              emap->e_off, emap->e_block, emap->e_count);
             extents = &((*extents)->ex_next);
@@ -428,7 +427,8 @@ lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
             if (!remove) {
 
                 /* Free the extent and continue on unmount */
-                lc_freeExtent(gfs, fs, extent, lc_inodeGetEmapPtr(inode), true);
+                lc_freeExtent(gfs, fs, extent, lc_inodeGetEmapPtr(inode),
+                              true);
                 extent = lc_inodeGetEmap(inode);
                 continue;
             }

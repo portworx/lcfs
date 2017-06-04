@@ -672,7 +672,6 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
              * concurrently OR files flushed concurrently.
              */
             if ((j >= iovcount) || (j && ((block + j) != page->p_block))) {
-                //lc_printf("Not contigous, block %ld previous block %ld i %ld count %ld\n", block, page->p_block, i, count);
                 assert(block != 0);
                 if (j == 1) {
                     lc_writeBlock(gfs, fs, iovec[0].iov_base, block);

@@ -124,7 +124,6 @@ lc_memStatsUpdate(struct fs *fs, size_t size, bool alloc,
         return;
     }
 
-    //lc_printf("lc_memStatsUpdate: size %ld for %s %s\n", size, mrequests[type], alloc ? "allocated" : "freed");
     if (fs) {
 
         /* Per layer stats */

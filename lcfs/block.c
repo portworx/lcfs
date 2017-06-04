@@ -397,7 +397,8 @@ lc_readExtents(struct gfs *gfs, struct fs *fs) {
         lc_printf("Total blocks in use in layer %ld\n", fs->fs_blocks);
     } else {
         lc_printf("Total free blocks %ld used blocks %ld total blocks %ld\n",
-                  count, gfs->gfs_super->sb_blocks, gfs->gfs_super->sb_tblocks);
+                  count, gfs->gfs_super->sb_blocks,
+                  gfs->gfs_super->sb_tblocks);
         assert((count + gfs->gfs_super->sb_blocks) ==
                gfs->gfs_super->sb_tblocks);
         gfs->gfs_blocksReserved = (gfs->gfs_super->sb_tblocks *
