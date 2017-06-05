@@ -22,10 +22,10 @@ RUN apk update && \
 ADD . /go/src/github.com/portworx/lcfs
 
 WORKDIR /go/src/github.com/portworx/lcfs
-RUN wget -q https://github.com/libfuse/libfuse/releases/download/fuse-3.0.0/fuse-3.0.0.tar.gz && \
-    tar -xzf fuse-3.0.0.tar.gz
+RUN wget -q https://github.com/libfuse/libfuse/releases/download/fuse-3.0.2/fuse-3.0.2.tar.gz && \
+    tar -xzf fuse-3.0.2.tar.gz
 
-WORKDIR fuse-3.0.0
+WORKDIR fuse-3.0.2
 RUN cp -a ../fuse/fusermount.c util && cp -a ../fuse/lib/* lib && ./configure CFLAGS=-D__MUSL__ --bindir=/opt/pwx/bin && make -j8 && make install && cp -a /opt/pwx/bin/fusermount3 /go/src/github.com/portworx/lcfs/lcfs
 
 WORKDIR /go/src/github.com/portworx/lcfs/gperftools
