@@ -481,8 +481,8 @@ retry:
                 }
                 lc_readBlock(gfs, fs, block, page->p_data);
                 page->p_dvalid = 1;
+                missed = true;
             }
-            missed = true;
         }
         lc_unlockPageRead(fs, lhash);
     }
@@ -697,8 +697,7 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
     }
 
     /* Release the pages after writing */
-    lc_releasePages(gfs, fs, head,
-                    fs->fs_removed || (fs == lc_getGlobalFs(gfs)));
+    lc_releasePages(gfs, fs, head, fs->fs_removed);
 }
 
 /* Add a page to the file system dirty list for writeback */
