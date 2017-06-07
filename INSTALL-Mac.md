@@ -27,7 +27,7 @@ By default, LCFS uses a device /dev/nbd0 which is backed up by /host_docker_app/
 # qemu-nbd -d /dev/nbd0
 # qemu-img resize -f raw /host_docker_app/lcfs-dev.img  +10G
 # qemu-nbd -f raw -c /dev/nbd0 /host_docker_app/lcfs-dev.img
-# /opt/pwx/bin/lcfs grow /lcfs
+# /opt/lcfs/bin/lcfs grow /lcfs
 ```
 
 ## Uninstalling LCFS
