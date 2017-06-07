@@ -25,7 +25,7 @@ WORKDIR /go/src/github.com/portworx/lcfs
 RUN wget -q https://github.com/libfuse/libfuse/releases/download/fuse-3.0.2/fuse-3.0.2.tar.gz && \
     tar -xzf fuse-3.0.2.tar.gz
 WORKDIR fuse-3.0.2
-RUN cp ../fuse/fusermount.c util && ./configure --bindir=/opt/pwx/bin && make -j8 && make install && cp -a /opt/pwx/bin/fusermount3 /go/src/github.com/portworx/lcfs/lcfs
+RUN cp ../fuse/fusermount.c util && ./configure --bindir=/opt/lcfs/bin && make -j8 && make install && cp -a /opt/lcfs/bin/fusermount3 /go/src/github.com/portworx/lcfs/lcfs
 
 WORKDIR /go/src/github.com/portworx/lcfs/lcfs
 RUN make clean && \
