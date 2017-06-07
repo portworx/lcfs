@@ -188,3 +188,14 @@ lc_removeExtent(struct fs *fs, struct extent **extents, uint64_t start,
     return freed;
 }
 
+/* Add a metadata extent to the specified extent list */
+void
+lc_inodeAddMetaExtent(struct gfs *gfs, struct fs *fs, struct extent **extents,
+                      uint64_t start, uint64_t count, bool sort) {
+#ifndef DEBUG
+    if (fs->fs_frozen) {
+        return;
+    }
+#endif
+    lc_addSpaceExtent(gfs, fs, extents, start, count, sort);
+}

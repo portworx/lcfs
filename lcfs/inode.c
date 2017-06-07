@@ -731,6 +731,20 @@ lc_inodeFreeMetaExtents(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     inode->i_xattrBlock = LC_INVALID_BLOCK;
 }
 
+/* Discard extent lists tracked with inode */
+static void
+lc_inodeReleaseExtentLists(struct gfs *gfs, struct fs *fs,
+                           struct inode *inode) {
+    if (inode->i_emapDirExtents) {
+        lc_blockFreeExtents(gfs, fs, inode->i_emapDirExtents, 0);
+        inode->i_emapDirExtents = NULL;
+    }
+    if (inode->i_xattrData && inode->i_xattrExtents) {
+        lc_blockFreeExtents(fs->fs_gfs, fs, inode->i_xattrExtents, 0);
+        inode->i_xattrExtents = NULL;
+    }
+}
+
 /* Flush a dirty inode to disk */
 static int
 lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
@@ -853,6 +867,7 @@ lc_freezeLayer(struct gfs *gfs, struct fs *fs) {
             }
             assert(!S_ISREG(inode->i_mode) ||
                    (lc_inodeGetDirtyPageCount(inode) == 0));
+            lc_inodeReleaseExtentLists(gfs, fs, inode);
 
             /* Drop locks from the inode */
 #ifdef LC_RWLOCK_DESTROY

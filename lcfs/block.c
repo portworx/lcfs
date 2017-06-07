@@ -651,6 +651,10 @@ lc_replaceFreedExtents(struct fs *fs, struct extent **extents,
     struct gfs *gfs = fs->fs_gfs;
     bool insert = true;
 
+    if (fs->fs_frozen) {
+        assert(extent == NULL);
+        return;
+    }
     assert((block + count) < gfs->gfs_super->sb_tblocks);
     while (extent) {
         assert(extent->ex_type == LC_EXTENT_SPACE);

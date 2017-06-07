@@ -302,7 +302,8 @@ lc_dirRead(struct gfs *gfs, struct fs *fs, struct inode *dir, void *buf) {
 
     /* Read all directory blocks */
     while (block != LC_INVALID_BLOCK) {
-        lc_addSpaceExtent(gfs, fs, &dir->i_emapDirExtents, block, 1, false);
+        lc_inodeAddMetaExtent(gfs, fs, &dir->i_emapDirExtents, block, 1,
+                              false);
         lc_readBlock(gfs, fs, block, dblock);
         assert(dblock->db_magic == LC_DIR_MAGIC);
         lc_verifyBlock(dblock, &dblock->db_crc);

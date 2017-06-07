@@ -104,6 +104,9 @@ uint64_t lc_removeExtent(struct fs *fs, struct extent **extents,
                          uint64_t start, uint64_t count);
 void lc_freeExtent(struct gfs *gfs, struct fs *fs, struct extent *extent,
                    struct extent **prev, bool layer);
+void lc_inodeAddMetaExtent(struct gfs *gfs, struct fs *fs,
+                           struct extent **extents, uint64_t start,
+                           uint64_t count, bool sort);
 
 void lc_blockAllocatorInit(struct gfs *gfs, struct fs *fs);
 void lc_processFreeExtents(struct gfs *gfs, struct fs *fs, bool umount);

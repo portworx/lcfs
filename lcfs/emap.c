@@ -346,7 +346,8 @@ lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
 
     /* Read emap blocks */
     while (block != LC_INVALID_BLOCK) {
-        lc_addSpaceExtent(gfs, fs, &inode->i_emapDirExtents, block, 1, false);
+        lc_inodeAddMetaExtent(gfs, fs, &inode->i_emapDirExtents, block, 1,
+                              false);
         lc_readBlock(gfs, fs, block, eblock);
         assert(eblock->eb_magic == LC_EMAP_MAGIC);
         lc_verifyBlock(eblock, &eblock->eb_crc);

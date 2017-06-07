@@ -524,7 +524,8 @@ lc_xattrRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
 
     /* Read all extended attribute blocks linked from the inode */
     while (block != LC_INVALID_BLOCK) {
-        lc_addSpaceExtent(gfs, fs, &inode->i_xattrExtents, block, 1, false);
+        lc_inodeAddMetaExtent(gfs, fs, &inode->i_xattrExtents, block, 1,
+                              false);
         lc_readBlock(gfs, fs, block, xblock);
         assert(xblock->xb_magic == LC_XATTR_MAGIC);
         lc_verifyBlock(xblock, &xblock->xb_crc);
