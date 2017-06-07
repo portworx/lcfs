@@ -18,7 +18,7 @@ e.g. Systemd service to view LCFS status
 
 LCFS removal can be done quickly using the installed setup script with the `--remove` option.
 ```
-# sudo /opt/pwx/bin/lcfs-setup.sh --remove
+# sudo /opt/lcfs/bin/lcfs-setup.sh --remove
 ```
 
 ##  Manual installation
