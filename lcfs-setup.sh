@@ -1,7 +1,5 @@
 #!/bin/bash
 
-PATH="/opt/pwx/bin":${PATH}
-
 if [ "$1" == "--debug" -o -n "${DEBUG}" ]; then
     DEBUG="yes" && set -x
     [ "$1" == "--debug" ] && shift
@@ -46,7 +44,7 @@ else
     DSZ=${DSZ:-"500M"}
 fi
 
-PWX_DIR=/opt/pwx
+PWX_DIR=/opt/lcfs
 
 LCFS_BINARY=${PWX_DIR}/bin/lcfs
 
@@ -59,6 +57,8 @@ fi
 LOCAL_MANIFEST=${LOCAL_DNLD}/manifest
 
 DOCKER_DAEMON_CFG=/etc/docker/daemon.json
+
+PATH="${PWX_DIR}/bin":${PATH}
 
 function cleanup_and_exit()
 {
@@ -219,7 +219,6 @@ function dockerd_manual_start()
     fi
 }
 
-
 function system_docker_stop()
 {
     local sysd_pid=$(getPid systemd)
@@ -267,7 +266,7 @@ function system_manage()
 		if [ -n "$(${SUDO} which chkconfig)" ]; then
 		    ${SUDO} chkconfig $2 off
 		elif [ -n "$(${SUDO} which rc-update)" ]; then
-		    ${SUDO} rc-update show | egrep -q "^ *$2" 
+		    ${SUDO} rc-update show | egrep -q "^ *$2 " 
 		    if [ $? -eq 0 ]; then 
 			${SUDO} rc-update del $2
 		    fi
@@ -288,12 +287,12 @@ function lcfs_docker_startup_setup()
     echo "Setup LCFS Docker startup..."
     if [ -n "${sysd_pid}" ]; then   # Systemd setup
 	[ -e /etc/systemd/system/docker.service -a ! -e /etc/systemd/system/docker.service.orig ] && ${SUDO} cp -a /etc/systemd/system/docker.service /etc/systemd/system/docker.service.orig
-	${SUDO} cp -a /opt/pwx/services/lcfs.systemctl /etc/systemd/system/docker.service
+	${SUDO} cp -a ${PWX_DIR}/services/lcfs.systemctl /etc/systemd/system/docker.service
 	${SUDO} systemctl daemon-reexec  # Re-exec systemd bug (http://superuser.com/questions/1125250/systemctl-access-denied-when-root).
 	${SUDO} systemctl reenable docker
     elif [ -d /etc/init.d ]; then   # SystemV setup
 	[ -e /etc/init.d/docker -a ! -e /etc/init.d/docker.orig ] && ${SUDO} cp -a /etc/init.d/docker /etc/init.d/docker.orig
-	${SUDO} cp -a /opt/pwx/services/lcfs.systemv /etc/init.d/docker && ${SUDO} chkconfig docker on
+	${SUDO} cp -a ${PWX_DIR}/services/lcfs.systemv /etc/init.d/docker && ${SUDO} chkconfig docker on
     fi
 
     [ $? -ne 0 ] && echo "Warning: LCFS Docker startup configuration failed. LCFS Docker will not start automatically on system reboot."
@@ -327,11 +326,11 @@ function lcfs_startup_setup()
 
     echo "Setup LCFS startup..."
     if [ -n "${sysd_pid}" ]; then   # Systemd setup
-	${SUDO} cp -a /opt/pwx/services/lcfs.systemctl /etc/systemd/system/lcfs.service
+	${SUDO} cp -a ${PWX_DIR}/services/lcfs.systemctl /etc/systemd/system/lcfs.service
 	${SUDO} systemctl daemon-reexec  # Re-exec systemd bug (http://superuser.com/questions/1125250/systemctl-access-denied-when-root).
 	${SUDO} systemctl enable lcfs
     elif [ -d /etc/init.d ]; then   # SystemV setup
-	${SUDO} cp -a /opt/pwx/services/lcfs.systemv /etc/init.d/lcfs
+	${SUDO} cp -a ${PWX_DIR}/services/lcfs.systemv /etc/init.d/lcfs
 	if [ -n "$(${SUDO} which chkconfig)" ]; then
 	    ${SUDO} chkconfig lcfs on
 	elif [ -n "$(${SUDO} which rc-update)" ]; then
@@ -553,6 +552,21 @@ function create_dev_file()
     fi
 }
 
+function manifest_remove()
+{
+    local manifest_fl="$1"
+
+    [ -z "${manifest_fl}" ] && return 0
+    [ ! -s "${manifest_fl}" ]  && return 0
+
+    for fl in $(cat ${manifest_fl}); do
+	echo "${fl}" | egrep -q '^/?opt/'         # make sure to only remove from /opt
+	[ $? -eq 0 ] && ${SUDO} \rm -f "/${fl}"   # Add leading slash since is from root.
+    done
+
+    return 0
+}
+
 function stop_remove_lcfs()
 {
     local rcode=$1
@@ -586,6 +600,7 @@ function stop_remove_lcfs()
 	restore_docker_cfg
 	system_docker_restart
 	system_manage "enable" "docker"   # Reenable docker startup.
+	manifest_remove ${LOCAL_MANIFEST}
     fi
     [ -z "${rcode}" ] && rcode=0
     [ -n "${STOP}" -o -n "${REMOVE}" ] && cleanup_and_exit ${rcode}
@@ -753,6 +768,10 @@ while [ "$1" != "" ]; do
     shift
 done
 
+stop_remove_lcfs  # Stop existing docker if setup or --configure.
+
+sleep 5   #  Allow time for unmounts to happen.
+
 # Install lcfs binary
 if [ -z "${START}" ]; then
     install_fuse
@@ -762,10 +781,6 @@ elif [ ! -e "${LCFS_ENV_FL}" ]; then # --start was executed. Check config
     echo "LCFS not configured.  Re-execute this command with no options for a default configuration or with the '--configure' option."
     cleanup_and_exit 1
 fi
-
-stop_remove_lcfs  # Stop existing docker if setup or --configure.
-
-sleep 5   #  Allow time for unmounts to happen.
 
 # * Setup LCFS and start *
 
@@ -789,6 +804,7 @@ if [ -z "${START}" ]; then
 	${SUDO} ${DOCKER_BIN} plugin install --grant-all-permissions ${LCFS_IMG}
     fi
     killprocess ${DOCKER_SRV_BIN}
+    ${SUDO} \rm -fr ${PLUGIN_MNT}/vfs ${PLUGIN_MNT}/image/vfs 2>/dev/null  # clean up vfs
 fi
 
 dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN} --experimental -s ${LCFS_IMG}"

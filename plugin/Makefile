@@ -2,10 +2,10 @@
 # Maintainer Jose Rivera <jrivera@portworx.com> [201701.13]
 
 BASE_DIR = $(shell git rev-parse --show-toplevel)
-export GOPATH = $(shell echo ${BASE_DIR}/plugin/vendor | /bin/sed 's@\(.*\)/src/github.com.*@\1@g')
+export GOPATH = $(shell echo ${BASE_DIR}/plugin/vendor | sed 's@\(.*\)/src/github.com.*@\1@g')
 export GO15VENDOREXPERIMENT=1
 ifndef PKGS
-	PKGS := $(shell go list ./... 2>&1 | /bin/grep -v 'github.com/portworx/lcfs/vendor')
+	PKGS := $(shell go list ./... 2>&1 | grep -v 'github.com/portworx/lcfs/vendor')
 endif
 
 TARGETS := lcfs_plugin

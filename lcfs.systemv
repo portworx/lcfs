@@ -13,7 +13,7 @@ TERM=linux
 
 SERVICE_NAME=lcfssrv
 SERVICE_LOG=/var/log/${SERVICE_NAME}.log
-SERVICE_SCRIPT=/opt/pwx/bin/lcfs-setup.sh
+SERVICE_SCRIPT=/opt/lcfs/bin/lcfs-setup.sh
 SERVICE_ENV_FILE=/etc/lcfs/lcfs.env
 
 function log_service_msg()

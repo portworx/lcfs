@@ -44,13 +44,13 @@ export KERNELOTHER="%kernelother"
 make clean all
 
 %install
-mkdir -p ${RPM_BUILD_ROOT}/opt/pwx/bin
-mkdir -p ${RPM_BUILD_ROOT}/opt/pwx/services
-cp -f lcfs ${RPM_BUILD_ROOT}/opt/pwx/bin
-cp -f lcfs-setup.sh ${RPM_BUILD_ROOT}/opt/pwx/bin
-cp -f fusermount3 ${RPM_BUILD_ROOT}/opt/pwx/bin
-cp -f lcfs.systemctl ${RPM_BUILD_ROOT}/opt/pwx/services
-cp -f lcfs.systemv ${RPM_BUILD_ROOT}/opt/pwx/services
+mkdir -p ${RPM_BUILD_ROOT}/opt/lcfs/bin
+mkdir -p ${RPM_BUILD_ROOT}/opt/lcfs/services
+cp -f lcfs ${RPM_BUILD_ROOT}/opt/lcfs/bin
+cp -f lcfs-setup.sh ${RPM_BUILD_ROOT}/opt/lcfs/bin
+cp -f fusermount3 ${RPM_BUILD_ROOT}/opt/lcfs/bin
+cp -f lcfs.systemctl ${RPM_BUILD_ROOT}/opt/lcfs/services
+cp -f lcfs.systemv ${RPM_BUILD_ROOT}/opt/lcfs/services
 
 %check
 
@@ -59,11 +59,11 @@ cp -f lcfs.systemv ${RPM_BUILD_ROOT}/opt/pwx/services
 
 %files
 #%defattr(-,root,root,0755)
-/opt/pwx/bin/lcfs
-/opt/pwx/bin/lcfs-setup.sh
-/opt/pwx/bin/fusermount3
-/opt/pwx/services/lcfs.systemctl
-/opt/pwx/services/lcfs.systemv
+/opt/lcfs/bin/lcfs
+/opt/lcfs/bin/lcfs-setup.sh
+/opt/lcfs/bin/fusermount3
+/opt/lcfs/services/lcfs.systemctl
+/opt/lcfs/services/lcfs.systemv
 
 %pre
 

@@ -26,7 +26,7 @@ RUN wget -q https://github.com/libfuse/libfuse/releases/download/fuse-3.0.2/fuse
     tar -xzf fuse-3.0.2.tar.gz
 
 WORKDIR fuse-3.0.2
-RUN cp -a ../fuse/fusermount.c util && cp -a ../fuse/lib/* lib && ./configure CFLAGS=-D__MUSL__ --bindir=/opt/pwx/bin && make -j8 && make install && cp -a /opt/pwx/bin/fusermount3 /go/src/github.com/portworx/lcfs/lcfs
+RUN cp -a ../fuse/fusermount.c util && cp -a ../fuse/lib/* lib && ./configure CFLAGS=-D__MUSL__ --bindir=/opt/lcfs/bin && make -j8 && make install && cp -a /opt/lcfs/bin/fusermount3 /go/src/github.com/portworx/lcfs/lcfs
 
 WORKDIR /go/src/github.com/portworx/lcfs/gperftools
 RUN ./autogen.sh  && ./configure --enable-minimal && make install 
@@ -35,8 +35,8 @@ WORKDIR /go/src/github.com/portworx/lcfs/lcfs
 RUN make STATIC=y BUILD_FLAGS="${BUILD_FLAGS}" VERSION="${VERSION}" REVISION="${REVISION}" clean all
 
 WORKDIR /go/src/github.com/portworx/lcfs
-RUN mkdir -p /opt/pwx/services && \
-    \cp lcfs-setup.sh /opt/pwx/bin && \
-    \cp lcfs/lcfs /opt/pwx/bin && \
-    \cp lcfs.system* /opt/pwx/services && \
+RUN mkdir -p /opt/lcfs/services && \
+    \cp lcfs-setup.sh /opt/lcfs/bin && \
+    \cp lcfs/lcfs /opt/lcfs/bin && \
+    \cp lcfs.system* /opt/lcfs/services && \
     tar -C / -czvf /lcfs-alpine.binaries.tgz opt
