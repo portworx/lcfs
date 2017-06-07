@@ -34,7 +34,7 @@ By default, LCFS uses a device /dev/nbd0 which is backed up by /host_docker_app/
 To uninstall the LCFS, simply restart Docker from the Menu.  When Docker is up, remove the device image used for lcfs.
 
 ```
-# /opt/pwx/bin/lcfs-setup.sh --remove
+# /opt/lcfs/bin/lcfs-setup.sh --remove
 ```
 
 Note that your original image data from the previous driver will be intact.
