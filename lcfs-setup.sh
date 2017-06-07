@@ -121,6 +121,7 @@ function install_lcfs_binary()
     local flg_fl=${PWX_DIR}/.lcfs
 
     if [ ${isAlpine} -eq 1 ]; then
+	tar -tzf ${LOCAL_PKG} | grep -v '.*/$' &> ${LOCAL_MANIFEST}
 	tar -C / -xzf ${LOCAL_PKG}
 	[ $? -eq 0 ] && touch ${flg_fl}
     else
