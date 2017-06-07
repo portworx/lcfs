@@ -167,6 +167,68 @@ lc_removeDirtyInode(struct fs *fs, struct inode *inode, struct inode *prev) {
     return next;
 }
 
+/* Invalidate pages of parent inode from the cache */
+static void
+lc_invalidateParentPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
+    struct extent *extent;
+    uint64_t i, block;
+
+    assert(S_ISREG(inode->i_mode));
+    if (inode->i_extentLength) {
+        block = inode->i_extentBlock;
+        i = inode->i_extentLength;
+        while (i) {
+             lc_invalPage(gfs, fs, block);
+             block++;
+             i--;
+        }
+    } else {
+        extent = lc_inodeGetEmap(inode);
+        while (extent) {
+            assert(extent->ex_type == LC_EXTENT_EMAP);
+            lc_validateExtent(gfs, extent);
+            i = lc_getExtentCount(extent);
+            block = lc_getExtentBlock(extent);
+            while (i) {
+                lc_invalPage(gfs, fs, block);
+                block++;
+                i--;
+            }
+            extent = extent->ex_next;
+        }
+    }
+    inode->i_flags |= LC_INODE_HIDDEN;
+}
+
+/* Invalidate pages of hidden inodes in parent layers */
+void
+lc_processHiddenInodes(struct gfs *gfs, struct fs *nfs) {
+    struct fs *fs = nfs->fs_parent;
+    struct inode *inode;
+
+    while (fs) {
+        assert(fs->fs_frozen);
+        if (fs->fs_dirtyInodes) {
+            pthread_mutex_lock(&fs->fs_dilock);
+            inode = fs->fs_dirtyInodes;
+            while (inode) {
+                assert(inode->i_fs == fs);
+                fs->fs_dirtyInodes = lc_inodeGetDirtyNext(inode);
+                if (fs->fs_dirtyInodesLast == inode) {
+                     fs->fs_dirtyInodesLast = NULL;
+                }
+                lc_inodeSetDirtyNext(inode, NULL);
+                pthread_mutex_unlock(&fs->fs_dilock);
+                lc_invalidateParentPages(gfs, fs, inode);
+                pthread_mutex_lock(&fs->fs_dilock);
+                inode = fs->fs_dirtyInodes;
+            }
+            pthread_mutex_unlock(&fs->fs_dilock);
+        }
+        fs = fs->fs_parent;
+    }
+}
+
 /* Flush inodes on the dirty list */
 void
 lc_flushDirtyInodeList(struct fs *fs, bool all) {

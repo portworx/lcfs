@@ -43,7 +43,7 @@ cmd_group lcfs_cmd_group[] = {
             "[-f] [-d] [-m] [-r] [-t] [-p] [-v]",
         "\tdevice     - device or file - image layers will be saved here\n"
         "\thost-mount - mount point on host\n"
-        "\thost-mount - mount point propogated the plugin\n"
+        "\thost-mount - mount point propogated to the plugin\n"
         "\t-f         - run foreground (optional)\n"
         "\t-c         - format file system (optional)\n"
         "\t-d         - display fuse debugging info (optional)\n"
@@ -106,6 +106,15 @@ cmd_group lcfs_cmd_group[] = {
         "<mnt>",
         "\tmnt     - mount point\n",
         1,
+        cmd_ioctl
+    },
+    {
+        "verbose",
+        "enable/disable verbose mode",
+        "<mnt>",
+        "\tmnt                  - mount point\n"
+        "\t[enable|disable]     - enable/disable verbose mode\n",
+        2,
         cmd_ioctl
     },
     {NULL},

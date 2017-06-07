@@ -177,6 +177,7 @@ struct inode *lc_getInode(struct fs *fs, ino_t ino, struct inode *handle,
 struct inode *lc_inodeInit(struct fs *fs, mode_t mode,
                             uid_t uid, gid_t gid, dev_t rdev, ino_t parent,
                             const char *target);
+void lc_hideInode(struct fs *fs, ino_t ino, struct inode *inode);
 void lc_rootInit(struct fs *fs, ino_t root);
 void lc_cloneRootDir(struct inode *pdir, struct inode *dir);
 void lc_setLayerRoot(struct gfs *gfs, ino_t ino);
@@ -252,6 +253,7 @@ void lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head,
                      bool inval);
 void lc_addPageForWriteBack(struct gfs *gfs, struct fs *fs, struct page *head,
                             struct page *tail, uint64_t pcount);
+void lc_processHiddenInodes(struct gfs *gfs, struct fs *fs);
 void *lc_flusher(void *data);
 void lc_cleaner(void);
 

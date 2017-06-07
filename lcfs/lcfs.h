@@ -16,6 +16,7 @@ enum ioctl_cmd {
     DCACHE_FLUSH = 111,             /* Flush pages not in use */
     LCFS_COMMIT = 112,              /* Commit to disk */
     LCFS_GROW = 113,                /* Grow file system */
+    LCFS_VERBOSE = 114,             /* Enable/disable verbose mode */
 };
 
 /* Prefix of fake file name used to trigger layer commit */

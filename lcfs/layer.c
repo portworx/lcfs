@@ -342,7 +342,7 @@ lc_umountLayer(fuse_req_t req, struct gfs *gfs, ino_t root) {
     int gindex, mcount;
 
     mcount = __sync_sub_and_fetch(&fs->fs_mcount, 1);
-    if (mcount) {
+    if (mcount || fs->fs_removed) {
         lc_unlock(fs);
         fuse_reply_ioctl(req, 0, NULL, 0);
         return;
@@ -357,6 +357,7 @@ lc_umountLayer(fuse_req_t req, struct gfs *gfs, ino_t root) {
          * those operations are finished.
          */
         fs = lc_getLayerLocked(root, true);
+        assert(!fs->fs_removed);
         assert((fs->fs_child == NULL) || fs->fs_commitInProgress);
         assert(!fs->fs_frozen);
         fuse_reply_ioctl(req, 0, NULL, 0);
@@ -370,10 +371,6 @@ lc_umountLayer(fuse_req_t req, struct gfs *gfs, ino_t root) {
         lc_markSuperDirty(fs);
         assert(gfs->gfs_layerInProgress > 0);
         __sync_sub_and_fetch(&gfs->gfs_layerInProgress, 1);
-        if (fs->fs_dpcount == 0) {
-            lc_unlock(fs);
-            return;
-        }
         lc_unlock(fs);
 
         /* Sync dirty data */
@@ -383,7 +380,10 @@ lc_umountLayer(fuse_req_t req, struct gfs *gfs, ino_t root) {
         if (fs && (fs->fs_root == lc_getInodeHandle(root)) &&
             !lc_tryLock(fs, false)) {
             rcu_read_unlock();
-            lc_flushDirtyPages(gfs, fs);
+            if (!fs->fs_removed) {
+                lc_flushDirtyPages(gfs, fs);
+                lc_processHiddenInodes(gfs, fs);
+            }
             lc_unlock(fs);
         } else {
             rcu_read_unlock();
@@ -478,8 +478,10 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
         if (likely(err == 0)) {
             fuse_reply_ioctl(req, 0, NULL, 0);
             fs = lc_getLayerLocked(root, true);
-            lc_statsDeinit(fs);
-            lc_statsNew(fs);
+            if (!fs->fs_removed) {
+                lc_statsDeinit(fs);
+                lc_statsNew(fs);
+            }
             lc_unlock(fs);
         } else if (!strcmp(name, ".")) {
             fuse_reply_ioctl(req, 0, NULL, 0);
@@ -526,10 +528,12 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
     assert(root != LC_INVALID_INODE);
     lc_unlock(fs);
     cfs = lc_getLayerLocked(root, true);
+    assert(!cfs->fs_removed);
     newgindex = cfs->fs_gindex;
     pfs = lc_getLayerLocked(lc_setHandle(cfs->fs_parent->fs_gindex,
                                          cfs->fs_parent->fs_root), true);
     fs = lc_getLayerLocked(ino, true);
+    assert(!fs->fs_removed);
 
     /* Respond after locking all layers */
     fuse_reply_create(req, &e, fi);

@@ -158,6 +158,7 @@ struct ixattr {
 #define LC_INODE_MLINKS         0x0400  /* Linked from many directories */
 #define LC_INODE_SYMLINK        0x0800  /* Free symbolic link target */
 #define LC_INODE_DISK           0x1000  /* Inode flushed to disk */
+#define LC_INODE_HIDDEN         0x2000  /* Inode is hidden from child layers */
 
 /* Fake inode number used to trigger layer commit operation */
 #define LC_COMMIT_TRIGGER_INODE     LC_ROOT_INODE

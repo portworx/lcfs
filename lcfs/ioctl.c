@@ -22,6 +22,10 @@ usage(char *pgm, char *name) {
         fprintf(stderr, "usage: %s %s <mnt> <pcache>\n", pgm, name);
         fprintf(stderr, "\t mnt    - mount point\n");
         fprintf(stderr, "\t memory - memory limit in MB (default 512MB)\n");
+    } else if (strcmp(name, "verbose") == 0) {
+        fprintf(stderr, "usage: %s %s <mnt> [enable|disable]\n", pgm, name);
+        fprintf(stderr, "\t mnt              - mount point\n");
+        fprintf(stderr, "\t [enable|disable] - enable/disable verbose mode\n");
     } else {
         fprintf(stderr, "usage: %s %s <mnt>\n", pgm, name);
         fprintf(stderr, "\t mnt    - mount point\n");
@@ -34,7 +38,7 @@ usage(char *pgm, char *name) {
  */
 int
 ioctl_main(char *pgm, int argc, char *argv[]) {
-    char name[LAYER_NAME_MAX + 1], *dir;
+    char name[LAYER_NAME_MAX + 1], *dir, op;
     int fd, err, len, value;
     struct stat st;
 
@@ -92,6 +96,20 @@ ioctl_main(char *pgm, int argc, char *argv[]) {
             usage(pgm, argv[0]);
         }
         err = ioctl(fd, _IO(0, LCFS_COMMIT), 0);
+    } else if (strcmp(argv[0], "verbose") == 0) {
+        if (argc < 3) {
+            close(fd);
+            usage(pgm, argv[0]);
+        }
+        if (strcmp(argv[2], "enable") == 0) {
+            op = 1;
+        } else if (strcmp(argv[2], "disable") == 0) {
+            op = 0;
+        } else {
+            close(fd);
+            usage(pgm, argv[0]);
+        }
+        err = ioctl(fd, _IOW(0, LCFS_VERBOSE, op), &op);
     } else {
         if (argc != 3) {
             close(fd);

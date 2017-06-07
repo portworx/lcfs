@@ -85,6 +85,8 @@ lc_createInode(struct fs *fs, ino_t parent, const char *name, mode_t mode,
 /* Modify size of a file to the specified size */
 static void
 lc_truncate(struct inode *inode, off_t size, bool force) {
+    struct fs *fs = inode->i_fs;
+
     assert(S_ISREG(inode->i_mode));
 
     /* Do not truncate a file if it was pulled from parent, but no data was
@@ -100,6 +102,11 @@ lc_truncate(struct inode *inode, off_t size, bool force) {
     }
     assert(!(inode->i_flags & LC_INODE_SHARED));
     inode->i_size = size;
+    if (inode->i_private && fs->fs_parent &&
+        (fs->fs_readOnly || fs->fs_parent->fs_single) &&
+        (inode->i_ino <= fs->fs_parent->fs_super->sb_lastInode)) {
+        lc_hideInode(fs, inode->i_ino, NULL);
+    }
 }
 
 /* Removal of a directory */
@@ -135,6 +142,11 @@ lc_removeInode(struct fs *fs, struct inode *dir, ino_t ino, bool rmdir,
             lc_inodeUnlock(inode);
             //lc_reportError(__func__, __LINE__, ino, EEXIST);
             return EEXIST;
+        }
+        if (S_ISREG(inode->i_mode) &&
+            (fs->fs_readOnly || fs->fs_parent->fs_single) &&
+            !(inode->i_flags & LC_INODE_HIDDEN)) {
+            lc_hideInode(fs, 0, inode);
         }
         lc_inodeUnlock(inode);
         return 0;
@@ -1133,6 +1145,8 @@ retry:
     /* Check if end of read is past the size of the file */
     if (endoffset > fsize) {
         endoffset = fsize;
+        pcount = ((endoffset + LC_BLOCK_SIZE - 1) -
+                  (off & ~(LC_BLOCK_SIZE - 1))) / LC_BLOCK_SIZE;
     }
     err = lc_readFile(req, fs, inode, off, endoffset,
                       pcount, pages, dbuf, bufv);
@@ -1563,6 +1577,17 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
 
     case LCFS_COMMIT:
         lc_layerChanged(gfs, false, true);
+        fuse_reply_ioctl(req, 0, NULL, 0);
+        break;
+
+    case LCFS_VERBOSE:
+        if (name[0]) {
+            lc_verbose = true;
+        } else {
+            lc_verbose = false;
+        }
+        lc_syslog(LOG_INFO,
+                  "Verbose mode %sabled\n", lc_verbose ? "en" : "dis");
         fuse_reply_ioctl(req, 0, NULL, 0);
         break;
 

@@ -615,6 +615,11 @@ lc_layerDiff(fuse_req_t req, const char *name, size_t size) {
     }
     fs = lc_getLayerLocked(ino, true);
     assert(fs->fs_root == lc_getInodeHandle(ino));
+    if (fs->fs_removed) {
+        lc_unlock(fs);
+        lc_unlock(rfs);
+        return EINVAL;
+    }
 
     /* Layer diff is bypassed when layers are swapped during commit */
     if (gfs->gfs_swapLayersForCommit) {

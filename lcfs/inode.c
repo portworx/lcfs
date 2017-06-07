@@ -1020,11 +1020,13 @@ lc_destroyInodes(struct fs *fs, bool remove) {
     uint64_t icount = 0, rcount = 0;
     struct gfs *gfs = fs->fs_gfs;
     struct inode *inode;
+    ino_t last;
     int i;
 
     if (fs->fs_icache == NULL) {
         return;
     }
+    last = remove ? fs->fs_rootInode->i_ino : 0;
 
     /* Take the inode off the hash list */
     for (i = 0; (i < fs->fs_icacheSize) && (icount < fs->fs_icount); i++) {
@@ -1034,7 +1036,8 @@ lc_destroyInodes(struct fs *fs, bool remove) {
         //pthread_mutex_lock(&fs->fs_icache[i].ic_lock);
         while ((inode = fs->fs_icache[i].ic_head)) {
             fs->fs_icache[i].ic_head = inode->i_cnext;
-            if (!(inode->i_flags & LC_INODE_REMOVED)) {
+            if (remove && !(inode->i_flags & LC_INODE_REMOVED) &&
+                (inode->i_ino > last)) {
                 rcount++;
             }
 
@@ -1058,7 +1061,7 @@ lc_destroyInodes(struct fs *fs, bool remove) {
     /* XXX reuse this cache for another file system */
     lc_free(fs, fs->fs_icache, sizeof(struct icache) * fs->fs_icacheSize,
             LC_MEMTYPE_ICACHE);
-    if (remove && icount) {
+    if (rcount) {
         __sync_sub_and_fetch(&gfs->gfs_super->sb_inodes, rcount);
     }
     assert(fs->fs_icount == icount);
@@ -1207,6 +1210,22 @@ lc_getInodeParent(struct fs *fs, ino_t inum, int fhash, struct inode *last,
         pfs = pfs->fs_parent;
     }
     return inode;
+}
+
+/* Mark an inode as hidden */
+void
+lc_hideInode(struct fs *fs, ino_t ino, struct inode *inode) {
+    struct fs *pfs;
+
+    if (inode == NULL) {
+        inode = lc_getInodeParent(fs, ino, lc_inodeHash(fs, ino), NULL,
+                                  false, false);
+    }
+    if (inode && !(inode->i_flags & LC_INODE_HIDDEN) && inode->i_size) {
+        pfs = inode->i_fs;
+        assert(pfs->fs_frozen);
+        lc_addDirtyInode(pfs, inode);
+    }
 }
 
 /* Get an inode locked in the requested mode */

@@ -771,6 +771,7 @@ lc_syncAllLayers(struct gfs *gfs) {
         fs = gfs->gfs_fs[i];
         if (fs) {
             lc_lockExclusive(fs);
+            assert(!fs->fs_removed);
             lc_sync(gfs, fs, fs->fs_child == NULL);
             lc_processLayerBlocks(gfs, fs, true, false, false);
             lc_flushDirtyPages(gfs, fs);
@@ -846,7 +847,7 @@ lc_commitRoot(struct gfs *gfs, int count) {
             assert(err == 0);
         }
         gfs->gfs_syncRequired -= count;
-        lc_syslog(LOG_INFO, "file system committed to disk\n");
+        lc_printf("file system committed to disk\n");
     }
     lc_unlock(fs);
 }
