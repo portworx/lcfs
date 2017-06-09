@@ -172,9 +172,6 @@ struct gfs {
 
     /* Set if count of file types maintained */
     bool gfs_ftypes;
-
-    /* Set if layers are swapped during commit */
-    bool gfs_swapLayersForCommit;
 } __attribute__((packed));
 
 /* A file system structure created for each layer */
@@ -295,11 +292,13 @@ struct fs {
     /* Lock protecting extent lists */
     pthread_mutex_t fs_alock;
 
+#ifdef LC_DIFF
     /* Lock protecting hardlinks list */
     pthread_mutex_t fs_hlock;
 
     /* Changes in this layer compared to parent */
     struct cdir *fs_changes;
+#endif
 
     /* Unused extents reserved by a layer */
     struct extent *fs_extents;

@@ -1,5 +1,6 @@
 #include "includes.h"
 
+#ifdef LC_DIFF
 static void lc_addName(struct fs *fs, struct cdir *cdir, ino_t ino, char *name,
                        mode_t mode, uint16_t len, ino_t lastIno,
                        enum lc_changeType ctype);
@@ -584,29 +585,20 @@ lc_freeChangeList(struct fs *fs) {
     }
     fs->fs_changes = NULL;
 }
+#endif
 
 /* Produce diff between a layer and its parent layer */
 int
 lc_layerDiff(fuse_req_t req, const char *name, size_t size) {
-    struct gfs *gfs = getfs();
     struct fs *fs, *rfs;
+#ifdef LC_DIFF
     struct inode *inode;
     ino_t ino, lastIno;
-    char *data;
     int i;
+#else
+    ino_t ino;
+#endif
 
-    /* Respond to plugin checking whether swapping of layers enabled or not */
-    if (!strcmp(name, ".")) {
-        assert(size == sizeof(uint64_t));
-        data = alloca(sizeof(uint64_t));
-        if (gfs->gfs_swapLayersForCommit) {
-            memset(data, 0xff, sizeof(uint64_t));
-        } else {
-            memset(data, 0, sizeof(uint64_t));
-        }
-        fuse_reply_buf(req, data, sizeof(uint64_t));
-        return 0;
-    }
     rfs = lc_getLayerLocked(LC_ROOT_INODE, false);
     ino = lc_getRootIno(rfs, name, NULL, true);
     if (ino == LC_INVALID_INODE) {
@@ -615,18 +607,8 @@ lc_layerDiff(fuse_req_t req, const char *name, size_t size) {
     }
     fs = lc_getLayerLocked(ino, true);
     assert(fs->fs_root == lc_getInodeHandle(ino));
-    if (fs->fs_removed) {
-        lc_unlock(fs);
-        lc_unlock(rfs);
-        return EINVAL;
-    }
 
-    /* Layer diff is bypassed when layers are swapped during commit */
-    if (gfs->gfs_swapLayersForCommit) {
-        assert(size == sizeof(uint64_t));
-        fuse_reply_buf(req, (char *)&fs->fs_size, sizeof(uint64_t));
-        goto out;
-    }
+#ifdef LC_DIFF
     assert(size == LC_BLOCK_SIZE);
     if (fs->fs_removed || fs->fs_rfs->fs_restarted ||
         (fs->fs_parent == NULL)) {
@@ -690,8 +672,9 @@ lc_layerDiff(fuse_req_t req, const char *name, size_t size) {
             inode = inode->i_cnext;
         }
     }
-
-out:
+#else
+    fuse_reply_buf(req, (char *)&fs->fs_size, sizeof(uint64_t));
+#endif
     lc_unlock(fs);
     lc_unlock(rfs);
     return 0;

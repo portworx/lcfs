@@ -503,6 +503,7 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
     lc_unlock(rfs);
 }
 
+#ifndef LC_DIFF
 /* Promote a read-write layer to read-only layer */
 void
 lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
@@ -663,3 +664,4 @@ lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *layer,
     }
     lc_unlock(rfs);
 }
+#endif
