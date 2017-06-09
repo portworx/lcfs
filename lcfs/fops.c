@@ -1688,6 +1688,7 @@ out:
     lc_unlock(fs);
 }
 
+#ifdef LC_FALLOCATE_ENABLE
 /* Allocate requested space */
 static void
 lc_fallocate(fuse_req_t req, fuse_ino_t ino, int mode,
@@ -1741,6 +1742,7 @@ out:
     lc_statsAdd(fs, LC_FALLOCATE, err, &start);
     lc_unlock(fs);
 }
+#endif
 
 #ifdef FUSE3
 /* Readdir with file attributes */
@@ -1865,7 +1867,9 @@ struct fuse_lowlevel_ops lc_ll_oper = {
     .forget_multi = lc_forget_multi,
     .flock      = lc_flock,
 #endif
+#ifdef LC_FALLOCATE_ENABLE
     .fallocate  = lc_fallocate,
+#endif
 #ifdef FUSE3
     .readdirplus = lc_readdirplus,
 #endif
