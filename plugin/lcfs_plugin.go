@@ -158,7 +158,6 @@ func (d *Driver) ioctl(cmd int, parent, id string) error {
 func ioctl(cmd int, parent, id, home string) error {
 	var op, arg uintptr
 	var name string
-	var err error
 	var plen int
 
 	logrus.Debugf("lcfs ioctl cmd %d parent %s id %s", cmd, parent, id)
@@ -178,10 +177,10 @@ func ioctl(cmd int, parent, id, home string) error {
 	}
 	_, _, ep := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), op, arg)
 	if ep != 0 {
-		logrus.Errorf("err %v\n", err)
+		logrus.Errorf("err %v\n", syscall.Errno(ep))
 		return syscall.Errno(ep)
 	}
-	return err
+	return nil
 }
 
 // Create the filesystem with given id.
