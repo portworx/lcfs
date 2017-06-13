@@ -153,7 +153,7 @@ print_cmd_usage(char *pgm, cmd_group *grp) {
 }
 
 /* Invoke appropriate command requested */
-int
+static int
 run_cli(int argc, char *argv[]) {
     cmd_group *grp;
 
