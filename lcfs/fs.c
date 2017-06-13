@@ -16,9 +16,7 @@ lc_newLayer(struct gfs *gfs, bool rw) {
     pthread_mutex_init(&fs->fs_plock, NULL);
     pthread_mutex_init(&fs->fs_dilock, NULL);
     pthread_mutex_init(&fs->fs_alock, NULL);
-#ifdef LC_DIFF
     pthread_mutex_init(&fs->fs_hlock, NULL);
-#endif
     pthread_rwlock_init(&fs->fs_rwlock, NULL);
     __sync_add_and_fetch(&gfs->gfs_count, 1);
     return fs;
@@ -121,9 +119,7 @@ lc_freeLayer(struct fs *fs, bool remove) {
     assert(fs->fs_inodeBlockCount == 0);
     assert(fs->fs_inodeBlockPages == NULL);
     assert(fs->fs_inodeBlocks == NULL);
-#ifdef LC_DIFF
     assert(fs->fs_changes == NULL);
-#endif
     assert(fs->fs_extents == NULL);
     assert(fs->fs_aextents == NULL);
     assert(fs->fs_fextents == NULL);
@@ -132,9 +128,7 @@ lc_freeLayer(struct fs *fs, bool remove) {
     assert(!remove || (fs->fs_blocks == fs->fs_freed));
 
     lc_freeHlinks(fs);
-#ifdef LC_DIFF
     assert(fs->fs_hlinks == NULL);
-#endif
 
     lc_destroyPages(gfs, fs, remove);
     assert(fs->fs_bcache == NULL);
@@ -146,9 +140,7 @@ lc_freeLayer(struct fs *fs, bool remove) {
     pthread_mutex_destroy(&fs->fs_dilock);
     pthread_mutex_destroy(&fs->fs_plock);
     pthread_mutex_destroy(&fs->fs_alock);
-#ifdef LC_DIFF
     pthread_mutex_destroy(&fs->fs_hlock);
-#endif
 #endif
 #ifdef LC_RWLOCK_DESTROY
     pthread_rwlock_destroy(&fs->fs_rwlock);
@@ -701,6 +693,12 @@ lc_mount(struct gfs *gfs, char *device, bool ftypes, size_t size,
     fs->fs_mcount = 1;
     if (fs->fs_super->sb_flags & LC_SUPER_FSTATS) {
         gfs->gfs_ftypes = true;
+    }
+    if (gfs->gfs_swapLayersForCommit &&
+        !(fs->fs_super->sb_flags & LC_SUPER_SWAP)) {
+        fs->fs_super->sb_flags |= LC_SUPER_SWAP;
+    } else if (fs->fs_super->sb_flags & LC_SUPER_SWAP) {
+        gfs->gfs_swapLayersForCommit = true;
     }
     lc_unlockExclusive(fs);
     if (grow) {

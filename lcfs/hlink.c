@@ -1,6 +1,5 @@
 #include "includes.h"
 
-#ifdef LC_DIFF
 /* Copy hardlink records from parent */
 static void
 lc_copyHlinks(struct fs *fs) {
@@ -24,14 +23,17 @@ lc_copyHlinks(struct fs *fs) {
 /* Add a new hardlink record for the inode */
 void
 lc_addHlink(struct fs *fs, struct inode *inode, ino_t parent) {
-    ino_t ino = inode->i_ino;
+    struct gfs *gfs = fs->fs_gfs;
     struct hldata *hldata;
+    ino_t ino;
 
     /* Hardlinks are not tracked after remount or for the root layer */
-    if (fs->fs_rfs->fs_restarted || (fs == lc_getGlobalFs(fs->fs_gfs))) {
+    if (gfs->gfs_swapLayersForCommit || fs->fs_rfs->fs_restarted ||
+        (fs == lc_getGlobalFs(gfs))) {
         return;
     }
     assert(!S_ISDIR(inode->i_mode));
+    ino = inode->i_ino;
 
     /* Use special notation for files in root directory */
     if (parent == fs->fs_root) {
@@ -96,10 +98,11 @@ lc_addHlink(struct fs *fs, struct inode *inode, ino_t parent) {
 /* Remove a hardlink record for the inode */
 void
 lc_removeHlink(struct fs *fs, struct inode *inode, ino_t parent) {
-    ino_t ino = inode->i_ino;
-    struct hldata *hldata, **prev = &fs->fs_hlinks;
+    struct hldata *hldata, **prev;
+    ino_t ino;
 
     assert(!fs->fs_rfs->fs_restarted);
+    assert(!fs->fs_gfs->gfs_swapLayersForCommit);
     assert(!S_ISDIR(inode->i_mode));
     assert(inode->i_flags & LC_INODE_MLINKS);
     if (fs->fs_hlinks == NULL) {
@@ -108,6 +111,8 @@ lc_removeHlink(struct fs *fs, struct inode *inode, ino_t parent) {
     if (parent == fs->fs_root) {
         parent = LC_ROOT_INODE;
     }
+    ino = inode->i_ino;
+    prev = &fs->fs_hlinks;
 
     /* Find the hardlink record */
     pthread_mutex_lock(&fs->fs_hlock);
@@ -150,4 +155,3 @@ lc_freeHlinks(struct fs *fs) {
         lc_free(fs, tmp, sizeof(struct hldata), LC_MEMTYPE_HLDATA);
     }
 }
-#endif

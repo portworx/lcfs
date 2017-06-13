@@ -16,8 +16,9 @@ getfs() {
 /* Display usage */
 static void
 usage(char *prog) {
-    lc_syslog(LOG_ERR, "usage: %s <device> <host-mnt> <plugin-mnt>"
-                       " [-f] [-c] [-d] [-m] [-r] [-t] [-p] [-v]\n", prog);
+    lc_syslog(LOG_ERR, "usage: %s daemon <device> <host-mnt> <plugin-mnt>"
+                       " [-f] [-c] [-d] [-m] [-r] [-t] [-p] [-s] [-v]\n",
+                       prog);
     lc_syslog(LOG_ERR, "\tdevice        - device or file - image layers"
                        " will be saved here\n"
                     "\thost-mnt      - mount point on host\n"
@@ -30,6 +31,7 @@ usage(char *prog) {
                     "\t-t            - enable tracking count of file types"
                                        " (optional)\n"
                     "\t-p            - enable profiling (optional)\n"
+                    "\t-s            - swap layers when committed\n"
                     "\t-v            - enable verbose mode (optional)\n");
 }
 
@@ -306,7 +308,7 @@ lc_start(struct gfs *gfs, char *device, enum lc_mountId id) {
 /* Mount the specified device and start serving requests */
 int
 lcfs_main(char *pgm, int argc, char *argv[]) {
-    bool daemon = true, profiling = false, ftypes = false;
+    bool daemon = true, profiling = false, ftypes = false, swap = false;
     int i, err = -1, waiter[2], fd, count;
     char *arg[argc + 1], completed;
     struct fuse_session *se;
@@ -392,6 +394,8 @@ lcfs_main(char *pgm, int argc, char *argv[]) {
             ftypes = true;
         } else if (!strcmp(argv[i], "-p")) {
             profiling = true;
+        } else if (!strcmp(argv[i], "-s")) {
+            swap = true;
         } else if (!strcmp(argv[i], "-v")) {
             lc_verbose = true;
         } else {
@@ -446,6 +450,7 @@ lcfs_main(char *pgm, int argc, char *argv[]) {
     }
     gfs->gfs_fd = fd;
     gfs->gfs_profiling = profiling;
+    gfs->gfs_swapLayersForCommit = swap;
 
     /* Setup arguments for fuse mount */
     arg[0] = pgm;
@@ -486,6 +491,10 @@ lcfs_main(char *pgm, int argc, char *argv[]) {
 
     /* Set up the file system before starting services */
     lc_mount(gfs, argv[1], ftypes, size, format);
+    if (gfs->gfs_swapLayersForCommit) {
+        lc_syslog(LOG_INFO, "WARNING: Enabled layer swapping, "
+                      "docker save/push operations will not work");
+    }
 
     /* Start file system services on the mount points */
     for (i = 0; i < LC_MAX_MOUNTS; i++) {

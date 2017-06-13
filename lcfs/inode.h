@@ -160,10 +160,8 @@ struct ixattr {
 #define LC_INODE_DISK           0x1000  /* Inode flushed to disk */
 #define LC_INODE_HIDDEN         0x2000  /* Inode is hidden from child layers */
 
-#ifndef LC_DIFF
 /* Fake inode number used to trigger layer commit operation */
 #define LC_COMMIT_TRIGGER_INODE     LC_ROOT_INODE
-#endif
 
 /* Number of inode pages which can be freed if inodes are re-written */
 #define LC_INODE_RELOCATE_PCOUNT    10

@@ -10,8 +10,6 @@
 
 //#define LC_FTYPE_ENABLE
 
-#define LC_DIFF
-
 #define _GNU_SOURCE
 #define URCU_INLINE_SMALL_FUNCTIONS
 
@@ -313,19 +311,12 @@ void lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
 void lc_commitLayer(fuse_req_t req, struct fs *fs, ino_t ino, const char *name,
                     struct fuse_file_info *fi);
 
-#ifdef LC_DIFF
 void lc_addHlink(struct fs *fs, struct inode *inode, ino_t parent);
 void lc_removeHlink(struct fs *fs, struct inode *inode, ino_t parent);
 void lc_freeHlinks(struct fs *fs);
 
 void lc_freeChangeList(struct fs *fs);
-#else
-#define lc_addHlink(fs, inode, parent)
-#define lc_removeHlink(fs, inode, parent)
-#define lc_freeHlinks(fs)
 
-#define lc_freeChangeList(fs)
-#endif
 int lc_layerDiff(fuse_req_t req, const char *name, size_t size);
 
 void lc_statsEnable();

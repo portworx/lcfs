@@ -51,6 +51,7 @@ cmd_group lcfs_cmd_group[] = {
         "\t-r         - enable request stats (optional)\n"
         "\t-t         - enable tracking count of file types (optional)\n"
         "\t-p         - enable profiling (optional)\n"
+        "\t-s         - swap layers when committed\n"
         "\t-v         - enable verbose mode (optional)\n",
         3,
         cmd_daemon
