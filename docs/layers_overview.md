@@ -47,12 +47,16 @@ If this process was done part of building a Dockerfile, the container in which t
 
 LCFS is doing this whole process differently.  A container can be committed skipping most of the above steps.  The time for committing a container is constant irrespective of the sizes of the underlying images and amount of changes made in the container.  There is no requirement for creating a list of modified files in the container - thus there is no namespace tree traversal and all the readdir(2)/stat(2) system calls are eliminated.  There is no data movement involved as well - no need for docker to read modified data from one container layer and write to another image layer.  LCFS will take care of all that work behind the scenes, by promoting the container as an image internally from which new containers could be spawned.  The old container (which is committed now) is available as well for continued use or could be deleted.
 
-## Layer Diff (obsolete)
+The above feature is available only when enabled by passing "-s" option the very first time LCFS is mounted.  Docker keeps track of tar-split.json.gz for each read only image layers for content verification using sha256 checksums and operations like docker save/push would fail if this option is enabled with lcfs.  This is because when LCFS completes commit operations by swapping layers internally, a complete tar-split.json.gz is not created for the newly created layer.  See https://github.com/moby/moby/issues/31953.  If "-s" option is not specified, then LCFS will commit the layers following a process similar to other storage drivers.
+
+## Layer Diff
 
 Finding differences between a layer and its parent layer is simply finding differences in the sets of inodes present in layers between the old layer and new layer (inclusive).  This is done by traversing the private inode cache of the new layer and reporting any inodes instantiated in the cache along with complete path.  Directories which are modified, need to scan for changes in those compared to corresponding directories in parent layer and include all changes with complete path.  All directories in a modified path, even if those are not modified, are considered changed.  All paths to a modified file (in case of multiple links - hardlinks) need to be included as well.
 
 Files with multiple paths to it (hardlinks), need to track all those paths in order to generate this diff correctly.  Each layer tracks parent directory inode numbers and number of links from those directories to each of those hardlinks in memory.  This is disabled for pre-existing layers and newly created child layers of those after remount.  Also this is not done for root layer.  If this diff driver cannot be used on a layer, NaiveDiffDriver is used instead.
  
+Layer diffing is required only when LCFS was created without specifying -s option.
+
 ## Layer Locking
 Each layer has a read-write lock, which is taken in shared mode while reading or writing to the layer (all file operations). This lock is taken in exclusive mode while unmounting the root layer or while deleting any other layer.
 
