@@ -439,6 +439,11 @@ func (d *Driver) DiffSize(id, parent string) (int64, error) {
 	return d.driver.DiffSize(id, parent)
 }
 
+// Capabilities defines a list of capabilities a driver may implement.
+func (d *Driver) Capabilities() graphdriver.Capabilities {
+    return graphdriver.Capabilities{ReproducesExactDiffs: true}
+}
+
 func main() {
 	if reexec.Init() {
 		logrus.Errorf("reexec.Init failed")

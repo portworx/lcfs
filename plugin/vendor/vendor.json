@@ -83,10 +83,10 @@
 			"revisionTime": "2017-01-04T12:27:03Z"
 		},
 		{
-			"checksumSHA1": "d3dnZt0YviJwjWdXOkmAfezkjMw=",
+			"checksumSHA1": "C1+Bms4dRbrzokzw/lxz7J8IOig=",
 			"path": "github.com/docker/docker/daemon/graphdriver",
-			"revision": "43cc971d7694bc05c3c8b9641364f0a4e3775817",
-			"revisionTime": "2017-01-04T12:27:03Z"
+			"revision": "e5679f0bffa860f735b2db4309cc72b8871a96b5",
+			"revisionTime": "2017-06-14T21:11:23Z"
 		},
 		{
 			"checksumSHA1": "8YI8cNLL5x1mWD2xLegHOL2kQ50=",
@@ -137,22 +137,22 @@
 			"revisionTime": "2017-01-04T12:27:03Z"
 		},
 		{
-			"checksumSHA1": "25gh2wyZiRvm8aY05JIBkfN7XD8=",
+			"checksumSHA1": "24vnM9bsUrCsWLPYogYzMyRVlNM=",
 			"path": "github.com/docker/docker/pkg/plugingetter",
-			"revision": "43cc971d7694bc05c3c8b9641364f0a4e3775817",
-			"revisionTime": "2017-01-04T12:27:03Z"
+			"revision": "e5679f0bffa860f735b2db4309cc72b8871a96b5",
+			"revisionTime": "2017-06-14T21:11:23Z"
 		},
 		{
-			"checksumSHA1": "SQ+20g5anmQu5yVlbACIFs4gx4U=",
+			"checksumSHA1": "zgdiyTP26HkJ3nqUkEsZwlgbqZI=",
 			"path": "github.com/docker/docker/pkg/plugins",
-			"revision": "43cc971d7694bc05c3c8b9641364f0a4e3775817",
-			"revisionTime": "2017-01-04T12:27:03Z"
+			"revision": "e5679f0bffa860f735b2db4309cc72b8871a96b5",
+			"revisionTime": "2017-06-14T21:11:23Z"
 		},
 		{
 			"checksumSHA1": "7PpleyPctFC+y0OS4+kksrD6sJE=",
 			"path": "github.com/docker/docker/pkg/plugins/transport",
-			"revision": "43cc971d7694bc05c3c8b9641364f0a4e3775817",
-			"revisionTime": "2017-01-04T12:27:03Z"
+			"revision": "e5679f0bffa860f735b2db4309cc72b8871a96b5",
+			"revisionTime": "2017-06-14T21:11:23Z"
 		},
 		{
 			"checksumSHA1": "oHqQiESBEfIJ+uu1+ue7PHvJ6CI=",
@@ -205,16 +205,16 @@
 			"revisionTime": "2017-01-04T12:27:03Z"
 		},
 		{
-			"checksumSHA1": "FPjVEolOHY31rszU9+L+vk0DLKY=",
+			"checksumSHA1": "pD7BTkdRMdan04V0MmmSjuIBtz0=",
 			"path": "github.com/docker/go-plugins-helpers/graphdriver",
-			"revision": "65a562254f786ada2d545466185c59e235b7699e",
-			"revisionTime": "2017-01-02T14:46:06Z"
+			"revision": "021fd77358602b2c20fc3a1dfd260fd0dace4f53",
+			"revisionTime": "2017-06-07T14:10:33Z"
 		},
 		{
-			"checksumSHA1": "G7NHweddpD10GEcpqmdB/Bq6FZI=",
+			"checksumSHA1": "9/gpnQVuH/eszYpzCGeG1AtOdMM=",
 			"path": "github.com/docker/go-plugins-helpers/sdk",
-			"revision": "65a562254f786ada2d545466185c59e235b7699e",
-			"revisionTime": "2017-01-02T14:46:06Z"
+			"revision": "021fd77358602b2c20fc3a1dfd260fd0dace4f53",
+			"revisionTime": "2017-06-07T14:10:33Z"
 		},
 		{
 			"checksumSHA1": "PGX9v+2lw0lTySHVfrL9afqJnTo=",
