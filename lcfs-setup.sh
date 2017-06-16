@@ -66,6 +66,8 @@ LOCAL_MANIFEST=${LOCAL_DNLD}/manifest
 
 DOCKER_DAEMON_CFG=/etc/docker/daemon.json
 
+LOCALD_LCFS_STOP=/etc/local.d/lcfs.stop
+
 PATH="${PWX_DIR}/bin":${PATH}
 
 function cleanup_and_exit()
@@ -335,6 +337,12 @@ function lcfs_docker_startup_remove()
     fi
 }
 
+function lcfs_locald_stop()
+{
+    echo -e "#!/bin/sh\n/etc/init.d/lcfs stop\n" > ${LOCALD_LCFS_STOP}
+    chmod +x ${LOCALD_LCFS_STOP}
+}
+
 function lcfs_startup_setup()
 {
     local sysd_pid=$(getPid systemd)
@@ -351,6 +359,7 @@ function lcfs_startup_setup()
 	elif [ -n "$(${SUDO} which rc-update)" ]; then
 	    ${SUDO} rc-update add lcfs
 	    ${SUDO} rc-update add lcfs shutdown
+	    [ ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ] && lcfs_locald_stop      # for now qemu only for mac docker.   
 	fi
     fi
 
@@ -371,6 +380,7 @@ function lcfs_startup_remove()
 	    ${SUDO} chkconfig lcfs off &> /dev/null
 	elif [ -n "$(${SUDO} which rc-update)" ]; then
 	    ${SUDO} rc-update del lcfs
+	    [ ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ] && \rm -f ${LOCALD_LCFS_STOP}      # for now qemu only for mac docker.   
 	fi
 	${SUDO} rm /etc/init.d/lcfs
     fi
