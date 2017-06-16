@@ -15,7 +15,7 @@ SERVICE_NAME=lcfssrv
 SERVICE_LOG=/var/log/${SERVICE_NAME}.log
 SERVICE_SCRIPT=/opt/lcfs/bin/lcfs-setup.sh
 SERVICE_ENV_FILE=/etc/lcfs/lcfs.env
-SERVICE_LOCK_FILE=/var/lock/${lcfssrv}
+SERVICE_LOCK_FILE=/var/lock/${SERVICE_NAME}
 
 function log_service_msg()
 {

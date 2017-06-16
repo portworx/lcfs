@@ -41,8 +41,7 @@ fi
 LCFS_IMG=${LCFS_IMG:-"portworx/lcfs:latest"}
 DOCKER_MNT=${DOCKER_MNT:-"/var/lib/docker"}
 PLUGIN_MNT=${PLUGIN_MNT:-"/lcfs"}
-DEV=${DEV:-"/dev/sdNN"
-}
+DEV=${DEV:-"/dev/sdNN"}
 if [ ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ]; then  # for now qemu only for mac docker.
     DEVFL=${DEVFL:-"/host_docker_app/lcfs-dev.img"}      # Set for all Alpine & Mac VM.  May want 
     DSZ=${DSZ:-"20G"}                         # to separate for Mac VM & Alpine.
@@ -455,7 +454,7 @@ function lcfs_configure()
 	    read -p "LCFS file: ${ldev} size [${DSZ}]: " lsz
 	    [ -z "${lsz}" ] && lsz="${DSZ}"
 	    create_dev_file  "${ldev}" "${lsz}"
-	    [ $? -ne 0 ] && echo "Error: Failed to create LCFS device file ${ldev}." && cleanup_and_exit 0
+	    [ $? -ne 0 ] && echo "Error: Failed to create LCFS device file ${ldev}." && cleanup_and_exit 1
 #	    DEVFL="${ldev}"
 	    DSZ="${lsz}"
 	else
@@ -557,7 +556,7 @@ function create_dev_file()
 	    if [ $? -eq 0 ]; then
 		done=1
 		connect_dev_file ${pdevfl} 
-		[ $? -ne 0 ] && done=0 && \rm -f ${pdevfl}
+		[ $? -ne 0 ] && \rm -f ${pdevfl} && return 1
 	    fi
 	fi
     fi
