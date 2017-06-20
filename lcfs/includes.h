@@ -230,7 +230,7 @@ void lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
                  void *buf);
 bool lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
                      size_t size, uint64_t pg, bool remove);
-void lc_freeInodeDataBlocks(struct fs *fs, struct inode *inode,
+void lc_freeInodeDataBlocks(struct gfs *gfs, struct fs *fs,
                             struct extent **extents);
 
 void lc_bcacheInit(struct fs *fs, uint32_t count, uint32_t lcount);

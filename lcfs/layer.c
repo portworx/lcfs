@@ -416,6 +416,7 @@ lc_layerIoctl(fuse_req_t req, struct gfs *gfs, const char *name,
     if (cmd == UMOUNT_ALL) {
         //ProfilerStop();
         fuse_reply_ioctl(req, 0, NULL, 0);
+        lc_displayGlobalStats(gfs);
         lc_layerChanged(gfs, false, true);
         lc_statsAdd(rfs, LC_CLEANUP, 0, &start);
         lc_unlock(rfs);

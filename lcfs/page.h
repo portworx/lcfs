@@ -47,6 +47,9 @@
  */
 #define LC_MAX_LAYER_DIRTYPAGES 524288
 
+/* Maximum number of pages before cleaner kicks in */
+#define LC_MAX_LAYER_PAGES      524288
+
 /* Number of dirty pages accumulated for waking up syncer */
 #define LC_SYNCER_DIRTY_COUNT   8192
 
@@ -65,7 +68,7 @@
 #define LC_FLUSH_TIME           120
 
 /* Time in seconds before cleaner kicks in on a newly created layer */
-#define LC_PURGE_TIME           30
+#define LC_PURGE_TIME           180
 
 /* Page cache header */
 struct pcache {
@@ -115,13 +118,16 @@ struct page {
     uint32_t p_refCount;
 
     /* Page cache hitcount */
-    uint32_t p_hitCount:28;
+    uint32_t p_hitCount:27;
 
     /* page is not in hash lists */
     uint32_t p_nohash:1;
 
     /* Don't free p_data if set */
     uint32_t p_nofree:1;
+
+    /* Don't invalidate if set */
+    uint32_t p_cache:1;
 
     /* Set to invalidate when released */
     uint32_t p_nocache:1;

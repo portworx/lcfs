@@ -40,6 +40,9 @@ struct gfs {
     /* Inode of local-kv.db */
     ino_t gfs_dbIno;
 
+    /* Inode of lcfs_plugin */
+    ino_t gfs_pluginIno;
+
     /* List of file system roots */
     ino_t *gfs_roots;
 
@@ -279,6 +282,9 @@ struct fs {
 
     /* Dirty pages pending write */
     struct page *fs_dpagesLast;
+
+    /* Time pages purged last */
+    time_t fs_purgeTime;
 
     /* Flusher index */
     uint64_t fs_flusher;

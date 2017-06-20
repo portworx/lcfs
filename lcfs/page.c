@@ -171,6 +171,7 @@ lc_removeDirtyInode(struct fs *fs, struct inode *inode, struct inode *prev) {
 static void
 lc_invalidateParentPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     struct extent *extent;
+    uint64_t count = 0;
     uint64_t i, block;
 
     assert(S_ISREG(inode->i_mode));
@@ -178,7 +179,7 @@ lc_invalidateParentPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         block = inode->i_extentBlock;
         i = inode->i_extentLength;
         while (i) {
-             lc_invalPage(gfs, fs, block);
+             count += lc_invalPage(gfs, fs, block);
              block++;
              i--;
         }
@@ -190,7 +191,7 @@ lc_invalidateParentPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
             i = lc_getExtentCount(extent);
             block = lc_getExtentBlock(extent);
             while (i) {
-                lc_invalPage(gfs, fs, block);
+                count += lc_invalPage(gfs, fs, block);
                 block++;
                 i--;
             }
@@ -198,6 +199,9 @@ lc_invalidateParentPages(struct gfs *gfs, struct fs *fs, struct inode *inode) {
         }
     }
     inode->i_flags |= LC_INODE_HIDDEN;
+    if (count) {
+        __sync_add_and_fetch(&gfs->gfs_precycle, count);
+    }
 }
 
 /* Invalidate pages of hidden inodes in parent layers */
@@ -830,6 +834,7 @@ lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode, off_t soffset,
     uint32_t rcount = 0;
     uint64_t i = 0;
     char *data;
+    ino_t ino;
 
     assert(S_ISREG(inode->i_mode));
     poffset = soffset % LC_BLOCK_SIZE;
@@ -901,14 +906,18 @@ lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode, off_t soffset,
         lc_readPages(gfs, fs, rpages, rcount);
     }
     fuse_reply_data(req, bufv, FUSE_BUF_SPLICE_MOVE);
+    ino = inode->i_ino;
     lc_inodeUnlock(inode);
     if (pcount) {
-        lc_releaseReadPages(gfs, fs, pages, pcount, false);
-    }
+        lc_releaseReadPages(gfs, fs, pages, pcount,
+                            (fs == lc_getGlobalFs(gfs)) &&
+                            (ino != gfs->gfs_dbIno) &&
+                            (ino != gfs->gfs_pluginIno));
 #if 0
                         ((inode->i_fs == fs) && inode->i_private) ||
                         (fs->fs_parent && fs->fs_parent->fs_single));
 #endif
+    }
     if (dbuf) {
         while (dcount < pcount) {
             lc_freePageData(gfs, fs->fs_rfs, dbuf[dcount]);
@@ -928,12 +937,13 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
     struct page *page, *dpage = NULL, *tpage = NULL;
     uint64_t fcount = 0, block = LC_INVALID_BLOCK;
     struct extent *extents = NULL, *extent, *tmp;
-    bool single, read;
+    bool single, read, cache;
     char *pdata;
     int64_t i;
 
     /* XXX Avoid holding inode lock exclusive in this function */
     assert(S_ISREG(inode->i_mode));
+    assert(!(inode->i_flags & LC_INODE_TMP));
 
     /* If inode does not have any pages, skip most of the work */
     if ((lc_inodeGetDirtyPageCount(inode) == 0) || (inode->i_size == 0)) {
@@ -1014,6 +1024,8 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
         /* Expand from a single direct extent to an extent list */
         lc_expandEmap(gfs, fs, inode);
     }
+    cache = (inode->i_ino == gfs->gfs_dbIno) ||
+            (inode->i_ino == gfs->gfs_pluginIno);
 
     /* Queue the dirty pages for flushing after associating with newly
      * allocated blocks
@@ -1081,6 +1093,9 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
             if (read) {
                 page->p_hitCount++;
             }
+            if (cache) {
+                page->p_cache = 1;
+            }
             if (tpage == NULL) {
                 tpage = page;
                 dpage = page;
@@ -1146,13 +1161,6 @@ out:
             lc_inodeSetPageCount(inode, 0);
         }
     }
-    if (extents) {
-
-        /* Free blocks which are overwritten with new data and no longer in
-         * use.
-         */
-        lc_freeInodeDataBlocks(fs, inode, &extents);
-    }
     lc_initInodePageMarkers(inode);
 
     /* Unlock the inode before issuing I/Os if we can.  As we never overwrite
@@ -1160,6 +1168,13 @@ out:
      */
     if (unlock) {
         lc_inodeUnlock(inode);
+    }
+    if (extents) {
+
+        /* Free blocks which are overwritten with new data and no longer in
+         * use.
+         */
+        lc_freeInodeDataBlocks(gfs, fs, &extents);
     }
     if (tcount > zcount) {
 

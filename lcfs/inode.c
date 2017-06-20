@@ -753,6 +753,9 @@ lc_flushInode(struct gfs *gfs, struct fs *fs, struct inode *inode) {
     off_t offset;
 
     assert(inode->i_fs == fs);
+    if (inode->i_flags & LC_INODE_TMP) {
+        return 0;
+    }
 
     /* Flush extended attributes if those are modified */
     if (inode->i_flags & LC_INODE_XATTRDIRTY) {

@@ -75,6 +75,7 @@
 
 /* local-kv.db file in root layer */
 #define LC_LAYER_LOCAL_KV_DB "local-kv.db"
+#define LC_PLUGIN_FILENAME   "lcfs_plugin"
 
 /* extension for json files */
 #define LC_JSON_EXTN ".json"

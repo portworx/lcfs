@@ -371,16 +371,26 @@ lc_emapRead(struct gfs *gfs, struct fs *fs, struct inode *inode,
 
 /* Free blocks in the extent list */
 void
-lc_freeInodeDataBlocks(struct fs *fs, struct inode *inode,
+lc_freeInodeDataBlocks(struct gfs *gfs, struct fs *fs,
                        struct extent **extents) {
     struct extent *extent = *extents, *tmp;
+    uint64_t block, len, count = 0;
 
     while (extent) {
-        lc_addFreedBlocks(fs, lc_getExtentStart(extent),
-                          lc_getExtentCount(extent));
+        block = lc_getExtentStart(extent);
+        len = lc_getExtentCount(extent);
+        lc_addFreedBlocks(fs, block, len);
+        while (len) {
+            count += lc_invalPage(gfs, fs, block);
+            block++;
+            len--;
+        }
         tmp = extent;
         extent = extent->ex_next;
         lc_free(fs, tmp, sizeof(struct extent), LC_MEMTYPE_EXTENT);
+    }
+    if (count) {
+        __sync_add_and_fetch(&gfs->gfs_precycle, count);
     }
 }
 
@@ -480,7 +490,7 @@ lc_emapTruncate(struct gfs *gfs, struct fs *fs, struct inode *inode,
 
     /* Free blocks */
     if (bcount) {
-        lc_freeInodeDataBlocks(fs, inode, &extents);
+        lc_freeInodeDataBlocks(gfs, fs, &extents);
         assert(inode->i_dinode.di_blocks >= bcount);
         inode->i_dinode.di_blocks -= bcount;
         lc_layerChanged(gfs, false, false);

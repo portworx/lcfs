@@ -1011,7 +1011,8 @@ lc_closeInode(struct fs *fs, struct inode *inode, struct fuse_file_info *fi,
     if (reg && (inode->i_ocount == 0)) {
 
         /* Invalidate pages of shared files in kernel page cache */
-        if (inval && (inode->i_size > 0) && (ro || !inode->i_private)) {
+        if (inval && (inode->i_size > 0) &&
+            (fs->fs_frozen || !inode->i_private)) {
             *inval = true;
         }
 
@@ -1040,26 +1041,21 @@ lc_closeInode(struct fs *fs, struct inode *inode, struct fuse_file_info *fi,
                 }
             }
             if (!(inode->i_flags & (LC_INODE_REMOVED | LC_INODE_TMP))) {
-                if (!excl) {
-                    lc_inodeUnlock(inode);
-                    lc_inodeLock(inode, true);
-                }
 
                 /* Add inode to dirty list of the layer */
                 if ((lc_inodeGetDirtyNext(inode) == NULL) &&
                     (fs->fs_dirtyInodesLast != inode)) {
                     lc_addDirtyInode(fs, inode);
                 }
+                lc_inodeUnlock(inode);
 
                 /* Flush pages of the inode if layer has many dirty pages */
                 if (fs->fs_pcount &&
                     (!lc_checkMemoryAvailable(false) ||
-                     (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES)) &&
-                    lc_flushInodeDirtyPages(inode,
-                                            inode->i_size / LC_BLOCK_SIZE,
-                                            true, true)) {
-                    return;
+                     (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES))) {
+                    pthread_cond_signal(&fs->fs_gfs->gfs_flusherCond);
                 }
+                return;
             }
         }
     }
@@ -1466,6 +1462,10 @@ lc_create(fuse_req_t req, fuse_ino_t parent, const char *name,
             (fs->fs_gfs->gfs_dbIno == 0) &&
             (strcmp(name, LC_LAYER_LOCAL_KV_DB) == 0)) {
             fs->fs_gfs->gfs_dbIno = e.ino;
+        } else if (!lc_getFsHandle(parent) && (parent != LC_ROOT_INODE) &&
+                   (fs->fs_gfs->gfs_pluginIno == 0) &&
+                   (strcmp(name, LC_PLUGIN_FILENAME) == 0)) {
+            fs->fs_gfs->gfs_pluginIno = e.ino;
         }
         err = fuse_reply_create(req, &e, fi);
         if (unlikely(err)) {
@@ -1683,7 +1683,7 @@ out:
     if (!err &&
         ((fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES) ||
          !lc_checkMemoryAvailable(true))) {
-        lc_flushDirtyInodeList(fs, false);
+        pthread_cond_signal(&gfs->gfs_flusherCond);
     }
     lc_unlock(fs);
 }
