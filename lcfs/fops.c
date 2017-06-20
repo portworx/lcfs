@@ -1026,7 +1026,8 @@ lc_closeInode(struct fs *fs, struct inode *inode, struct fuse_file_info *fi,
         }
 
         /* Flush dirty pages of a file on last close */
-        if (lc_inodeGetDirtyPageCount(inode)) {
+        if (lc_inodeGetDirtyPageCount(inode) &&
+            !(inode->i_flags & (LC_INODE_REMOVED | LC_INODE_TMP))) {
 
             /* Inode emap needs to be stable before an inode could be cloned */
             if (ro || ((fs->fs_gfs->gfs_layerRoot == 0) &&
@@ -1040,23 +1041,21 @@ lc_closeInode(struct fs *fs, struct inode *inode, struct fuse_file_info *fi,
                     return;
                 }
             }
-            if (!(inode->i_flags & (LC_INODE_REMOVED | LC_INODE_TMP))) {
 
-                /* Add inode to dirty list of the layer */
-                if ((lc_inodeGetDirtyNext(inode) == NULL) &&
-                    (fs->fs_dirtyInodesLast != inode)) {
-                    lc_addDirtyInode(fs, inode);
-                }
-                lc_inodeUnlock(inode);
-
-                /* Flush pages of the inode if layer has many dirty pages */
-                if (fs->fs_pcount &&
-                    (!lc_checkMemoryAvailable(false) ||
-                     (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES))) {
-                    pthread_cond_signal(&fs->fs_gfs->gfs_flusherCond);
-                }
-                return;
+            /* Add inode to dirty list of the layer */
+            if ((lc_inodeGetDirtyNext(inode) == NULL) &&
+                (fs->fs_dirtyInodesLast != inode)) {
+                lc_addDirtyInode(fs, inode);
             }
+            lc_inodeUnlock(inode);
+
+            /* Flush pages of the inode if layer has many dirty pages */
+            if (fs->fs_pcount &&
+                (!lc_checkMemoryAvailable(false) ||
+                 (fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES))) {
+                pthread_cond_signal(&fs->fs_gfs->gfs_flusherCond);
+            }
+            return;
         }
     }
     lc_inodeUnlock(inode);
