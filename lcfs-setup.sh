@@ -43,7 +43,7 @@ DOCKER_MNT=${DOCKER_MNT:-"/var/lib/docker"}
 PLUGIN_MNT=${PLUGIN_MNT:-"/lcfs"}
 DEV=${DEV:-"/dev/sdNN"}
 if [ ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ]; then  # for now qemu only for mac docker.
-    DEVFL=${DEVFL:-"/host_docker_app/lcfs-dev.img"}      # Set for all Alpine & Mac VM.  May want 
+    DEVFL=${DEVFL:-"/host_docker_app/lcfs-dev.img"}      # Set for all Alpine & Mac VM.  May want
     DSZ=${DSZ:-"20G"}                         # to separate for Mac VM & Alpine.
 else
     DEVFL=${DEVFL:-"/lcfs-dev-file"}
@@ -133,14 +133,14 @@ function install_lcfs_binary()
 
     local file_cmd=$(which file 2>/dev/null)
     if [ $? -eq 0 -a -n "${file_cmd}" ]; then
-	${file_cmd} -b -L ${LOCAL_PKG} 2>&1 | egrep -q 'gzip compressed data' 
+	${file_cmd} -b -L ${LOCAL_PKG} 2>&1 | egrep -q 'gzip compressed data'
 	[ $? -eq 0 ] && isTar=1
-    fi    
-    
+    fi
+
     if [ ${isAlpine} -eq 1 -o ${isTar} -eq 1 ]; then
-	tar -tzf ${LOCAL_PKG} | grep -v '.*/$' &> ${LOCAL_MANIFEST}
-	tar -C / -xzf ${LOCAL_PKG}
-	[ $? -eq 0 ] && touch ${flg_fl}
+	${SUDO} tar -tzf ${LOCAL_PKG} | ${SUDO} bash -c "grep -v '.*/$' &> ${LOCAL_MANIFEST}"
+	${SUDO} tar -C / -xzf ${LOCAL_PKG}
+	[ $? -eq 0 ] && ${SUDO} touch ${flg_fl}
     else
 	[ -z "$(getPid ${DOCKER_SRV_BIN})" ] && dockerd_manual_start "${SUDO} ${DOCKER_SRV_BIN}"
 
@@ -151,7 +151,7 @@ function install_lcfs_binary()
 	[ -z "${centos_exists}" ] && ${SUDO} ${DOCKER_BIN} rmi centos:latest &> /dev/null
     fi
     [ ! -f ${flg_fl} ] && echo "Failed to install LCFS binaries." && cleanup_and_exit 1
-    \rm -f ${flg_fl}
+    ${SUDO} \rm -f ${flg_fl}
 }
 
 function install_fuse()
@@ -283,8 +283,8 @@ function system_manage()
 		if [ -n "$(${SUDO} which chkconfig)" ]; then
 		    ${SUDO} chkconfig $2 off
 		elif [ -n "$(${SUDO} which rc-update)" ]; then
-		    ${SUDO} rc-update show | egrep -q "^ *$2 " 
-		    if [ $? -eq 0 ]; then 
+		    ${SUDO} rc-update show | egrep -q "^ *$2 "
+		    if [ $? -eq 0 ]; then
 			${SUDO} rc-update del $2
 		    fi
 		fi
@@ -359,7 +359,7 @@ function lcfs_startup_setup()
 	elif [ -n "$(${SUDO} which rc-update)" ]; then
 	    ${SUDO} rc-update add lcfs
 	    ${SUDO} rc-update add lcfs shutdown
-	    [ ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ] && lcfs_locald_stop      # for now qemu only for mac docker.   
+	    [ ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ] && lcfs_locald_stop      # for now qemu only for mac docker.
 	fi
     fi
 
@@ -380,7 +380,7 @@ function lcfs_startup_remove()
 	    ${SUDO} chkconfig lcfs off &> /dev/null
 	elif [ -n "$(${SUDO} which rc-update)" ]; then
 	    ${SUDO} rc-update del lcfs
-	    [ ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ] && \rm -f ${LOCALD_LCFS_STOP}      # for now qemu only for mac docker.   
+	    [ ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ] && \rm -f ${LOCALD_LCFS_STOP}      # for now qemu only for mac docker.
 	fi
 	${SUDO} rm /etc/init.d/lcfs
     fi
@@ -520,7 +520,7 @@ function connect_dev_file()
 		    return 1
 		fi
 
-		DEVFL=${devfl} 
+		DEVFL=${devfl}
 		DEV=${qdev}
 	    fi
 	else
@@ -534,12 +534,12 @@ function connect_dev_file()
 function connect_dev()
 {
     local qdev="$1"
-    
+
     echo "Connecting to device, please wait..."
     [ -z "${qdev}" ] || [ ! -e "${qdev}" ] && return 1
 
     if [ ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ]; then  # for now qemu only for mac docker.
-	if [ -n "${QNBD}" -a -n "${qdev}" ] && [[ ${qdev} == /dev/nbd* ]]; then		
+	if [ -n "${QNBD}" -a -n "${qdev}" ] && [[ ${qdev} == /dev/nbd* ]]; then
 	    local dsz=$(cat /sys/class/block/$(basename ${qdev})/size)
 
 	    [ $? -ne 0 ] && return 1
@@ -559,18 +559,18 @@ function create_dev_file()
 
     if [ ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ]; then     # for now qemu only for mac docker.
 	local pdevfl=${DEVFL}
- 
+
 	if [ -n "${QIMG}" ]; then
 	    echo "Creating device image..."
 	    ${QIMG} create -f raw -o size=${sz} ${pdevfl}
 	    if [ $? -eq 0 ]; then
 		done=1
-		connect_dev_file ${pdevfl} 
+		connect_dev_file ${pdevfl}
 		[ $? -ne 0 ] && \rm -f ${pdevfl} && return 1
 	    fi
 	fi
     fi
-    
+
     if [ ${done} -eq 0 ]; then
 	echo "Creating sparse device file: ${devl_FL} ${sz}."
 	${SUDO} truncate -s ${sz} ${dev_fl}
@@ -605,9 +605,9 @@ function stop_remove_lcfs()
     clean_mount "${DOCKER_MNT}"
     killprocess lcfs
     sleep 3
-    
-    if [ ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ]; then      # for now qemu only for mac docker.   
-	[ -n "${QNBD}" ] && [[ ${DEV} == /dev/nbd* ]] && ${QNBD} -d ${DEV} 
+
+    if [ ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ]; then      # for now qemu only for mac docker.
+	[ -n "${QNBD}" ] && [[ ${DEV} == /dev/nbd* ]] && ${QNBD} -d ${DEV}
     fi
 
     if [ -n "${REMOVE}" ]; then
@@ -645,13 +645,13 @@ function setup_lcfs_device()
 	else
 	    connect_dev_file ${DEVFL}
 	    [ $? -ne 0 ] && echo "Error: Failed to connect to device file." && system_docker_restart && cleanup_and_exit 1
-	    
+
 	    [ ! -e ${LCFS_ENV_FL} ] && DSZ=$(ls -lh ${DEVFL}  | awk '{print $5}')
 	    echo "Note: LCFS device file ${DEVFL} exists. Using existing device file ${DEVFL} without modifying."
 	fi
     else
 	connect_dev ${DEV}
-	if [ $? -ne 0 -a ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ]; then      # for now qemu only for mac docker.   
+	if [ $? -ne 0 -a ${isAlpine} -eq 1 -a "${mobyplatform}" == "mac" ]; then      # for now qemu only for mac docker.
 	    connect_dev_file ${DEVFL}
 	    [ $? -ne 0 ] && echo "Error: Failed to connect to device file." && system_docker_restart && cleanup_and_exit 1
 	fi
@@ -739,6 +739,60 @@ function docker_version_check()
     return 0
 }
 
+function build-centos()
+{
+    local blddir=~/go/src/github.com/portworx
+
+    # tools to build
+    ${SUDO} yum install -y make git rpm-build gcc gcc-c++ autoconf automake screen wget zlib-devel graphviz-devel wget
+
+    mkdir -p ${blddir}
+
+    cd ${blddir}
+
+    if [ ! -d lcfs ]; then
+	git clone https://github.com/portworx/lcfs.git
+	[ $? -ne 0 ] && echo "Error: failed to clone lcfs repo." && cleanup_and_exit 1
+    else
+	cd ${blddir}/lcfs
+	git pull -r 
+    fi
+
+    cd ${blddir}/lcfs
+
+    wget http://www.lttng.org/files/urcu/userspace-rcu-0.7.16.tar.bz2 && tar -xjf userspace-rcu-0.7.16.tar.bz2
+    cd userspace-rcu-0.7.16
+    ./configure && make && ${SUDO} make install
+    [ $? -ne 0 ] && echo "Error: failed to build required library." && cleanup_and_exit 1
+
+    cd ${blddir}/lcfs
+    wget -q https://github.com/libfuse/libfuse/releases/download/fuse-3.0.2/fuse-3.0.2.tar.gz && tar -xzf fuse-3.0.2.tar.gz
+    cd fuse-3.0.2
+    cp ../fuse/fusermount.c util && ./configure --bindir=/opt/lcfs/bin && make -j8 && make && ${SUDO} make install
+    [ $? -ne 0 ] && echo "Error: failed to build required library." && cleanup_and_exit 1
+
+    cd ${blddir}/lcfs
+    wget -q http://lcfs.portworx.com/c7rpms.tgz && tar -xzf c7rpms.tgz
+    ${SUDO} rpm -Uvh --force rpmbuild/RPMS/noarch/pprof-2.4-8.el7.centos.noarch.rpm rpmbuild/RPMS/x86_64/gperftools-2.4-8.el7.centos.x86_64.rpm rpmbuild/RPMS/x86_64/gperftools-devel-2.4-8.el7.centos.x86_64.rpm rpmbuild/RPMS/x86_64/gperftools-libs-2.4-8.el7.centos.x86_64.rpm  rpmbuild/RPMS/x86_64/libunwind-1.1-5.el7.centos.2.x86_64.rpm rpmbuild/RPMS/x86_64/libunwind-devel-1.1-5.el7.centos.2.x86_64.rpm
+    [ $? -ne 0 ] && echo "Error: failed to install build required library." && cleanup_and_exit 1
+
+    cd ${blddir}/lcfs/lcfs
+
+    make STATIC=y BUILD_FLAGS="${BUILD_FLAGS}" VERSION="${VERSION}" REVISION="${REVISION}" clean all
+    [ $? -ne 0 ] && echo "Error: failed to build lcfs." && cleanup_and_exit 1
+
+    cd ${blddir}/lcfs
+
+    ${SUDO} mkdir -p /opt/lcfs/services && ${SUDO} \cp lcfs-setup.sh /opt/lcfs/bin && ${SUDO} \cp lcfs/lcfs /opt/lcfs/bin && ${SUDO} \cp lcfs.system* /opt/lcfs/services
+    [ $? -ne 0 ] && echo "Error: failed to install lcfs." && cleanup_and_exit 1
+
+    ${SUDO} mkdir -p /opt/lcfs/dnld
+
+    ${SUDO} bash -c "find /opt/lcfs -name \* -type f | egrep -v '/manifest$' > /opt/lcfs/dnld/manifest"
+
+    return 0
+}
+
 DOCKER_SERVICE=""      # Unset docker service marker variable.
 
 args=("$@")
@@ -782,6 +836,9 @@ while [ "$1" != "" ]; do
         --docker-service)
 	    DOCKER_SERVICE="yes"
             ;;
+        --centos-build)
+	    CBLD="yes"
+            ;;
         *)
             echo "Error: invalid input parameter."
             help
@@ -792,9 +849,14 @@ done
 
 # Install lcfs binary
 if [ -z "${START}" ]; then
-    install_fuse
-    download_lcfs_binary
-    install_lcfs_binary
+    if [ -n "${CBLD}" -a "${CBLD}" == "yes" ]; then
+	[ ${isCentos} -eq 0 ] && echo "Error: Not Centos system. The --centos-build option will only work on Centos system." && cleanup_and_exit 1 # exit(1)
+	build-centos
+    else
+	install_fuse
+	download_lcfs_binary
+	install_lcfs_binary
+    fi
 elif [ ! -e "${LCFS_ENV_FL}" ]; then # --start was executed. Check config
     echo "LCFS not configured.  Re-execute this command with no options for a default configuration or with the '--configure' option."
     cleanup_and_exit 1
