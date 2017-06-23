@@ -910,8 +910,7 @@ lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode, off_t soffset,
     lc_inodeUnlock(inode);
     if (pcount) {
         lc_releaseReadPages(gfs, fs, pages, pcount,
-                            //(inode->i_fs == fs) && !fs->fs_readOnly &&
-                            (fs == lc_getGlobalFs(gfs)) &&
+                            (inode->i_fs == fs) && !fs->fs_readOnly &&
                             (ino != gfs->gfs_dbIno) &&
                             (ino != gfs->gfs_pluginIno));
     }

@@ -1158,8 +1158,8 @@ retry:
     }
 
 out:
+    lc_waitMemory(fs->fs_gfs, false);
     lc_statsAdd(fs, LC_READ, err, &start);
-    lc_waitMemory(false);
     lc_unlock(fs);
 }
 
@@ -1630,7 +1630,7 @@ lc_write_buf(fuse_req_t req, fuse_ino_t ino,
     }
 
     /* Make sure enough memory available before proceeding */
-    lc_waitMemory(true);
+    lc_waitMemory(gfs, true);
 
     /* Copy in the data before taking the lock */
     pcount = lc_copyPages(fs, off, size, dpages, bufv, dst);

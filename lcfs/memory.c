@@ -89,14 +89,9 @@ lc_checkMemoryAvailable(bool flush) {
                                    lc_mem.m_purgeMemory : lc_mem.m_dataMemory);
 }
 
-/* Flush dirty pages and purge cache entries when running low on memory */
+/* Wake up flusher and cleaner threads if too many data pages created */
 void
-lc_waitMemory(bool wait) {
-    struct gfs *gfs = getfs();
-
-    /* If memory used for data usage is above limit, Flush dirty pages and
-     * purge cache entries.
-     */
+lc_waitMemory(struct gfs *gfs, bool wait) {
     if (!lc_checkMemoryAvailable(false)) {
         lc_wakeupCleaner(gfs, wait);
     }

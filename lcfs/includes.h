@@ -76,7 +76,7 @@ void lc_free(struct fs *fs, void *ptr, size_t size, enum lc_memTypes type);
 void lc_memMove(struct fs *fs, struct fs *to, size_t size,
                 enum lc_memTypes type);
 bool lc_checkMemoryAvailable(bool flush);
-void lc_waitMemory(bool wait);
+void lc_waitMemory(struct gfs *gfs, bool wait);
 void lc_memUpdateTotal(struct fs *fs, size_t size);
 void lc_memTransferCount(struct fs *fs, struct fs *rfs, uint64_t count,
                          enum lc_memTypes type);
