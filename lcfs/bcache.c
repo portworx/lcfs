@@ -9,12 +9,45 @@ lc_pageBlockHash(struct fs *fs, uint64_t block) {
     return block % fs->fs_bcache->lb_pcacheSize;
 }
 
+/* Add a page to free list */
+static void
+lc_insertPageToFreeList(struct lbcache *lbcache, struct page *page) {
+    if (lbcache->lb_ftail) {
+        page->p_fprev = lbcache->lb_ftail;
+        lbcache->lb_ftail->p_fnext = page;
+    } else {
+        assert(lbcache->lb_fhead == NULL);
+        lbcache->lb_fhead = page;
+        page->p_fprev = NULL;
+    }
+    lbcache->lb_ftail = page;
+    page->p_fnext = NULL;
+}
+
+/* Remove a page from freelist */
+static void
+lc_removePageFromFreeList(struct lbcache *lbcache, struct page *page) {
+    if (page->p_fprev) {
+        page->p_fprev->p_fnext = page->p_fnext;
+    }
+    if (page->p_fnext) {
+        page->p_fnext->p_fprev = page->p_fprev;
+    }
+    if (lbcache->lb_fhead == page) {
+        lbcache->lb_fhead = page->p_fnext;
+    }
+    if (lbcache->lb_ftail == page) {
+        lbcache->lb_ftail = page->p_fprev;
+    }
+    page->p_fnext = NULL;
+    page->p_fprev = NULL;
+}
+
 /* Allocate a new page. Memory is counted against the base layer */
 static struct page *
 lc_newPage(struct gfs *gfs, struct fs *fs) {
     struct page *page = lc_malloc(fs->fs_rfs, sizeof(struct page),
                                   LC_MEMTYPE_PAGE);
-
     page->p_data = NULL;
     page->p_block = LC_INVALID_BLOCK;
     page->p_refCount = 1;
@@ -26,6 +59,8 @@ lc_newPage(struct gfs *gfs, struct fs *fs) {
     page->p_dvalid = 0;
     page->p_cnext = NULL;
     page->p_dnext = NULL;
+    page->p_fnext = NULL;
+    page->p_fprev = NULL;
     __sync_add_and_fetch(&fs->fs_bcache->lb_pcount, 1);
     __sync_add_and_fetch(&gfs->gfs_pcount, 1);
     return page;
@@ -34,11 +69,20 @@ lc_newPage(struct gfs *gfs, struct fs *fs) {
 /* Free a page */
 static void
 lc_freePage(struct gfs *gfs, struct fs *fs, struct page *page) {
+    struct lbcache *lbcache = fs->fs_bcache;
     assert(page->p_refCount == 0);
     assert(page->p_block == LC_INVALID_BLOCK);
     assert(page->p_cnext == NULL);
     assert(page->p_dnext == NULL);
 
+    if (!page->p_nohash) {
+        pthread_mutex_lock(&lbcache->lb_flock);
+        lc_removePageFromFreeList(lbcache, page);
+        pthread_mutex_unlock(&lbcache->lb_flock);
+    }
+    assert(page->p_fprev == NULL);
+    assert(page->p_fnext == NULL);
+    assert(lbcache->lb_fhead != page);
     if (page->p_data && !page->p_nofree) {
         lc_freePageData(gfs, fs->fs_rfs, page->p_data);
     }
@@ -67,6 +111,9 @@ lc_bcacheInit(struct fs *fs, uint32_t count, uint32_t lcount) {
     for (i = 0; i < (lcount * 2); i++) {
         pthread_mutex_init(&locks[i], NULL);
     }
+    pthread_mutex_init(&lbcache->lb_flock, NULL);
+    lbcache->lb_fhead = NULL;
+    lbcache->lb_ftail = NULL;
     lbcache->lb_pcacheSize = count;
     lbcache->lb_pcacheLockCount = lcount;
     lbcache->lb_pcount = 0;
@@ -85,6 +132,8 @@ lc_bcacheFree(struct fs *fs) {
 
     /* Free the bcache when the base layer is deleted/unmounted */
     if (fs->fs_parent == NULL) {
+        assert(lbcache->lb_fhead == NULL);
+        assert(lbcache->lb_ftail == NULL);
         assert(lbcache->lb_pcount == 0);
         lc_free(fs, lbcache->lb_pcache,
                 sizeof(struct pcache) * lbcache->lb_pcacheSize,
@@ -95,6 +144,7 @@ lc_bcacheFree(struct fs *fs) {
         for (i = 0; i < lcount; i++) {
             pthread_mutex_destroy(&locks[i]);
         }
+        pthread_mutex_destroy(&lbcache->lb_flock);
 #endif
         lc_free(fs, lbcache->lb_pcacheLocks,
                 sizeof(pthread_mutex_t) * lcount, LC_MEMTYPE_PCLOCK);
@@ -249,6 +299,14 @@ lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page, bool read,
     uint32_t lhash;
     uint64_t hash;
 
+    /* Move the page to the tail of the free list */
+    if (!invalidate && (page->p_dnext == NULL) && !page->p_cache) {
+        pthread_mutex_lock(&fs->fs_bcache->lb_flock);
+        lc_removePageFromFreeList(fs->fs_bcache, page);
+        lc_insertPageToFreeList(fs->fs_bcache, page);
+        pthread_mutex_unlock(&fs->fs_bcache->lb_flock);
+    }
+
     /* Find the hash list and lock it */
     hash = lc_pageBlockHash(fs, page->p_block);
     lhash = lc_pcLockHash(fs, hash);
@@ -348,6 +406,7 @@ lc_invalPage(struct gfs *gfs, struct fs *fs, uint64_t block) {
     /* Traverse the list looking for the page and invalidate it if found */
     while (page) {
         if (page->p_block == block) {
+            page->p_cache = 0;
             if (page->p_refCount) {
                 page->p_nocache = 1;
                 page = NULL;
@@ -794,7 +853,7 @@ lc_flusher(void *data) {
                 continue;
             }
             force = !lc_checkMemoryAvailable(true) ||
-                    gfs->gfs_pcleaningForced;
+                    gfs->gfs_pcleaning || gfs->gfs_pcleaningForced;
 
             /* Skip newly created layers */
             gettimeofday(&now, NULL);
@@ -806,10 +865,9 @@ lc_flusher(void *data) {
              */
             if (!fs->fs_readOnly && fs->fs_pcount &&
                 ((fs->fs_pcount >= LC_MAX_LAYER_DIRTYPAGES) ||
-                 (force && (fs->fs_super->sb_ctime < recent))) &&
+                 force || (fs->fs_super->sb_ctime < recent)) &&
                 !(fs->fs_super->sb_flags & LC_SUPER_INIT) &&
                 !lc_tryLock(fs, false)) {
-
                 rcu_read_unlock();
                 if (fs->fs_pcount) {
                     lc_flushDirtyInodeList(fs, force);
@@ -818,7 +876,8 @@ lc_flusher(void *data) {
                 lc_unlock(fs);
                 rcu_read_lock();
             } else if (((fs->fs_dpcount >= LC_SYNCER_DIRTY_COUNT) ||
-                        (fs->fs_dpcount && force)) && !lc_tryLock(fs, false)) {
+                        (fs->fs_dpcount && force)) &&
+                       !lc_tryLock(fs, false)) {
                 rcu_read_unlock();
 
                 /* Write out dirty pages of a layer */
@@ -864,72 +923,36 @@ lc_wakeupCleaner(struct gfs *gfs, bool wait) {
 
 /* Purge some pages of a tree of layers */
 static uint64_t
-lc_purgeTreePages(struct gfs *gfs, struct fs *fs, bool force) {
+lc_purgeTreePages(struct gfs *gfs, struct fs *fs, uint64_t *blocks,
+                  bool force) {
     struct lbcache *lbcache = fs->fs_bcache;
-    struct pcache *pcache = lbcache->lb_pcache;
-    struct page *page, **prev, *fpage = NULL;
     bool all = gfs->gfs_pcleaningForced;
-    uint64_t i, j, count = 0;
-    uint32_t lhash;
+    uint64_t count = 0, pcount = 0;
+    struct page *page;
 
     assert(fs->fs_parent == NULL);
-    for (j = 0; j < lbcache->lb_pcacheSize; j++) {
-        if ((lbcache->lb_pcount == 0) || fs->fs_removed) {
-            break;
-        }
 
-        /* Start from the hashlist where processing stopped previously */
-        i = fs->fs_purgeIndex++;
-        if (fs->fs_purgeIndex >= lbcache->lb_pcacheSize) {
-             fs->fs_purgeIndex = 0;
-        }
-        assert(i < lbcache->lb_pcacheSize);
-        if (pcache[i].pc_pcount == 0) {
-            continue;
-        }
-        lhash = lc_pcLockHash(fs, i);
-        prev = &pcache[i].pc_head;
-        page = pcache[i].pc_head;
-        while (page) {
+    if (lbcache->lb_fhead == NULL) {
+        return 0;
+    }
 
-            /* Free pages if not in use currently */
-            if (page->p_refCount == 0) {
-
-                /* Wait for p_hitCount to drop before purging */
-                if (all || ((page->p_hitCount == 0) && !page->p_cache)) {
-                    *prev = page->p_cnext;
-                    lc_removePageFromHashList(pcache, page, i);
-                    page->p_dnext = fpage;
-                    fpage = page;
-                    count++;
-                    page = *prev;
-                    continue;
-                }
-                if (page->p_hitCount) {
-                    page->p_hitCount--;
-                }
-            } else if (all) {
-                page->p_nocache = 1;
-                page->p_cache = 0;
+    /* Invalidate pages from the head of the free list */
+    pthread_mutex_lock(&lbcache->lb_flock);
+    page = lbcache->lb_fhead;
+    while (page && (pcount < LC_PAGE_PURGE_COUNT)) {
+        if ((page->p_block != LC_INVALID_BLOCK) &&
+            (all || (page->p_refCount == 0))) {
+            if (!all && page->p_hitCount) {
+                page->p_hitCount--;
+            } else {
+                blocks[pcount++] = page->p_block;
             }
-            prev = &page->p_cnext;
-            page = page->p_cnext;
         }
-        lc_pcUnLockHash(fs, lhash);
-        while (fpage) {
-            page = fpage;
-            fpage = page->p_dnext;
-            page->p_dnext = NULL;
-            lc_freePage(gfs, fs, page);
-        }
-        if (!all && lc_checkMemoryAvailable(true)) {
-            break;
-        }
-
-        /* Wakeup waiting threads when memory becomes available */
-        if (lc_checkMemoryAvailable(false)) {
-            pthread_cond_broadcast(&gfs->gfs_mcond);
-        }
+        page = page->p_fnext;
+    }
+    pthread_mutex_unlock(&lbcache->lb_flock);
+    while (pcount && !fs->fs_removed) {
+        count += lc_invalPage(gfs, fs, blocks[--pcount]);
     }
     return count;
 }
@@ -937,14 +960,14 @@ lc_purgeTreePages(struct gfs *gfs, struct fs *fs, bool force) {
 /* Free pages when running low on memory */
 static void
 lc_purgePages(struct gfs *gfs, bool force) {
-    uint64_t count = 0;
-    struct timeval now;
-    time_t recent = 0;
+    uint64_t blocks[LC_PAGE_PURGE_COUNT], count = 0, tcount, pcount = 0;
     struct fs *fs;
     int i;
 
     gfs->gfs_pcleaning = true;
     rcu_register_thread();
+
+retry:
     rcu_read_lock();
     for (i = 0; i <= gfs->gfs_scount; i++) {
 
@@ -952,49 +975,38 @@ lc_purgePages(struct gfs *gfs, bool force) {
         if (gfs->gfs_cleanerIndex > gfs->gfs_scount) {
             gfs->gfs_cleanerIndex = 0;
         }
-        fs = rcu_dereference(gfs->gfs_fs[gfs->gfs_cleanerIndex]);
-        if ((fs == NULL) || fs->fs_parent) {
-            gfs->gfs_cleanerIndex++;
+        fs = rcu_dereference(gfs->gfs_fs[gfs->gfs_cleanerIndex++]);
+        if ((fs == NULL) || fs->fs_parent || lc_tryLock(fs, false)) {
             continue;
         }
 
-        /* Skip newly created layers */
-        gettimeofday(&now, NULL);
-        recent = now.tv_sec - LC_PURGE_TIME;
-
-        /* A file system being removed when shared lock fails on it, so skip
-         * those.
-         */
-        if (!lc_tryLock(fs, false)) {
-            if (fs->fs_purgeTime == 0) {
-                fs->fs_purgeTime = fs->fs_super->sb_ctime;
-            }
-
-            /* Purge clean pages for the tree */
-            if (gfs->gfs_pcleaningForced ||
-                (fs->fs_bcache->lb_pcount > LC_MAX_LAYER_PAGES) ||
-                (force && (fs->fs_purgeTime < recent))) {
-                rcu_read_unlock();
-                count += lc_purgeTreePages(gfs, fs, force);
-                fs->fs_purgeTime = now.tv_sec;
-                rcu_read_lock();
-                if (!gfs->gfs_pcleaningForced &&
-                    lc_checkMemoryAvailable(true)) {
-                    lc_unlock(fs);
-                    break;
-                }
-            }
-            lc_unlock(fs);
+        /* Purge clean pages for the tree */
+        rcu_read_unlock();
+        do {
+            tcount = lc_purgeTreePages(gfs, fs, blocks, force);
+            pcount += tcount;
+        } while (tcount && gfs->gfs_pcleaningForced);
+        lc_unlock(fs);
+        rcu_read_lock();
+        if (!gfs->gfs_pcleaningForced && lc_checkMemoryAvailable(true)) {
+            break;
         }
-        gfs->gfs_cleanerIndex++;
+        if (tcount && lc_checkMemoryAvailable(false)) {
+            pthread_cond_broadcast(&gfs->gfs_mcond);
+        }
     }
     rcu_read_unlock();
-    gfs->gfs_pcleaning = false;
+    count += pcount;
 
     /* Wakeup flusher */
-    if (!lc_checkMemoryAvailable(true)) {
+    if (!lc_checkMemoryAvailable(true) && !gfs->gfs_unmounting) {
         pthread_cond_signal(&gfs->gfs_flusherCond);
+        if (pcount) {
+            pcount = 0;
+            goto retry;
+        }
     }
+    gfs->gfs_pcleaning = false;
     gfs->gfs_pcleaningForced = false;
 
     /* Wakeup threads waiting for memory to become available */

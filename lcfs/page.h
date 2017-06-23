@@ -59,16 +59,16 @@
 #define LC_DHASH_MIN            1024
 
 /* Time in seconds background flusher is woken up */
-#define LC_FLUSH_INTERVAL       120
+#define LC_FLUSH_INTERVAL       20
 
 /* Time in seconds background cleaner is woken up */
 #define LC_CLEAN_INTERVAL       60
 
 /* Time in seconds before flusher kicks in on a newly created layer */
-#define LC_FLUSH_TIME           120
+#define LC_FLUSH_TIME           30
 
-/* Time in seconds before cleaner kicks in on a newly created layer */
-#define LC_PURGE_TIME           180
+/* Number of pages freed in one pass */
+#define LC_PAGE_PURGE_COUNT        4096
 
 /* Page cache header */
 struct pcache {
@@ -86,11 +86,20 @@ struct lbcache {
     /* Block cache hash headers */
     struct pcache *lb_pcache;
 
+    /* free page list head */
+    struct page *lb_fhead;
+
+    /* free page list head */
+    struct page *lb_ftail;
+
     /* Locks for the page cache lists */
     pthread_mutex_t *lb_pcacheLocks;
 
     /* Locks for serializing I/Os */
     pthread_mutex_t *lb_pioLocks;
+
+    /* Lock protecting free list */
+    pthread_mutex_t lb_flock;
 
     /* Number of hash lists in pcache */
     uint32_t lb_pcacheSize;
@@ -140,6 +149,12 @@ struct page {
 
     /* Next page in file system dirty list */
     struct page *p_dnext;
+
+    /* Previous page in free list */
+    struct page *p_fprev;
+
+    /* Next page in free list */
+    struct page *p_fnext;
 };
 
 /* Page structure used for caching dirty pages of an inode

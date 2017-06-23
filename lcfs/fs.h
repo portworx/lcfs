@@ -283,17 +283,11 @@ struct fs {
     /* Dirty pages pending write */
     struct page *fs_dpagesLast;
 
-    /* Time pages purged last */
-    time_t fs_purgeTime;
-
     /* Flusher index */
     uint64_t fs_flusher;
 
     /* Dirty page count */
     uint64_t fs_dpcount;
-
-    /* pcache purged last */
-    uint64_t fs_purgeIndex;
 
     /* Lock protecting dirty page list */
     pthread_mutex_t fs_plock;
