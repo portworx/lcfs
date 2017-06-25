@@ -833,6 +833,7 @@ lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode, off_t soffset,
     struct gfs *gfs = fs->fs_gfs;
     uint32_t rcount = 0;
     uint64_t i = 0;
+    bool nocache;
     char *data;
     ino_t ino;
 
@@ -866,7 +867,7 @@ lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode, off_t soffset,
                  */
                 if (!page->p_dvalid && (page->p_data == NULL)) {
                     lc_inodeUnlock(inode);
-                    lc_releaseReadPages(gfs, fs, pages, pcount, false);
+                    lc_releaseReadPages(gfs, fs, pages, pcount, false, false);
                     return ENOMEM;
                 }
                 if (dbuf && (page->p_data == dbuf[dcount])) {
@@ -903,22 +904,29 @@ lc_readFile(fuse_req_t req, struct fs *fs, struct inode *inode, off_t soffset,
 
     /* Read in any pages without valid data associated with */
     if (rcount) {
-        lc_readPages(gfs, fs, rpages, rcount);
+        rcount = lc_readPages(gfs, fs, rpages, rcount);
     }
     fuse_reply_data(req, bufv, FUSE_BUF_SPLICE_MOVE);
     ino = inode->i_ino;
     lc_inodeUnlock(inode);
     if (pcount) {
+
+        /* Invalidate pages of read-write layers which are cached in kernel */
+        nocache = (ino != gfs->gfs_dbIno) && (ino != gfs->gfs_pluginIno);
         lc_releaseReadPages(gfs, fs, pages, pcount,
-                            (inode->i_fs == fs) && !fs->fs_readOnly &&
-                            (ino != gfs->gfs_dbIno) &&
-                            (ino != gfs->gfs_pluginIno));
+                            (inode->i_fs == fs) && !fs->fs_readOnly && nocache,
+                            nocache);
     }
     if (dbuf) {
         while (dcount < pcount) {
             lc_freePageData(gfs, fs->fs_rfs, dbuf[dcount]);
             dcount++;
         }
+    }
+    if (rcount) {
+
+        /* Consider all the pages read as missed in the cache */
+        __sync_add_and_fetch(&gfs->gfs_pmissed, rcount);
     }
     return 0;
 }

@@ -241,12 +241,13 @@ struct page *lc_getPageNoBlock(struct gfs *gfs, struct fs *fs, char *data,
                                struct page *prev);
 struct page *lc_getPageNew(struct gfs *gfs, struct fs *fs,
                            uint64_t block, char *data);
-void lc_readPages(struct gfs *gfs, struct fs *fs, struct page **pages,
-                  uint32_t count);
+uint32_t lc_readPages(struct gfs *gfs, struct fs *fs, struct page **pages,
+                      uint32_t count);
 void lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page,
                     bool read, bool inval);
 void lc_releaseReadPages(struct gfs *gfs, struct fs *fs,
-                         struct page **pages, uint64_t pcount, bool nocache);
+                         struct page **pages, uint64_t pcount, bool nocache,
+                         bool recycle);
 int lc_invalPage(struct gfs *gfs, struct fs *fs, uint64_t block);
 struct page *lc_getPageNewData(struct fs *fs, uint64_t block, char *data);
 void lc_setPageBlock(struct page *page, uint64_t block);
