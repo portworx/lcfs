@@ -941,6 +941,8 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
     struct page *page, *dpage = NULL, *tpage = NULL;
     uint64_t fcount = 0, block = LC_INVALID_BLOCK;
     struct extent *extents = NULL, *extent, *tmp;
+    struct lbcache *lbcache = fs->fs_bcache;
+    struct page *first = NULL, *last = NULL;
     bool single, read, cache;
     char *pdata;
     int64_t i;
@@ -1100,6 +1102,19 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
             if (cache) {
                 page->p_cache = 1;
             }
+
+            /* Build a free list with the newly created pages */
+            assert(page->p_fnext == NULL);
+            assert(page->p_fprev == NULL);
+            assert(lbcache->lb_fhead != page);
+            if (first == NULL) {
+                first = page;
+            }
+            if (last) {
+                last->p_fnext = page;
+                page->p_fprev = last;
+            }
+            last = page;
             if (tpage == NULL) {
                 tpage = page;
                 dpage = page;
@@ -1166,6 +1181,11 @@ out:
         }
     }
     lc_initInodePageMarkers(inode);
+
+    /* Add the pages to free list */
+    if (first) {
+        lc_insertPagesToFreeList(lbcache, first, page);
+    }
 
     /* Unlock the inode before issuing I/Os if we can.  As we never overwrite
      * in place, it is safe to do so.

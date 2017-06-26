@@ -55,7 +55,7 @@ On CentOS, run
 # sudo yum install gcc libstdc++-devel gcc-c++ curl-devel libxml2-devel openssl-devel mailcap
 ```
      
-Now dowload and install the fuse library from https://github.com/libfuse/libfuse/releases/download/fuse-3.0.0/fuse-3.0.0.tar.gz
+Now dowload and install the fuse library from https://github.com/libfuse/libfuse/releases/download/fuse-3.0.2/fuse-3.0.2.tar.gz
 
 Extract the fuse tarball and build and install fuse using the following commands:
 

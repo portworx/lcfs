@@ -257,6 +257,8 @@ void lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head,
                      bool inval);
 void lc_addPageForWriteBack(struct gfs *gfs, struct fs *fs, struct page *head,
                             struct page *tail, uint64_t pcount);
+void lc_insertPagesToFreeList(struct lbcache *lbcache, struct page *first,
+                              struct page *last);
 void lc_processHiddenInodes(struct gfs *gfs, struct fs *fs);
 void *lc_flusher(void *data);
 void lc_cleaner(void);

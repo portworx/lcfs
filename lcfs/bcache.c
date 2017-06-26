@@ -26,6 +26,25 @@ lc_insertPageToFreeList(struct lbcache *lbcache, struct page *page) {
     lbcache->lb_ftail = page;
 }
 
+/* Add a list of pages to free list */
+void
+lc_insertPagesToFreeList(struct lbcache *lbcache, struct page *first,
+                         struct page *last) {
+    assert(first->p_fprev == NULL);
+    assert(last->p_fnext == NULL);
+
+    pthread_mutex_lock(&lbcache->lb_flock);
+    if (lbcache->lb_ftail) {
+        lbcache->lb_ftail->p_fnext = first;
+        first->p_fprev = lbcache->lb_ftail;
+    } else {
+        assert(lbcache->lb_fhead == NULL);
+        lbcache->lb_fhead = first;
+    }
+    lbcache->lb_ftail = last;
+    pthread_mutex_unlock(&lbcache->lb_flock);
+}
+
 /* Remove a page from freelist */
 static void
 lc_removePageFromFreeList(struct lbcache *lbcache, struct page *page) {
@@ -344,49 +363,9 @@ lc_releasePage(struct gfs *gfs, struct fs *fs, struct page *page, bool read,
 void
 lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head,
                 bool inval) {
-    struct page *page = head, *next, *first = NULL, *last = NULL;
-    struct lbcache *lbcache = fs->fs_bcache;
+    struct page *page = head, *next;
     uint64_t count = 0;
 
-    /* Insert pages to free list if not being invalidated now */
-    if (!inval) {
-
-        /* Prepare a free list before taking the lock */
-        while (page) {
-            if ((page->p_block != LC_INVALID_BLOCK) && !page->p_nohash &&
-                !page->p_cache) {
-                assert(page->p_fnext == NULL);
-                assert(page->p_fprev == NULL);
-                assert(lbcache->lb_fhead != page);
-                if (first == NULL) {
-                    first = page;
-                }
-                if (last) {
-                    last->p_fnext = page;
-                    page->p_fprev = last;
-                }
-                last = page;
-            }
-            page = page->p_dnext;
-        }
-
-        /* Add the free list of pages to global free list */
-        if (first) {
-            assert(first->p_fprev == NULL);
-            assert(last->p_fnext == NULL);
-            pthread_mutex_lock(&lbcache->lb_flock);
-            if (lbcache->lb_ftail) {
-                lbcache->lb_ftail->p_fnext = first;
-                first->p_fprev = lbcache->lb_ftail;
-            } else {
-                assert(lbcache->lb_fhead == NULL);
-                lbcache->lb_fhead = first;
-            }
-            lbcache->lb_ftail = last;
-            pthread_mutex_unlock(&lbcache->lb_flock);
-        }
-        page = head;
-    }
     while (page) {
         next = page->p_dnext;
         page->p_dnext = NULL;
@@ -425,7 +404,7 @@ lc_releaseReadPages(struct gfs *gfs, struct fs *fs, struct page **pages,
     if (recycle && !nocache) {
         pthread_mutex_lock(&lbcache->lb_flock);
         for (i = 0; i < pcount; i++) {
-            if (pages[i]->p_dnext == NULL) {
+            if (!pages[i]->p_nocache) {
                 lc_removePageFromFreeList(lbcache, pages[i]);
                 lc_insertPageToFreeList(lbcache, pages[i]);
             }

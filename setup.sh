@@ -23,8 +23,6 @@ sudo fusermount -u $MNT
 sudo umount -f $MNT2 $MNT
 sudo rm -fr $MNT2 $MNT
 
-sudo dd if=/dev/zero of=$DEVICE count=1 bs=4096
-
 sudo apt-get update
 
 #Install wget
@@ -42,6 +40,9 @@ sudo apt-get install -y libgoogle-perftools-dev
 sudo apt-get install -y zlib1g-dev
 #sudo yum install install zlib-devel
 
+#Install urcu
+sudo apt-get install -y liburcu-dev
+
 WDIR=/tmp/lcfs
 rm -fr $WDIR
 mkdir -p $WDIR
@@ -49,13 +50,13 @@ chmod 777 $WDIR
 cd $WDIR
 
 #Install FUSE 3.0.0
-wget https://github.com/libfuse/libfuse/releases/download/fuse-3.0.0/fuse-3.0.0.tar.gz
-tar -xzvf fuse-3.0.0.tar.gz
-cd fuse-3.0.0
+wget https://github.com/libfuse/libfuse/releases/download/fuse-3.0.2/fuse-3.0.2.tar.gz
+tar -xzvf fuse-3.0.2.tar.gz
+cd fuse-3.0.2
 ./configure
 make -j8
 sudo make install
-rm -fr fuse-3.0.0*
+rm -fr fuse-3.0.2*
 
 cd $WDIR
 
@@ -66,7 +67,7 @@ make
 
 # Mount lcfs
 sudo mkdir -p $MNT $MNT2
-sudo $WDIR/lcfs/lcfs/lcfs $DEVICE $MNT $MNT2
+sudo $WDIR/lcfs/lcfs/lcfs $DEVICE $MNT $MNT2 -c
 sleep 3
 
 # Restart docker
@@ -85,6 +86,7 @@ sleep 3
 docker info
 
 rm -fr $WDIR
+sudo rm -fr $MNT2/vfs $MNT2/image/vfs
 
 # pkill dockerd
 # fusermount -u $MNT2
