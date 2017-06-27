@@ -1579,6 +1579,30 @@ lc_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
         fuse_reply_ioctl(req, 0, NULL, 0);
         break;
 
+#ifndef __MUSL__
+    case LCFS_PROFILE:
+        if (name[0]) {
+            if (!gfs->gfs_profiling) {
+                ProfilerStart("/tmp/lcfs");
+                gfs->gfs_profiling = true;
+                fuse_reply_ioctl(req, 0, NULL, 0);
+                lc_syslog(LOG_INFO, "Profiling enabled\n");
+            } else {
+                fuse_reply_err(req, EEXIST);
+            }
+        } else {
+            if (gfs->gfs_profiling) {
+                ProfilerStop();
+                gfs->gfs_profiling = false;
+                fuse_reply_ioctl(req, 0, NULL, 0);
+                lc_syslog(LOG_INFO, "Profiling disabled\n");
+            } else {
+                fuse_reply_err(req, ENOENT);
+            }
+        }
+        break;
+#endif
+
     case LCFS_VERBOSE:
         if (name[0]) {
             lc_verbose = true;

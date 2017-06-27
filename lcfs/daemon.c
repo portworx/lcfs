@@ -17,7 +17,10 @@ getfs() {
 static void
 usage(char *prog) {
     lc_syslog(LOG_ERR, "usage: %s daemon <device> <host-mnt> <plugin-mnt>"
-                       " [-f] [-c] [-d] [-m] [-r] [-t] [-p] [-s] [-v]\n",
+#ifndef __MUSL__
+                       " [-p]"
+#endif
+                       " [-f] [-c] [-d] [-m] [-r] [-t] [-s] [-v]\n",
                        prog);
     lc_syslog(LOG_ERR, "\tdevice        - device or file - image layers"
                        " will be saved here\n"
@@ -30,7 +33,9 @@ usage(char *prog) {
                     "\t-r            - enable request stats (optional)\n"
                     "\t-t            - enable tracking count of file types"
                                        " (optional)\n"
+#ifndef __MUSL__
                     "\t-p            - enable profiling (optional)\n"
+#endif
                     "\t-s            - swap layers when committed\n"
                     "\t-v            - enable verbose mode (optional)\n");
 }
@@ -308,11 +313,13 @@ lc_start(struct gfs *gfs, char *device, enum lc_mountId id) {
 /* Mount the specified device and start serving requests */
 int
 lcfs_main(char *pgm, int argc, char *argv[]) {
-    bool daemon = true, profiling = false, ftypes = false, swap = false;
+    bool daemon = true, format = false, ftypes = false, swap = false;
     int i, err = -1, waiter[2], fd, count;
     char *arg[argc + 1], completed;
     struct fuse_session *se;
-    bool format = false;
+#ifndef __MUSL__
+    bool profiling = false;
+#endif
     struct stat st;
     size_t size;
 
@@ -392,8 +399,10 @@ lcfs_main(char *pgm, int argc, char *argv[]) {
             lc_statsEnable();
         } else if (!strcmp(argv[i], "-t")) {
             ftypes = true;
+#ifndef __MUSL__
         } else if (!strcmp(argv[i], "-p")) {
             profiling = true;
+#endif
         } else if (!strcmp(argv[i], "-s")) {
             swap = true;
         } else if (!strcmp(argv[i], "-v")) {
@@ -449,7 +458,9 @@ lcfs_main(char *pgm, int argc, char *argv[]) {
         gfs->gfs_waiter = waiter;
     }
     gfs->gfs_fd = fd;
+#ifndef __MUSL__
     gfs->gfs_profiling = profiling;
+#endif
     gfs->gfs_swapLayersForCommit = swap;
 
     /* Setup arguments for fuse mount */

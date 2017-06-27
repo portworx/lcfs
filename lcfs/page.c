@@ -1099,22 +1099,22 @@ lc_flushPages(struct gfs *gfs, struct fs *fs, struct inode *inode,
             if (read) {
                 page->p_hitCount++;
             }
-            if (cache) {
-                page->p_cache = 1;
-            }
-
-            /* Build a free list with the newly created pages */
             assert(page->p_fnext == NULL);
             assert(page->p_fprev == NULL);
             assert(lbcache->lb_fhead != page);
-            if (first == NULL) {
-                first = page;
+            if (cache) {
+                page->p_cache = 1;
+            } else {
+
+                /* Build a free list with the newly created pages */
+                if (last) {
+                    last->p_fnext = page;
+                    page->p_fprev = last;
+                } else {
+                    first = page;
+                }
+                last = page;
             }
-            if (last) {
-                last->p_fnext = page;
-                page->p_fprev = last;
-            }
-            last = page;
             if (tpage == NULL) {
                 tpage = page;
                 dpage = page;

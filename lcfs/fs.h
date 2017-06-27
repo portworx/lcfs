@@ -170,8 +170,10 @@ struct gfs {
     /* Set if extended attributes are enabled */
     bool gfs_xattr_enabled;
 
+#ifndef __MUSL__
     /* Set if profiling is enabled */
     bool gfs_profiling;
+#endif
 
     /* Set if count of file types maintained */
     bool gfs_ftypes;

@@ -22,6 +22,12 @@ usage(char *pgm, char *name) {
         fprintf(stderr, "usage: %s %s <mnt> <pcache>\n", pgm, name);
         fprintf(stderr, "\t mnt    - mount point\n");
         fprintf(stderr, "\t memory - memory limit in MB (default 512MB)\n");
+#ifndef __MUSL__
+    } else if (strcmp(name, "profile") == 0) {
+        fprintf(stderr, "usage: %s %s <mnt> [enable|disable]\n", pgm, name);
+        fprintf(stderr, "\t mnt              - mount point\n");
+        fprintf(stderr, "\t [enable|disable] - enable/disable profiling\n");
+#endif
     } else if (strcmp(name, "verbose") == 0) {
         fprintf(stderr, "usage: %s %s <mnt> [enable|disable]\n", pgm, name);
         fprintf(stderr, "\t mnt              - mount point\n");
@@ -40,6 +46,7 @@ int
 ioctl_main(char *pgm, int argc, char *argv[]) {
     char name[LAYER_NAME_MAX + 1], *dir, op;
     int fd, err, len, value;
+    enum ioctl_cmd cmd;
     struct stat st;
 
     if ((argc != 2) && (argc != 3) && (argc != 4)) {
@@ -76,8 +83,8 @@ ioctl_main(char *pgm, int argc, char *argv[]) {
         assert(len < LAYER_NAME_MAX);
         memcpy(name, argv[2], len);
         name[len] = 0;
-        err = ioctl(fd, _IOW(0, argc == 3 ? LAYER_STAT : CLEAR_STAT, name),
-                    name);
+        cmd = (argc == 3) ? LAYER_STAT : CLEAR_STAT;
+        err = ioctl(fd, _IOW(0, cmd, name), name);
     } else if (strcmp(argv[0], "flush") == 0) {
         if (argc != 2) {
             close(fd);
@@ -96,7 +103,11 @@ ioctl_main(char *pgm, int argc, char *argv[]) {
             usage(pgm, argv[0]);
         }
         err = ioctl(fd, _IO(0, LCFS_COMMIT), 0);
-    } else if (strcmp(argv[0], "verbose") == 0) {
+    } else if ((strcmp(argv[0], "verbose") == 0)
+#ifndef __MUSL__
+               || (strcmp(argv[0], "profile") == 0)
+#endif
+               ) {
         if (argc < 3) {
             close(fd);
             usage(pgm, argv[0]);
@@ -109,7 +120,12 @@ ioctl_main(char *pgm, int argc, char *argv[]) {
             close(fd);
             usage(pgm, argv[0]);
         }
-        err = ioctl(fd, _IOW(0, LCFS_VERBOSE, op), &op);
+        cmd =
+#ifndef __MUSL__
+            (strcmp(argv[0], "profile") == 0) ? LCFS_PROFILE :
+#endif
+            LCFS_VERBOSE;
+        err = ioctl(fd, _IOW(0, cmd, op), &op);
     } else {
         if (argc != 3) {
             close(fd);

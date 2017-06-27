@@ -40,7 +40,10 @@ cmd_group lcfs_cmd_group[] = {
         "daemon",
         "Start the lcfs daemon",
         "<device/file> <host-mountpath> <plugin-mountpath> "
-            "[-f] [-d] [-m] [-r] [-t] [-p] [-v]",
+#ifndef __MUSL__
+            "[-p] "
+#endif
+            "[-f] [-d] [-m] [-r] [-t] [-v]",
         "\tdevice     - device or file - image layers will be saved here\n"
         "\thost-mount - mount point on host\n"
         "\thost-mount - mount point propogated to the plugin\n"
@@ -50,7 +53,9 @@ cmd_group lcfs_cmd_group[] = {
         "\t-m         - enable memory stats (optional)\n"
         "\t-r         - enable request stats (optional)\n"
         "\t-t         - enable tracking count of file types (optional)\n"
+#ifndef __MUSL__
         "\t-p         - enable profiling (optional)\n"
+#endif
         "\t-s         - swap layers when committed\n"
         "\t-v         - enable verbose mode (optional)\n",
         3,
@@ -108,6 +113,17 @@ cmd_group lcfs_cmd_group[] = {
         1,
         cmd_ioctl
     },
+#ifndef __MUSL__
+    {
+        "profile",
+        "Enable/Disable profiling",
+        "<mnt>",
+        "\tmnt                  - mount point\n"
+        "\t[enable|disable]     - enable/disable profiling\n",
+        2,
+        cmd_ioctl
+    },
+#endif
     {
         "verbose",
         "enable/disable verbose mode",
