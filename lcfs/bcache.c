@@ -72,7 +72,7 @@ lc_newPage(struct gfs *gfs, struct fs *fs) {
     page->p_data = NULL;
     page->p_block = LC_INVALID_BLOCK;
     page->p_refCount = 1;
-    page->p_hitCount = 1;
+    page->p_hitCount = 0;
     page->p_nohash = 0;
     page->p_nofree = 0;
     page->p_cache = 0;
@@ -613,6 +613,7 @@ lc_getPageNew(struct gfs *gfs, struct fs *fs, uint64_t block, char *data) {
     page->p_data = data;
     page->p_dvalid = 1;
     page->p_hitCount = 0;
+    page->p_nocache = 0;
     return page;
 }
 
@@ -644,7 +645,7 @@ lc_getPageNewData(struct fs *fs, uint64_t block, char *data) {
         lc_mallocBlockAligned(fs->fs_rfs, (void **)&page->p_data,
                               LC_MEMTYPE_DATA);
     }
-    page->p_hitCount = 0;
+    page->p_nocache = 0;
     return page;
 }
 
