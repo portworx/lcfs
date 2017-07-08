@@ -123,10 +123,15 @@ const (
 // Init initializes the storage driver.
 func (d *Driver) Init(home string, options []string, uidMaps, gidMaps []idtools.IDMap) error {
 	logrus.Infof("Init - home %s options %+v", home, options)
+	rootUID, rootGID, err := idtools.GetRootUIDGID(uidMaps, gidMaps)
+	if err != nil {
+		logrus.Errorf("err %v\n", err)
+		return err
+	}
 	lroot := path.Dir(home)
 	lroot = path.Dir(lroot)
 	lroot = path.Join(lroot, "lcfs")
-	driver, err := d.init(lroot, options, nil, nil)
+	driver, err := d.init(lroot, options, uidMaps, gidMaps)
 	if err != nil {
 		logrus.Errorf("err %v\n", err)
 		return err
@@ -135,7 +140,7 @@ func (d *Driver) Init(home string, options []string, uidMaps, gidMaps []idtools.
 	d.home = lroot
 	d.options = options
 	logrus.Infof("Init - basedir %s", d.home)
-	if err := idtools.MkdirAllAs(d.home, 0700, 0, 0); err != nil {
+	if err := idtools.MkdirAllAs(d.home, 0700, rootUID, rootGID); err != nil {
 		logrus.Errorf("err %v\n", err)
 		return err
 	}
@@ -440,7 +445,7 @@ func (d *Driver) DiffSize(id, parent string) (int64, error) {
 
 // Capabilities defines a list of capabilities a driver may implement.
 func (d *Driver) Capabilities() graphdriver.Capabilities {
-    return graphdriver.Capabilities{ReproducesExactDiffs: true}
+	return graphdriver.Capabilities{ReproducesExactDiffs: true}
 }
 
 func main() {
