@@ -378,7 +378,6 @@ lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head,
             lc_freePage(gfs, fs, page);
             count++;
         } else if (inval && fs->fs_removed) {
-            assert(page->p_lindex == fs->fs_gindex);
             assert(page->p_refCount == 1);
             page->p_refCount = 0;
             page->p_hitCount = 0;
