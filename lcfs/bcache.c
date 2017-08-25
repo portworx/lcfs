@@ -378,6 +378,11 @@ lc_releasePages(struct gfs *gfs, struct fs *fs, struct page *head,
             lc_freePage(gfs, fs, page);
             count++;
         } else if (inval && fs->fs_removed) {
+
+            /* When the layer being removed, let lc_destroyPages() take care of
+             * invalidating pages.
+             */
+            assert(page->p_lindex == fs->fs_pinval);
             assert(page->p_refCount == 1);
             page->p_refCount = 0;
             page->p_hitCount = 0;
@@ -552,8 +557,8 @@ retry:
         new->p_lindex = gindex;
 
         /* Remember the layer which instatiated the page */
-        if ((fs->fs_pinval != -1) && !fs->fs_readOnly &&
-            !(fs->fs_super->sb_flags & LC_SUPER_INIT)) {
+        if (unlikely((fs->fs_pinval == 0) && !fs->fs_readOnly &&
+                     !(fs->fs_super->sb_flags & LC_SUPER_INIT))) {
             fs->fs_pinval = gindex;
         }
         goto retry;
@@ -794,7 +799,7 @@ lc_flushPageCluster(struct gfs *gfs, struct fs *fs,
     }
 
     /* Release the pages after writing */
-    lc_releasePages(gfs, fs, head, fs->fs_removed);
+    lc_releasePages(gfs, fs, head, fs->fs_removed && (fs->fs_pinval != -1));
 }
 
 /* Add a page to the file system dirty list for writeback */
