@@ -57,13 +57,41 @@ lc_writeBlocks(struct gfs *gfs, struct fs *fs,
     __sync_add_and_fetch(&fs->fs_writes, 1);
 }
 
+/* Calculate checksum of a block of data */
+uint32_t
+lc_checksum_sw(char *buf) {
+    return crc32(0, (Bytef *)buf, LC_BLOCK_SIZE);
+}
+
+/* Calculate checksum of a block of data */
+uint32_t
+lc_checksum_hw(char *buf) {
+    uint32_t hash = 0, i, *data = (uint32_t *)buf;
+
+    for (i = 0; i < (LC_BLOCK_SIZE / sizeof(uint32_t)); i++) {
+        hash = _mm_crc32_u32(hash, data[i]);
+    }
+    return hash;
+}
+
+/* Check if cpu supports checksum functionality */
+static void *
+lc_resolve_checksum(void) {
+    __builtin_cpu_init();
+    return __builtin_cpu_supports("sse4.2") ? lc_checksum_hw : lc_checksum_sw;
+}
+
+/* Calculate checksum of a block of data */
+uint32_t
+lc_checksum(char *buf) __attribute__ ((ifunc("lc_resolve_checksum")));
+
 /* Validate crc of the block read */
 void
 lc_verifyBlock(void *buf, uint32_t *crc) {
     uint32_t old = *crc, new;
 
     *crc = 0;
-    new = crc32(0, (Bytef *)buf, LC_BLOCK_SIZE);
+    new = lc_checksum(buf);
     assert(old == new);
     *crc = new;
 }
@@ -72,5 +100,5 @@ lc_verifyBlock(void *buf, uint32_t *crc) {
 void
 lc_updateCRC(void *buf, uint32_t *crc) {
     *crc = 0;
-    *crc = crc32(0, (Bytef *)buf, LC_BLOCK_SIZE);
+    *crc = lc_checksum(buf);
 }

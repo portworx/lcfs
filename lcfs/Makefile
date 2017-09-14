@@ -4,8 +4,8 @@ CC=gcc
 BUILD_OS=$(shell [ -e /etc/os-release ] && cat /etc/os-release | egrep '^ID=' | sed -e s'/^ID=//')
 
 ifndef BUILD_FLAGS
-	override BUILD_FLAGS := $(BUILD_FLAGS) -g
-	#override BUILD_FLAGS := $(BUILD_FLAGS) -O3 -DNDEBUG -Wno-unused-but-set-variable -Wno-unused-variable
+	override BUILD_FLAGS := $(BUILD_FLAGS) -g -msse4.2
+	#override BUILD_FLAGS := $(BUILD_FLAGS) -O3 -msse4.2 -DNDEBUG -Wno-unused-but-set-variable -Wno-unused-variable
 endif
 
 UNAME=$(shell uname)
