@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/codegangsta/cli"
-	"github.com/portworx/px-test/graph"
+	"github.com/portworx/lcfs/px-test/graph"
 	"os"
 )
 
@@ -17,15 +17,17 @@ func runTests(c *cli.Context) {
 
 	testName := c.String("test")
 	driverName := c.String("driver")
-	libDevice := c.String("libDevice")
+	libDevice := c.String("lib-device")
+
 	fmt.Println("Test Name:\n", testName)
+
 	switch testName {
 	case "Scalability":
-		g.TestScalability(driverName, 20)
+		g.TestScalability(driverName, 20, libDevice)
 	case "PageCacheUsage":
 		g.TestPageCacheUsage(driverName, libDevice)
 	case "SpeedOfPull":
-		g.TestPullSpeed(driverName)
+		g.TestPullSpeed(driverName, libDevice)
 	case "BuildSpeed":
 		g.TestBuildSpeed(driverName)
 	case "Stability":
