@@ -19,6 +19,11 @@ On CentOS, run
 ```
 
 #### Install urcu
+On Ubuntu, run
+
+```
+sudo apt-get install -y liburcu-dev
+```
 
 On CentOS, run
 
