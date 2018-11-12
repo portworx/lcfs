@@ -15,19 +15,22 @@ static void
 lc_addFile(struct fs *fs, struct cdir *cdir, ino_t ino, char *name,
            uint16_t len, enum lc_changeType ctype) {
     struct cfile *cfile = cdir->cd_file, **prev = &cdir->cd_file;
+    bool found = false;
 
     assert(cdir->cd_type != LC_REMOVED);
 
     /* Check if the file already in the list */
-    while (cfile &&
-           ((cfile->cf_len != len) || strncmp(cfile->cf_name, name, len))) {
+    while (cfile) {
+        if ((cfile->cf_len == len) && !strncmp(cfile->cf_name, name, len)) {
+            found = true;
+            break;
+        }
         prev = &cfile->cf_next;
         cfile = cfile->cf_next;
     }
 
     /* If an entry exists already, return after updating it */
-    if (cfile && (cfile->cf_len == len) &&
-        !strncmp(cfile->cf_name, name, len)) {
+    if (found) {
         if ((cfile->cf_type == LC_REMOVED) && (ctype == LC_ADDED)) {
             cfile->cf_type = LC_MODIFIED;
         } else {
