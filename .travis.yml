@@ -15,5 +15,5 @@ notifications:
     recipients:
       - eng@portworx.com
       - jobi@portworx.com
-    on_success: always
+    on_success: change
     on_failure: always
