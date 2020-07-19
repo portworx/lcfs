@@ -10,7 +10,7 @@
 # Overview
 Layer Cloning FileSystem (LCFS) is a new filesystem purpose-built to be a Docker [storage driver](https://docs.docker.com/engine/userguide/storagedriver/selectadriver/). All Docker images are constructed of layers using storage drivers (graph drivers) like AUFS, OverlayFS, and Device Mapper. As a design principle, LCFS focuses on layers as the first-class citizen. The LCFS filesystem operates directly on top of block devices, as opposed to merging separate filesystems. Thereby, LCFS aims to directly manage at the container image’s layer level, eliminate the overhead of having a second filesystem that then is merged, and to optimize for density.
 
-LCFS will also support the [snapshot driver interface](https://github.com/docker/containerd/pull/484) being defined by `containerd`.
+LCFS will also support the [snapshot driver interface](https://github.com/containerd/containerd/pull/484) being defined by `containerd`.
 
 The future direction is to enhance LCFS with cluster-level operations, provide richer container statistics, and pave the way towards content integrity in container images.
 
